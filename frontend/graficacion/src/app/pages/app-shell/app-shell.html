@@ -1,0 +1,22 @@
+<div class="flex min-h-screen">
+  <!-- Sidebar bonito  -->
+  <aside class="w-64 bg-gray-900 text-white p-4">
+    <div class="text-xl font-bold mb-6">Mi Sistema</div>
+
+    <nav class="space-y-2">
+      <a routerLink="/app/home" class="block p-2 rounded hover:bg-gray-800">
+        Home
+      </a>
+      <a routerLink="/app/projects" class="block p-2 rounded hover:bg-gray-800">
+        Proyectos
+      </a>
+      <a routerLink="/login" class="block p-2 rounded hover:bg-gray-800">
+        Salir
+      </a>
+    </nav>
+  </aside>
+
+  <main class="flex-1 p-6 bg-gray-50">
+    <router-outlet></router-outlet>
+  </main>
+</div>
