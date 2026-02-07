@@ -3,7 +3,7 @@ CREATE TABLE `users` (
   `name` varchar(255),
   `email` varchar(255) UNIQUE,
   `password` varchar(255),
-  `user_type` enum(TECH,CLIENT),
+  `user_type` enum('TECH','CLIENT'),
   `created_at` datetime
 );
 
@@ -70,7 +70,7 @@ CREATE TABLE `subprocess_techniques` (
   `tech_user_id` int,
   `scheduled_date` datetime,
   `duration_minutes` int,
-  `status` enum(PLANNED,DONE,CANCELLED)
+  `status` enum('PLANNED','DONE','CANCELLED')
 );
 
 CREATE TABLE `technique_stakeholders` (
@@ -106,8 +106,8 @@ CREATE TABLE `requirements` (
   `project_id` int,
   `title` varchar(255),
   `description` text,
-  `source` enum(SURVEY,INTERVIEW,WORKSHOP),
-  `status` enum(DRAFT,REVIEW,ACCEPTED,REJECTED)
+  `source` enum('SURVEY','INTERVIEW','WORKSHOP'),
+  `status` enum('DRAFT','REVIEW','ACCEPTED','REJECTED')
 );
 
 CREATE TABLE `requirement_sources` (
@@ -150,7 +150,7 @@ CREATE TABLE `class_relationships` (
   `id` int PRIMARY KEY AUTO_INCREMENT,
   `source_class_id` int,
   `target_class_id` int,
-  `relationship_type` enum(ASSOCIATION,AGGREGATION,COMPOSITION)
+  `relationship_type` enum('ASSOCIATION','AGGREGATION','COMPOSITION')
 );
 
 CREATE TABLE `class_inheritance` (
