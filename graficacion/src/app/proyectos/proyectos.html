@@ -1,0 +1,264 @@
+<!-- Contenedor principal -->
+<div class="proyectos-page">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div class="header-left">
+      <h1 class="page-title">Proyectos</h1>
+      <p class="page-subtitle">Gestiona tus proyectos de análisis de procesos del negocio</p>
+    </div>
+    <button class="btn-nuevo" (click)="showForm = !showForm">
+      <svg *ngIf="!showForm" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+      <svg *ngIf="showForm" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+      {{ showForm ? 'Cancelar' : 'Nuevo Proyecto' }}
+    </button>
+  </div>
+
+  <!-- Formulario Crear Proyecto -->
+  <div class="form-card" *ngIf="showForm">
+    <h2 class="form-title">Crear Nuevo Proyecto</h2>
+
+    <form (ngSubmit)="handleSubmit()" #proyectoForm="ngForm">
+      <div class="form-grid">
+        <div class="form-group full-width">
+          <label class="form-label">Nombre del Proyecto *</label>
+          <input
+            type="text"
+            [(ngModel)]="nombre"
+            name="nombre"
+            required
+            class="form-input"
+            placeholder="Ej: Análisis Sistema de Ventas 2025"
+          />
+        </div>
+
+        <div class="form-group full-width">
+          <label class="form-label">Descripción *</label>
+          <textarea
+            [(ngModel)]="descripcion"
+            name="descripcion"
+            required
+            rows="3"
+            class="form-input form-textarea"
+            placeholder="Describe el objetivo y alcance del proyecto"
+          ></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Fecha de Inicio *</label>
+          <input
+            type="date"
+            [(ngModel)]="fechaInicio"
+            name="fechaInicio"
+            required
+            class="form-input"
+          />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Estado *</label>
+          <select
+            [(ngModel)]="estado"
+            name="estado"
+            class="form-input"
+          >
+            <option value="planificacion">Planificación</option>
+            <option value="en-progreso">En Progreso</option>
+            <option value="pausado">Pausado</option>
+            <option value="completado">Completado</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn-crear" [disabled]="!nombre || !descripcion">
+          Crear Proyecto
+        </button>
+        <button type="button" class="btn-cancelar" (click)="resetForm()">
+          Cancelar
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Grid de Proyectos -->
+  <div class="proyectos-grid" *ngIf="proyectos.length > 0">
+    <div
+      *ngFor="let proyecto of proyectos"
+      class="proyecto-card"
+      (click)="selectProyecto(proyecto.id)"
+    >
+      <!-- Header con gradiente -->
+      <div class="card-header" [style.background]="getGradient(proyecto.color)">
+        <div class="card-header-watermark">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </div>
+        <h3 class="card-title">{{ proyecto.nombre }}</h3>
+        <p class="card-desc">{{ proyecto.descripcion }}</p>
+      </div>
+
+      <!-- Body -->
+      <div class="card-body">
+        <!-- Estado y fecha -->
+        <div class="card-meta">
+          <div class="estado-badge" [ngClass]="getEstadoInfo(proyecto.estado).bgClass">
+            <!-- Clock icon -->
+            <svg *ngIf="getEstadoInfo(proyecto.estado).iconPath === 'clock'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <!-- Play icon -->
+            <svg *ngIf="getEstadoInfo(proyecto.estado).iconPath === 'play'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            <!-- Check icon -->
+            <svg *ngIf="getEstadoInfo(proyecto.estado).iconPath === 'check'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+            <!-- Pause icon -->
+            <svg *ngIf="getEstadoInfo(proyecto.estado).iconPath === 'pause'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="6" y="4" width="4" height="16"></rect>
+              <rect x="14" y="4" width="4" height="16"></rect>
+            </svg>
+            <span [ngClass]="getEstadoInfo(proyecto.estado).colorClass">{{ getEstadoInfo(proyecto.estado).label }}</span>
+          </div>
+
+          <div class="card-date">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            {{ formatDate(proyecto.fechaInicio) }}
+          </div>
+        </div>
+
+        <!-- Estadísticas -->
+        <div class="card-stats">
+          <div class="card-stat">
+            <span class="card-stat-value stat-blue">{{ proyecto.stakeholders.length }}</span>
+            <span class="card-stat-label">Stakeholders</span>
+          </div>
+          <div class="card-stat">
+            <span class="card-stat-value stat-emerald">{{ proyecto.procesos.length }}</span>
+            <span class="card-stat-label">Procesos</span>
+          </div>
+          <div class="card-stat">
+            <span class="card-stat-value stat-purple">{{ getProyectoAnalisis(proyecto) }}</span>
+            <span class="card-stat-label">Análisis</span>
+          </div>
+        </div>
+
+        <!-- Acciones -->
+        <div class="card-actions">
+          <button class="btn-ver" (click)="openPreview(proyecto, $event)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            Ver
+          </button>
+          <button class="btn-delete" (click)="deleteProyecto(proyecto.id, $event)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Estado vacío -->
+  <div class="empty-state" *ngIf="proyectos.length === 0 && !showForm">
+    <div class="empty-icon">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+      </svg>
+    </div>
+    <p class="empty-title">No hay proyectos</p>
+    <p class="empty-desc">Crea tu primer proyecto para comenzar a documentar procesos del negocio</p>
+    <button class="btn-nuevo" (click)="showForm = true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+      Crear Primer Proyecto
+    </button>
+  </div>
+
+  <!-- Modal de vista previa -->
+  <div class="modal-overlay" *ngIf="selectedProyecto" (click)="closeModal()">
+    <div class="modal-box" (click)="$event.stopPropagation()">
+      <!-- Modal header con gradiente -->
+      <div class="modal-header" [style.background]="getGradient(selectedProyecto.color)">
+        <div class="modal-header-text">
+          <h3 class="modal-title">{{ selectedProyecto.nombre }}</h3>
+          <p class="modal-desc">{{ selectedProyecto.descripcion }}</p>
+        </div>
+        <button class="modal-close" (click)="closeModal()">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Modal body -->
+      <div class="modal-body">
+        <div class="modal-info-grid">
+          <div class="modal-info-item">
+            <span class="modal-info-label">Estado</span>
+            <div class="estado-badge" [ngClass]="getEstadoInfo(selectedProyecto.estado).bgClass">
+              <svg *ngIf="getEstadoInfo(selectedProyecto.estado).iconPath === 'clock'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <svg *ngIf="getEstadoInfo(selectedProyecto.estado).iconPath === 'play'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              <svg *ngIf="getEstadoInfo(selectedProyecto.estado).iconPath === 'check'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              <svg *ngIf="getEstadoInfo(selectedProyecto.estado).iconPath === 'pause'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+              <span [ngClass]="getEstadoInfo(selectedProyecto.estado).colorClass">{{ getEstadoInfo(selectedProyecto.estado).label }}</span>
+            </div>
+          </div>
+          <div class="modal-info-item">
+            <span class="modal-info-label">Fecha de Inicio</span>
+            <span class="modal-info-value">{{ formatDateLong(selectedProyecto.fechaInicio) }}</span>
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-row">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            <span class="modal-section-text">Stakeholders: {{ selectedProyecto.stakeholders.length }}</span>
+          </div>
+          <div class="modal-section-row">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            <span class="modal-section-text">Procesos: {{ selectedProyecto.procesos.length }}</span>
+          </div>
+        </div>
+
+        <button class="btn-abrir" (click)="openAndClose()">
+          Abrir Proyecto
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
