@@ -1,1 +1,670 @@
-<p>home works!</p>
+<div class="min-h-screen bg-slate-950 text-slate-100">
+  <aside
+    class="group fixed left-0 top-0 z-40 flex h-screen w-16 flex-col border-r border-slate-800 bg-slate-950/95 backdrop-blur transition-all duration-300 hover:w-64"
+  >
+    <div class="flex items-center gap-3 px-4 py-4">
+      <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-semibold text-white">
+        G
+      </div>
+      <div class="opacity-0 transition-all duration-300 group-hover:opacity-100">
+        <p class="text-sm font-semibold text-white">Graficación</p>
+        <p class="text-xs text-slate-400">Workspace técnico</p>
+      </div>
+    </div>
+
+    <nav class="mt-2 space-y-1 px-2 text-sm text-slate-300">
+      <a
+        routerLink="/home"
+        title="Dashboard"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="text-lg">¦</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Dashboard</span>
+      </a>
+      <a
+        routerLink="/users"
+        title="Admin"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="text-lg">??</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Admin</span>
+      </a>
+      <a
+        href="#"
+        title="Configuración"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="text-lg">?</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Configuración</span>
+      </a>
+      <a
+        href="#"
+        title="Stakeholders"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="text-lg">??</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Stakeholders</span>
+      </a>
+      <a
+        href="#"
+        title="Procesos"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="text-lg">?</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Procesos</span>
+      </a>
+      <a
+        href="#"
+        title="Técnicas"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="text-lg">?</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Técnicas</span>
+      </a>
+      <a
+        href="#"
+        title="Requerimientos"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="text-lg">?</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Requerimientos</span>
+      </a>
+    </nav>
+
+    <div class="mt-6 px-3">
+      <div class="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-slate-500">
+        <span class="opacity-0 transition-all duration-300 group-hover:opacity-100">Proyectos</span>
+        <button
+          class="rounded-full bg-blue-600 px-2 py-1 text-[10px] font-semibold text-white opacity-0 transition-all duration-300 group-hover:opacity-100"
+          (click)="openWizard()"
+        >
+          + Nuevo
+        </button>
+      </div>
+      <div class="mt-3 space-y-2">
+        <a
+          *ngFor="let project of projects()"
+          [routerLink]="['/projects', project.id]"
+          class="flex items-center gap-3 rounded-xl px-3 py-2 text-xs text-slate-300 hover:bg-slate-900"
+          title="{{ project.name }}"
+        >
+          <span class="h-2 w-2 rounded-full bg-blue-500"></span>
+          <span class="truncate opacity-0 transition-all duration-300 group-hover:opacity-100">
+            {{ project.name }}
+          </span>
+        </a>
+        <div *ngIf="projects().length === 0" class="rounded-xl border border-dashed border-slate-800 px-3 py-2 text-xs text-slate-500 opacity-0 transition-all duration-300 group-hover:opacity-100">
+          Sin proyectos aún
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="pl-16">
+    <header class="border-b border-slate-800">
+      <div class="mx-auto flex w-full max-w-6xl items-center gap-4 px-6 py-4">
+        <div class="flex items-center gap-2 text-xs text-slate-400">
+          <span>Workspace</span>
+          <span class="text-slate-600">›</span>
+          <span class="text-blue-400">Overview</span>
+        </div>
+        <h1 class="ml-4 text-lg font-semibold text-slate-100">Technical Dashboard</h1>
+
+        <div class="ml-auto flex items-center gap-3">
+          <div class="hidden items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-4 py-2 text-xs text-slate-300 md:flex">
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.3-4.3M10.8 18a7.2 7.2 0 1 1 0-14.4 7.2 7.2 0 0 1 0 14.4Z" />
+            </svg>
+            <span>Buscar proyectos, roles, técnicas</span>
+            <span class="rounded-full border border-slate-700 px-2 py-0.5 text-[10px] text-slate-400">? K</span>
+          </div>
+          <button class="flex h-9 w-9 items-center justify-center rounded-full border border-slate-800 bg-slate-900 text-slate-300">
+            <span class="text-sm">?</span>
+          </button>
+          <div class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+            GD
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto w-full max-w-6xl space-y-10 px-6 py-10">
+      <section>
+        <h2 class="text-3xl font-semibold">Panel General</h2>
+        <p class="mt-2 text-sm text-slate-400">Resumen de arquitectura y proyectos activos.</p>
+      </section>
+
+      <section class="grid gap-6 lg:grid-cols-[1.4fr_0.6fr]">
+        <div class="rounded-3xl bg-blue-600 p-8 text-white shadow-[0_20px_60px_rgba(30,64,175,0.45)]">
+          <div class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs uppercase tracking-[0.2em]">
+            <span class="h-2 w-2 rounded-full bg-white"></span>
+            Acción rápida
+          </div>
+          <h3 class="mt-6 text-3xl font-semibold">Nuevo Proyecto</h3>
+          <p class="mt-2 text-sm text-white/80">
+            Inicia un nuevo espacio de trabajo, define roles técnicos y estructura los procesos desde cero.
+          </p>
+          <button
+            class="mt-10 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-blue-700"
+            (click)="openWizard()"
+          >
+            <span class="text-lg">+</span>
+            Añadir proyecto
+          </button>
+        </div>
+
+        <div class="grid gap-6">
+          <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+            <div class="flex items-start justify-between">
+              <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600/20 text-blue-400">
+                <span class="text-lg">?</span>
+              </div>
+              <span class="text-xs text-slate-500">+12%</span>
+            </div>
+            <div class="mt-6">
+              <p class="text-3xl font-semibold">{{ projectsCount() }}</p>
+              <p class="text-sm text-slate-400">Proyectos activos</p>
+            </div>
+          </div>
+          <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+            <div class="flex items-start justify-between">
+              <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/20 text-emerald-400">
+                <span class="text-lg">?</span>
+              </div>
+              <span class="text-xs text-slate-500">FULL</span>
+            </div>
+            <div class="mt-6">
+              <p class="text-3xl font-semibold">{{ rolesCount() }}</p>
+              <p class="text-sm text-slate-400">Roles definidos</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xl font-semibold">Proyectos recientes</h3>
+          <button class="text-xs font-semibold text-blue-400" (click)="openWizard()">Crear proyecto</button>
+        </div>
+
+        <div *ngIf="error()" class="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-amber-300">
+          {{ error() }}
+        </div>
+
+        <div *ngIf="loading()" class="grid gap-4 md:grid-cols-2">
+          <div class="h-28 animate-pulse rounded-2xl bg-slate-900"></div>
+          <div class="h-28 animate-pulse rounded-2xl bg-slate-900"></div>
+        </div>
+
+        <div *ngIf="!loading() && projects().length === 0" class="rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 px-4 py-6 text-sm text-slate-400">
+          No hay proyectos todavía. Crea el primero para comenzar.
+        </div>
+
+        <div *ngIf="!loading() && projects().length > 0" class="grid gap-4 md:grid-cols-2">
+          <a
+            *ngFor="let project of projects(); let i = index"
+            [routerLink]="['/projects', project.id]"
+            class="block rounded-2xl border border-slate-800 bg-slate-900 p-5 transition hover:border-blue-500/60 hover:bg-slate-900/80"
+          >
+            <div class="flex items-center justify-between">
+              <h4 class="text-lg font-semibold">{{ project.name }}</h4>
+              <span class="rounded-full bg-slate-800 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-slate-300">
+                Proyecto
+              </span>
+            </div>
+            <p class="mt-2 text-sm text-slate-400">
+              {{ project.description || 'Sin descripción todavía.' }}
+            </p>
+            <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
+              <span>Actualizado recientemente</span>
+              <span class="text-blue-400">Abrir ?</span>
+            </div>
+          </a>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div *ngIf="wizardOpen()" class="fixed inset-0 z-50">
+    <div class="absolute inset-0 bg-black/70"></div>
+    <div class="relative flex h-full w-full">
+      <aside class="group flex h-full w-16 flex-col border-r border-slate-800 bg-slate-950 transition-all duration-300 hover:w-72">
+        <div class="flex items-center gap-3 px-4 py-4">
+          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-semibold text-white">
+            G
+          </div>
+          <div class="opacity-0 transition-all duration-300 group-hover:opacity-100">
+            <p class="text-sm font-semibold text-white">Graficación</p>
+            <p class="text-xs text-slate-400">Wizard</p>
+          </div>
+        </div>
+        <div class="mt-4 space-y-2 px-3 text-xs text-slate-400">
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-blue-500"></span>
+            <span class="opacity-0 transition-all duration-300 group-hover:opacity-100">Información</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-blue-500"></span>
+            <span class="opacity-0 transition-all duration-300 group-hover:opacity-100">Responsables</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-blue-500"></span>
+            <span class="opacity-0 transition-all duration-300 group-hover:opacity-100">Confirmación</span>
+          </div>
+        </div>
+      </aside>
+
+      <div class="flex-1 overflow-y-auto bg-slate-950">
+        <header class="flex items-center justify-between border-b border-slate-800 px-6 py-4">
+          <div>
+            <p class="text-xs uppercase tracking-[0.3em] text-blue-400">Crear proyecto</p>
+            <h2 class="mt-1 text-2xl font-semibold text-white">Wizard de configuración</h2>
+          </div>
+          <button class="text-slate-400 hover:text-white" (click)="closeWizard()">?</button>
+        </header>
+
+        <div class="mx-auto w-full max-w-4xl px-6 py-8">
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <span>Paso {{ wizardStep() }} de 4</span>
+            <span>Guía rápida para estructurar el proyecto</span>
+          </div>
+          <div class="mt-3 h-2 w-full rounded-full bg-slate-800">
+            <div
+              class="h-2 rounded-full bg-blue-600 transition-all"
+              [style.width.%]="wizardStep() === 1 ? 25 : wizardStep() === 2 ? 50 : wizardStep() === 3 ? 75 : 100"
+            ></div>
+          </div>
+
+          <div class="mt-6 grid gap-3 md:grid-cols-4">
+            <div
+              class="rounded-2xl border px-4 py-3 text-xs"
+              [ngClass]="wizardStep() >= 1 ? 'border-blue-500 text-blue-200' : 'border-slate-800 text-slate-500'"
+            >
+              1 · Información
+            </div>
+            <div
+              class="rounded-2xl border px-4 py-3 text-xs"
+              [ngClass]="wizardStep() >= 2 ? 'border-blue-500 text-blue-200' : 'border-slate-800 text-slate-500'"
+            >
+              2 · Responsable técnico
+            </div>
+            <div
+              class="rounded-2xl border px-4 py-3 text-xs"
+              [ngClass]="wizardStep() >= 3 ? 'border-blue-500 text-blue-200' : 'border-slate-800 text-slate-500'"
+            >
+              3 · Responsable cliente
+            </div>
+            <div
+              class="rounded-2xl border px-4 py-3 text-xs"
+              [ngClass]="wizardStep() >= 4 ? 'border-blue-500 text-blue-200' : 'border-slate-800 text-slate-500'"
+            >
+              4 · Confirmación
+            </div>
+          </div>
+
+          <form class="mt-8 space-y-6" [formGroup]="form">
+            <div *ngIf="wizardStep() === 1" formGroupName="project" class="space-y-4">
+              <div>
+                <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Nombre del proyecto</label>
+                <input
+                  formControlName="name"
+                  placeholder="Ej: Plataforma de requerimientos"
+                  class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                />
+                <p *ngIf="form.get('project.name')?.touched && form.get('project.name')?.invalid" class="mt-2 text-xs text-amber-300">
+                  Ingresa un nombre válido.
+                </p>
+              </div>
+              <div>
+                <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Descripción</label>
+                <textarea
+                  formControlName="description"
+                  rows="3"
+                  placeholder="Resumen del objetivo y alcance técnico"
+                  class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                ></textarea>
+              </div>
+              <div class="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Inicio</label>
+                  <input
+                    type="date"
+                    formControlName="start_date"
+                    class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Fin</label>
+                  <input
+                    type="date"
+                    formControlName="end_date"
+                    class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div *ngIf="wizardStep() === 2" class="space-y-4">
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="rounded-full border px-4 py-2 text-xs font-semibold"
+                  [ngClass]="techMode() === 'existing' ? 'border-blue-500 bg-blue-600 text-white' : 'border-slate-800 text-slate-300'"
+                  (click)="setTechMode('existing')"
+                >
+                  Buscar existente
+                </button>
+                <button
+                  type="button"
+                  class="rounded-full border px-4 py-2 text-xs font-semibold"
+                  [ngClass]="techMode() === 'create' ? 'border-blue-500 bg-blue-600 text-white' : 'border-slate-800 text-slate-300'"
+                  (click)="setTechMode('create')"
+                >
+                  Crear nuevo
+                </button>
+              </div>
+
+              <div *ngIf="techMode() === 'existing'" class="space-y-4">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/50 px-4 py-3 text-xs text-slate-300">
+                  Selecciona un responsable técnico ya registrado. Tendrá acceso completo al sistema.
+                </div>
+                <div class="flex flex-col gap-2 md:flex-row">
+                  <input
+                    type="text"
+                    [value]="techSearch()"
+                    (input)="setTechSearch($any($event.target).value)"
+                    placeholder="Buscar por nombre o email"
+                    class="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    class="rounded-2xl bg-blue-600 px-4 py-3 text-xs font-semibold text-white"
+                    (click)="searchTech()"
+                  >
+                    Buscar
+                  </button>
+                </div>
+                <div class="grid gap-2">
+                  <button
+                    type="button"
+                    *ngFor="let user of techResults()"
+                    (click)="selectTech(user)"
+                    class="flex items-center justify-between rounded-2xl border px-4 py-3 text-left"
+                    [ngClass]="selectedTech()?.id === user.id ? 'border-blue-500 bg-slate-900/70' : 'border-slate-800 bg-slate-950'"
+                  >
+                    <div>
+                      <p class="text-sm font-semibold text-white">{{ user.name }}</p>
+                      <p class="text-xs text-slate-400">{{ user.email }}</p>
+                    </div>
+                    <span class="text-xs text-slate-500">{{ user.mobile || 'Sin móvil' }}</span>
+                  </button>
+                  <div *ngIf="techResults().length === 0 && techSearch()" class="text-xs text-slate-500">
+                    Sin resultados con ese criterio.
+                  </div>
+                </div>
+              </div>
+
+              <div *ngIf="techMode() === 'create'" formGroupName="tech" class="space-y-4">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/50 px-4 py-3 text-xs text-slate-300">
+                  Este usuario tendrá acceso completo al sistema y podrá gestionar procesos, técnicas y requerimientos.
+                </div>
+                <div>
+                  <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Nombre completo</label>
+                  <input
+                    formControlName="name"
+                    placeholder="Ej: Ana Ruiz"
+                    class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                  />
+                  <p *ngIf="form.get('tech.name')?.touched && form.get('tech.name')?.invalid" class="mt-2 text-xs text-amber-300">
+                    Nombre obligatorio.
+                  </p>
+                </div>
+                <div class="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Correo</label>
+                    <input
+                      formControlName="email"
+                      placeholder="ana@equipo.dev"
+                      class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                    />
+                    <p *ngIf="form.get('tech.email')?.touched && form.get('tech.email')?.invalid" class="mt-2 text-xs text-amber-300">
+                      Email válido requerido.
+                    </p>
+                  </div>
+                  <div>
+                    <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Móvil</label>
+                    <input
+                      formControlName="mobile"
+                      placeholder="+52 55 0000 0000"
+                      class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                    />
+                    <p *ngIf="form.get('tech.mobile')?.touched && form.get('tech.mobile')?.invalid" class="mt-2 text-xs text-amber-300">
+                      Teléfono requerido.
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Contraseña</label>
+                  <input
+                    type="password"
+                    formControlName="password"
+                    placeholder="••••••••"
+                    class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                  />
+                  <p *ngIf="form.get('tech.password')?.touched && form.get('tech.password')?.invalid" class="mt-2 text-xs text-amber-300">
+                    Mínimo 8 caracteres.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div *ngIf="wizardStep() === 3" class="space-y-4">
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="rounded-full border px-4 py-2 text-xs font-semibold"
+                  [ngClass]="clientMode() === 'existing' ? 'border-blue-500 bg-blue-600 text-white' : 'border-slate-800 text-slate-300'"
+                  (click)="setClientMode('existing')"
+                >
+                  Buscar existente
+                </button>
+                <button
+                  type="button"
+                  class="rounded-full border px-4 py-2 text-xs font-semibold"
+                  [ngClass]="clientMode() === 'create' ? 'border-blue-500 bg-blue-600 text-white' : 'border-slate-800 text-slate-300'"
+                  (click)="setClientMode('create')"
+                >
+                  Crear nuevo
+                </button>
+              </div>
+
+              <div *ngIf="clientMode() === 'existing'" class="space-y-4">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/50 px-4 py-3 text-xs text-slate-300">
+                  Este usuario no tendrá acceso a la plataforma y participará como stakeholder en entrevistas, encuestas y workshops.
+                </div>
+                <div class="flex flex-col gap-2 md:flex-row">
+                  <input
+                    type="text"
+                    [value]="clientSearch()"
+                    (input)="setClientSearch($any($event.target).value)"
+                    placeholder="Buscar por nombre o email"
+                    class="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    class="rounded-2xl bg-blue-600 px-4 py-3 text-xs font-semibold text-white"
+                    (click)="searchClient()"
+                  >
+                    Buscar
+                  </button>
+                </div>
+                <div class="grid gap-2">
+                  <button
+                    type="button"
+                    *ngFor="let user of clientResults()"
+                    (click)="selectClient(user)"
+                    class="flex items-center justify-between rounded-2xl border px-4 py-3 text-left"
+                    [ngClass]="selectedClient()?.id === user.id ? 'border-blue-500 bg-slate-900/70' : 'border-slate-800 bg-slate-950'"
+                  >
+                    <div>
+                      <p class="text-sm font-semibold text-white">{{ user.name }}</p>
+                      <p class="text-xs text-slate-400">{{ user.email }}</p>
+                      <p *ngIf="user.companyName" class="text-[11px] text-slate-500">
+                        {{ user.companyName }} · {{ user.roleName || 'Sin rol' }}
+                      </p>
+                    </div>
+                    <span class="text-xs text-slate-500">{{ user.mobile || 'Sin móvil' }}</span>
+                  </button>
+                  <div *ngIf="clientResults().length === 0 && clientSearch()" class="text-xs text-slate-500">
+                    Sin resultados con ese criterio.
+                  </div>
+                </div>
+              </div>
+
+              <div *ngIf="clientMode() === 'create'" formGroupName="client" class="space-y-4">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/50 px-4 py-3 text-xs text-slate-300">
+                  Este usuario no tendrá acceso a la plataforma y participará como stakeholder en entrevistas, encuestas y workshops.
+                </div>
+                <div>
+                  <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Nombre completo</label>
+                  <input
+                    formControlName="name"
+                    placeholder="Ej: Luis Gómez"
+                    class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                  />
+                  <p *ngIf="form.get('client.name')?.touched && form.get('client.name')?.invalid" class="mt-2 text-xs text-amber-300">
+                    Nombre obligatorio.
+                  </p>
+                </div>
+                <div class="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Correo</label>
+                    <input
+                      formControlName="email"
+                      placeholder="luis@cliente.com"
+                      class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                    />
+                    <p *ngIf="form.get('client.email')?.touched && form.get('client.email')?.invalid" class="mt-2 text-xs text-amber-300">
+                      Email válido requerido.
+                    </p>
+                  </div>
+                  <div>
+                    <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Móvil</label>
+                    <input
+                      formControlName="mobile"
+                      placeholder="+52 55 0000 0000"
+                      class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                    />
+                    <p *ngIf="form.get('client.mobile')?.touched && form.get('client.mobile')?.invalid" class="mt-2 text-xs text-amber-300">
+                      Teléfono requerido.
+                    </p>
+                  </div>
+                </div>
+                <div class="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Empresa</label>
+                    <input
+                      formControlName="company"
+                      placeholder="Nombre de la empresa"
+                      class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                    />
+                    <p *ngIf="form.get('client.company')?.touched && form.get('client.company')?.invalid" class="mt-2 text-xs text-amber-300">
+                      Empresa requerida.
+                    </p>
+                  </div>
+                  <div>
+                    <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Rol</label>
+                    <input
+                      formControlName="role"
+                      placeholder="Ej: Director, Manager"
+                      class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                    />
+                    <p *ngIf="form.get('client.role')?.touched && form.get('client.role')?.invalid" class="mt-2 text-xs text-amber-300">
+                      Rol requerido.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div *ngIf="wizardStep() === 4" class="space-y-6">
+              <div class="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Proyecto</p>
+                <p class="mt-2 text-lg font-semibold text-white">{{ form.value.project?.name || 'Sin nombre' }}</p>
+                <p class="mt-1 text-sm text-slate-400">{{ form.value.project?.description || 'Sin descripción' }}</p>
+                <div class="mt-3 flex gap-3 text-xs text-slate-500">
+                  <span>Inicio: {{ form.value.project?.start_date || '—' }}</span>
+                  <span>Fin: {{ form.value.project?.end_date || '—' }}</span>
+                </div>
+              </div>
+
+              <div class="grid gap-4 md:grid-cols-2">
+                <div class="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                  <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Responsable técnico</p>
+                  <p class="mt-2 text-sm text-white">
+                    {{ techMode() === 'existing' ? selectedTech()?.name : form.value.tech?.name }}
+                  </p>
+                  <p class="text-xs text-slate-400">
+                    {{ techMode() === 'existing' ? selectedTech()?.email : form.value.tech?.email }}
+                  </p>
+                  <p class="text-xs text-slate-500">
+                    {{ techMode() === 'existing' ? selectedTech()?.mobile : form.value.tech?.mobile }}
+                  </p>
+                </div>
+                <div class="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                  <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Responsable cliente</p>
+                  <p class="mt-2 text-sm text-white">
+                    {{ clientMode() === 'existing' ? selectedClient()?.name : form.value.client?.name }}
+                  </p>
+                  <p class="text-xs text-slate-400">
+                    {{ clientMode() === 'existing' ? selectedClient()?.email : form.value.client?.email }}
+                  </p>
+                  <p class="text-xs text-slate-500">
+                    {{ clientMode() === 'existing'
+                      ? (selectedClient()?.companyName || 'Sin empresa') + ' · ' + (selectedClient()?.roleName || 'Sin rol')
+                      : (form.value.client?.company || 'Sin empresa') + ' · ' + (form.value.client?.role || 'Sin rol') }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div *ngIf="wizardError()" class="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-amber-300">
+              {{ wizardError() }}
+            </div>
+
+            <div class="flex items-center justify-between pt-4">
+              <button
+                type="button"
+                class="rounded-full border border-slate-800 px-4 py-2 text-sm text-slate-300 disabled:opacity-50"
+                [disabled]="wizardStep() === 1"
+                (click)="prevStep()"
+              >
+                Atrás
+              </button>
+
+              <div class="flex items-center gap-3">
+                <button
+                  *ngIf="wizardStep() < 4"
+                  type="button"
+                  class="rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white"
+                  (click)="nextStep()"
+                >
+                  Continuar
+                </button>
+                <button
+                  *ngIf="wizardStep() === 4"
+                  type="button"
+                  class="rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  [disabled]="saving()"
+                  (click)="submitWizard()"
+                >
+                  {{ saving() ? 'Creando...' : 'Crear proyecto' }}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

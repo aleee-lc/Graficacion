@@ -1,0 +1,151 @@
+<div class="min-h-screen bg-slate-950 text-slate-100">
+  <aside
+    class="group fixed left-0 top-0 z-40 flex h-screen w-16 flex-col border-r border-slate-800 bg-slate-950/95 backdrop-blur transition-all duration-300 hover:w-64"
+  >
+    <div class="flex items-center gap-3 px-4 py-4">
+      <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-semibold text-white">
+        G
+      </div>
+      <div class="opacity-0 transition-all duration-300 group-hover:opacity-100">
+        <p class="text-sm font-semibold text-white">Graficacion</p>
+        <p class="text-xs text-slate-400">Workspace tecnico</p>
+      </div>
+    </div>
+
+    <nav class="mt-2 space-y-1 px-2 text-sm text-slate-300">
+      <a
+        routerLink="/home"
+        title="Dashboard"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="text-lg">D</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Dashboard</span>
+      </a>
+      <a
+        routerLink="/users"
+        title="Admin"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="text-lg">A</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Admin</span>
+      </a>
+      <a
+        [routerLink]="['/projects', projectId()]"
+        title="Proyecto"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 bg-slate-900"
+      >
+        <span class="text-lg">P</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Proyecto</span>
+      </a>
+    </nav>
+  </aside>
+
+  <div class="pl-16">
+    <header class="border-b border-slate-800">
+      <div class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
+        <div class="flex items-center gap-3">
+          <a [routerLink]="['/projects', projectId(), 'processes', subprocess()?.process_id, 'subprocesses']" class="text-xs font-semibold text-blue-400">
+            Volver
+          </a>
+          <span class="text-slate-600">|</span>
+          <h1 class="text-lg font-semibold">Tecnicas</h1>
+        </div>
+        <div class="text-xs text-slate-500">{{ subprocess()?.name || 'Subproceso' }}</div>
+      </div>
+    </header>
+
+    <main class="mx-auto w-full max-w-6xl space-y-8 px-6 py-10">
+      <section>
+        <h2 class="text-3xl font-semibold">Tecnicas por subproceso</h2>
+        <p class="mt-2 text-sm text-slate-400">
+          Selecciona tecnicas existentes o crea nuevas para este subproceso.
+        </p>
+      </section>
+
+      <div *ngIf="error()" class="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-amber-300">
+        {{ error() }}
+      </div>
+
+      <section class="grid gap-6 lg:grid-cols-[1fr_1fr]">
+        <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+          <h3 class="text-xl font-semibold">Asignar tecnica</h3>
+          <div class="mt-4 space-y-3">
+            <select
+              class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white focus:border-blue-500 focus:outline-none"
+              [value]="selectedTechniqueId() || ''"
+              (change)="setSelectedTechnique($any($event.target).value)"
+            >
+              <option value="">Selecciona una tecnica</option>
+              <option *ngFor="let technique of techniques()" [value]="technique.id">
+                {{ technique.name }}
+              </option>
+            </select>
+            <button
+              type="button"
+              class="w-full rounded-full bg-blue-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              [disabled]="assigning()"
+              (click)="assignTechnique()"
+            >
+              {{ assigning() ? 'Asignando...' : 'Asignar tecnica' }}
+            </button>
+          </div>
+
+          <div class="mt-6 border-t border-slate-800 pt-6">
+            <h4 class="text-sm font-semibold">Crear nueva tecnica</h4>
+            <form class="mt-4 space-y-3" [formGroup]="createForm" (ngSubmit)="createTechnique()">
+              <input
+                formControlName="name"
+                placeholder="Nombre de la tecnica"
+                class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+              />
+              <textarea
+                formControlName="description"
+                rows="3"
+                placeholder="Descripcion"
+                class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+              ></textarea>
+              <button
+                type="submit"
+                class="w-full rounded-full border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-200 disabled:opacity-60"
+                [disabled]="saving()"
+              >
+                {{ saving() ? 'Guardando...' : 'Crear tecnica' }}
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xl font-semibold">Tecnicas asignadas</h3>
+            <span class="text-xs text-slate-500">{{ assignments().length }} asignadas</span>
+          </div>
+
+          <div *ngIf="loading()" class="mt-4 grid gap-3">
+            <div class="h-20 animate-pulse rounded-2xl bg-slate-950"></div>
+            <div class="h-20 animate-pulse rounded-2xl bg-slate-950"></div>
+          </div>
+
+          <div *ngIf="!loading() && assignments().length === 0" class="mt-4 rounded-2xl border border-dashed border-slate-800 bg-slate-950/40 px-4 py-6 text-sm text-slate-400">
+            Aun no hay tecnicas asignadas.
+          </div>
+
+          <div *ngIf="!loading() && assignments().length > 0" class="mt-4 grid gap-3">
+            <div
+              *ngFor="let item of assignments()"
+              class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-4"
+            >
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-semibold text-white">{{ item.name }}</p>
+                  <p class="text-xs text-slate-400">{{ item.description || 'Sin descripcion.' }}</p>
+                </div>
+                <span class="text-[10px] uppercase tracking-[0.2em] text-blue-400">{{ item.status }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>

@@ -1,0 +1,134 @@
+<div class="min-h-screen bg-slate-950 text-slate-100">
+  <aside
+    class="group fixed left-0 top-0 z-40 flex h-screen w-16 flex-col border-r border-slate-800 bg-slate-950/95 backdrop-blur transition-all duration-300 hover:w-64"
+  >
+    <div class="flex items-center gap-3 px-4 py-4">
+      <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-semibold text-white">
+        G
+      </div>
+      <div class="opacity-0 transition-all duration-300 group-hover:opacity-100">
+        <p class="text-sm font-semibold text-white">Graficacion</p>
+        <p class="text-xs text-slate-400">Workspace tecnico</p>
+      </div>
+    </div>
+
+    <nav class="mt-2 space-y-1 px-2 text-sm text-slate-300">
+      <a
+        routerLink="/home"
+        title="Dashboard"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="text-lg">D</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Dashboard</span>
+      </a>
+      <a
+        routerLink="/users"
+        title="Admin"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="text-lg">A</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Admin</span>
+      </a>
+      <a
+        [routerLink]="['/projects', projectId()]"
+        title="Proyecto"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 bg-slate-900"
+      >
+        <span class="text-lg">P</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Proyecto</span>
+      </a>
+    </nav>
+  </aside>
+
+  <div class="pl-16">
+    <header class="border-b border-slate-800">
+      <div class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
+        <div class="flex items-center gap-3">
+          <a [routerLink]="['/projects', projectId(), 'processes']" class="text-xs font-semibold text-blue-400">Volver</a>
+          <span class="text-slate-600">|</span>
+          <h1 class="text-lg font-semibold">Subprocesos</h1>
+        </div>
+        <div class="text-xs text-slate-500">{{ process()?.name || 'Proceso' }}</div>
+      </div>
+    </header>
+
+    <main class="mx-auto w-full max-w-6xl space-y-8 px-6 py-10">
+      <section>
+        <h2 class="text-3xl font-semibold">Subprocesos</h2>
+        <p class="mt-2 text-sm text-slate-400">
+          Divide el proceso en subprocesos claros y luego asigna tecnicas a cada uno.
+        </p>
+      </section>
+
+      <section class="grid gap-6 lg:grid-cols-[1fr_1fr]">
+        <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+          <h3 class="text-xl font-semibold">Crear subproceso</h3>
+          <form class="mt-4 space-y-4" [formGroup]="form" (ngSubmit)="createSubprocess()">
+            <div>
+              <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Nombre</label>
+              <input
+                formControlName="name"
+                placeholder="Ej: Analisis funcional"
+                class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+              />
+              <p *ngIf="form.get('name')?.touched && form.get('name')?.invalid" class="mt-2 text-xs text-amber-300">
+                Nombre requerido.
+              </p>
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Descripcion</label>
+              <textarea
+                formControlName="description"
+                rows="4"
+                placeholder="Describe que sucede en este subproceso"
+                class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+              ></textarea>
+            </div>
+            <button
+              type="submit"
+              class="w-full rounded-full bg-blue-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              [disabled]="saving()"
+            >
+              {{ saving() ? 'Guardando...' : 'Crear subproceso' }}
+            </button>
+          </form>
+          <div *ngIf="error()" class="mt-4 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-xs text-amber-300">
+            {{ error() }}
+          </div>
+        </div>
+
+        <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xl font-semibold">Subprocesos registrados</h3>
+            <span class="text-xs text-slate-500">{{ subprocesses().length }} subprocesos</span>
+          </div>
+
+          <div *ngIf="loading()" class="mt-4 grid gap-3">
+            <div class="h-20 animate-pulse rounded-2xl bg-slate-950"></div>
+            <div class="h-20 animate-pulse rounded-2xl bg-slate-950"></div>
+          </div>
+
+          <div *ngIf="!loading() && subprocesses().length === 0" class="mt-4 rounded-2xl border border-dashed border-slate-800 bg-slate-950/40 px-4 py-6 text-sm text-slate-400">
+            Aun no hay subprocesos definidos.
+          </div>
+
+          <div *ngIf="!loading() && subprocesses().length > 0" class="mt-4 grid gap-3">
+            <a
+              *ngFor="let subprocess of subprocesses()"
+              [routerLink]="['/projects', projectId(), 'subprocesses', subprocess.id, 'techniques']"
+              class="block rounded-2xl border border-slate-800 bg-slate-950 px-4 py-4 transition hover:border-blue-500/60"
+            >
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-semibold text-white">{{ subprocess.name }}</p>
+                  <p class="text-xs text-slate-400">{{ subprocess.description || 'Sin descripcion.' }}</p>
+                </div>
+                <span class="text-xs text-blue-400">Tecnicas</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>

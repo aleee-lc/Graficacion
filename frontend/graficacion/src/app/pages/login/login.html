@@ -39,7 +39,7 @@
             </div>
           </div>
 
-          <a href="/landing" class="text-sm font-semibold text-[var(--aqua)] hover:text-white">
+          <a routerLink="/landing" class="text-sm font-semibold text-[var(--aqua)] hover:text-white">
             ← Volver al landing
           </a>
         </div>
@@ -51,40 +51,54 @@
             Usa tu correo técnico para entrar al panel.
           </p>
 
-          <form class="mt-6 grid gap-4">
+          <form class="mt-6 grid gap-4" [formGroup]="form" (ngSubmit)="submit()">
             <div>
               <label class="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--blue)]">Email</label>
               <input
                 type="email"
                 placeholder="tu@equipo.dev"
+                formControlName="email"
                 class="mt-2 w-full rounded-2xl border border-[var(--mist)] bg-white px-4 py-3 text-sm focus:border-[var(--blue)] focus:outline-none"
               />
+              <p *ngIf="form.get('email')?.touched && form.get('email')?.invalid" class="mt-2 text-xs text-[var(--blue)]">
+                Ingresa un email válido.
+              </p>
             </div>
             <div>
               <label class="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--blue)]">Password</label>
               <input
                 type="password"
                 placeholder="••••••••"
+                formControlName="password"
                 class="mt-2 w-full rounded-2xl border border-[var(--mist)] bg-white px-4 py-3 text-sm focus:border-[var(--blue)] focus:outline-none"
               />
+              <p *ngIf="form.get('password')?.touched && form.get('password')?.invalid" class="mt-2 text-xs text-[var(--blue)]">
+                Debe tener al menos 8 caracteres.
+              </p>
             </div>
             <div class="flex items-center justify-between text-xs text-[var(--ink)] opacity-70">
               <label class="flex items-center gap-2">
-                <input type="checkbox" class="h-4 w-4 rounded border-[var(--mist)]" />
+                <input type="checkbox" formControlName="remember" class="h-4 w-4 rounded border-[var(--mist)]" />
                 Mantener sesión
               </label>
-              <a href="#contact" class="font-semibold text-[var(--blue)]">¿Olvidaste tu acceso?</a>
+              <a href="/landing#contact" class="font-semibold text-[var(--blue)]">¿Olvidaste tu acceso?</a>
             </div>
-            <a
-              routerLink="/home"
-              class="inline-flex items-center justify-center rounded-full bg-[var(--blue)] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[var(--blue)]/30 transition hover:translate-y-[-1px]"
+
+            <p *ngIf="error()" class="rounded-2xl border border-[var(--mist)] bg-[var(--ice)] px-4 py-3 text-xs text-[var(--blue)]">
+              {{ error() }}
+            </p>
+
+            <button
+              type="submit"
+              [disabled]="loading()"
+              class="inline-flex items-center justify-center rounded-full bg-[var(--blue)] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[var(--blue)]/30 transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Entrar al panel
-            </a>
+              {{ loading() ? 'Entrando...' : 'Entrar al panel' }}
+            </button>
           </form>
 
           <div class="mt-6 rounded-2xl bg-[var(--ice)] p-4 text-xs text-[var(--ink)] opacity-70">
-            ¿No tienes acceso? <a href="#contact" class="font-semibold text-[var(--blue)]">Solicítalo aquí</a>.
+            ¿No tienes acceso? <a href="/landing#contact" class="font-semibold text-[var(--blue)]">Solicítalo aquí</a>.
           </div>
         </div>
       </div>

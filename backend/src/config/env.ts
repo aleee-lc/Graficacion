@@ -4,7 +4,7 @@ import { z } from 'zod';
 dotenv.config();
 
 const envSchema = z.object({
-  PORT: z.string().default('4000'),
+  PORT: z.string().default('5000'),
   DB_HOST: z.string().default('localhost'),
   DB_PORT: z.string().default('3306'),
   DB_USER: z.string().default('root'),

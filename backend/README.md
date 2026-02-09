@@ -38,10 +38,31 @@ npm run dev
 
 ## Endpoints base
 - `GET /health`
-- `POST /auth/register`
+- `POST /auth/register` (name, email, password, mobile)
 - `POST /auth/login`
 - `GET /auth/me` (Bearer token)
+- `GET /projects`
+- `POST /projects`
+- `POST /projects/wizard`
+- `GET /projects/:id`
+- `PUT /projects/:id`
+- `GET /projects/:id/processes`
+- `POST /projects/:id/processes`
+- `GET /processes/:id`
+- `PUT /processes/:id`
+- `GET /processes/:id/subprocesses`
+- `POST /processes/:id/subprocesses`
+- `GET /subprocesses/:id`
+- `PUT /subprocesses/:id`
+- `GET /roles/tech`
+- `POST /roles/tech`
+- `GET /roles/stakeholders`
+- `POST /roles/stakeholders`
+- `GET /users?type=TECH|CLIENT&query=`
+- `POST /users`
 
 ## Notas
 - Solo usuarios con `user_type = 'TECH'` pueden autenticarse.
 - Passwords se guardan hasheados con bcrypt.
+- La tabla `users` debe incluir la columna `mobile`.
+- Los endpoints de proyectos devuelven solo los proyectos asociados al usuario autenticado.

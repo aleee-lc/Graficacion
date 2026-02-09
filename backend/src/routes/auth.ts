@@ -12,7 +12,8 @@ const router = Router();
 const registerSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
-  password: z.string().min(8)
+  password: z.string().min(8),
+  mobile: z.string().min(7)
 });
 
 const loginSchema = z.object({
@@ -24,8 +25,9 @@ type UserRow = RowDataPacket & {
   id: number;
   name: string;
   email: string;
-  password: string;
+  password: string | null;
   user_type: 'TECH' | 'CLIENT';
+  mobile?: string | null;
   created_at?: Date;
 };
 
@@ -36,7 +38,7 @@ router.post('/register', async (req, res) => {
     return;
   }
 
-  const { name, email, password } = parsed.data;
+  const { name, email, password, mobile } = parsed.data;
 
   const [existing] = await pool.query<UserRow[]>('SELECT id FROM users WHERE email = ?', [email]);
   if (existing.length > 0) {
@@ -46,8 +48,8 @@ router.post('/register', async (req, res) => {
 
   const hashed = await hashPassword(password);
   await pool.query(
-    'INSERT INTO users (name, email, password, user_type, created_at) VALUES (?, ?, ?, ?, ?)',
-    [name, email, hashed, 'TECH', new Date()]
+    'INSERT INTO users (name, email, password, user_type, created_at, mobile) VALUES (?, ?, ?, ?, ?, ?)',
+    [name, email, hashed, 'TECH', new Date(), mobile]
   );
 
   res.status(201).json({ message: 'User created' });
@@ -73,6 +75,10 @@ router.post('/login', async (req, res) => {
     res.status(403).json({ message: 'Only technical users can access the platform' });
     return;
   }
+  if (!user.password) {
+    res.status(401).json({ message: 'Invalid credentials' });
+    return;
+  }
 
   const match = await comparePassword(password, user.password);
   if (!match) {
@@ -96,7 +102,8 @@ router.post('/login', async (req, res) => {
       id: user.id,
       name: user.name,
       email: user.email,
-      userType: user.user_type
+      userType: user.user_type,
+      mobile: user.mobile ?? null
     }
   });
 });
@@ -109,7 +116,7 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
   }
 
   const [rows] = await pool.query<UserRow[]>(
-    'SELECT id, name, email, user_type, created_at FROM users WHERE id = ?',
+    'SELECT id, name, email, user_type, mobile, created_at FROM users WHERE id = ?',
     [userId]
   );
 
@@ -126,6 +133,7 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
       name: user.name,
       email: user.email,
       userType: user.user_type,
+      mobile: user.mobile ?? null,
       createdAt: user.created_at
     }
   });
