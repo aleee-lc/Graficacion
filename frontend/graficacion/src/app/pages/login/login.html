@@ -1,18 +1,93 @@
-<div class="min-h-screen flex items-center justify-center bg-gray-100 p-6">
-  <div class="w-full max-w-md bg-white rounded-lg shadow p-6">
-    <h1 class="text-2xl font-bold mb-4">Iniciar sesión</h1>
+﻿<div class="min-h-screen bg-[var(--ice)] text-[var(--ink)]">
+  <div class="relative overflow-hidden">
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--cyan)_0%,_var(--blue)_40%,_var(--navy)_85%)]"></div>
+    <div class="absolute inset-0 bg-[linear-gradient(135deg,_rgba(11,31,75,0.85)_0%,_rgba(11,31,75,0.5)_45%,_rgba(16,184,255,0.2)_100%)]"></div>
+    <div class="absolute inset-0 opacity-40" style="background-image: linear-gradient(120deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 60%);"></div>
 
-    <label class="block text-sm font-medium mb-1">Email</label>
-    <input class="w-full border rounded p-2 mb-4" />
+    <div class="relative mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 py-16">
+      <div class="grid w-full items-center gap-10 md:grid-cols-[1.05fr_0.95fr]">
+        <div class="space-y-6 text-white">
+          <div class="flex items-center gap-3">
+            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--cyan)] text-[var(--navy)] shadow-lg shadow-[var(--cyan)]/40">
+              <svg viewBox="0 0 48 48" class="h-8 w-8" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 34c6-10 12-15 16-15s10 5 16 15" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M14 30c4-7 8-10 10-10s6 3 10 10" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M20 26c2-4 4-6 4-6s2 2 4 6" />
+              </svg>
+            </div>
+            <div>
+              <p class="font-display text-2xl font-semibold">Graficación</p>
+              <p class="text-xs uppercase tracking-[0.3em] text-[var(--aqua)]">Arquitectura de Proyectos</p>
+            </div>
+          </div>
 
-    <label class="block text-sm font-medium mb-1">Password</label>
-    <input type="password" class="w-full border rounded p-2 mb-6" />
+          <h1 class="font-display text-4xl leading-tight md:text-5xl">
+            Bienvenido de vuelta al panel técnico
+          </h1>
+          <p class="text-base text-white/80 md:text-lg">
+            Accede a procesos, roles y decisiones técnicas en un solo lugar. Solo equipos técnicos pueden ingresar.
+          </p>
 
-    <a
-      routerLink="/app/home"
-      class="block text-center bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-    >
-      Entrar
-    </a>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="rounded-2xl border border-white/20 bg-white/10 p-4">
+              <p class="text-xs uppercase tracking-[0.2em] text-[var(--aqua)]">Visión total</p>
+              <p class="mt-2 text-sm text-white/80">Procesos y subprocesos en contexto.</p>
+            </div>
+            <div class="rounded-2xl border border-white/20 bg-white/10 p-4">
+              <p class="text-xs uppercase tracking-[0.2em] text-[var(--aqua)]">Roles claros</p>
+              <p class="mt-2 text-sm text-white/80">Responsables técnicos definidos.</p>
+            </div>
+          </div>
+
+          <a href="/landing" class="text-sm font-semibold text-[var(--aqua)] hover:text-white">
+            ← Volver al landing
+          </a>
+        </div>
+
+        <div class="rounded-3xl border border-white/20 bg-white/90 p-8 text-[var(--ink)] shadow-2xl">
+          <p class="text-xs uppercase tracking-[0.3em] text-[var(--blue)]">Acceso</p>
+          <h2 class="mt-3 font-display text-3xl">Iniciar sesión</h2>
+          <p class="mt-2 text-sm text-[var(--ink)] opacity-70">
+            Usa tu correo técnico para entrar al panel.
+          </p>
+
+          <form class="mt-6 grid gap-4">
+            <div>
+              <label class="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--blue)]">Email</label>
+              <input
+                type="email"
+                placeholder="tu@equipo.dev"
+                class="mt-2 w-full rounded-2xl border border-[var(--mist)] bg-white px-4 py-3 text-sm focus:border-[var(--blue)] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--blue)]">Password</label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                class="mt-2 w-full rounded-2xl border border-[var(--mist)] bg-white px-4 py-3 text-sm focus:border-[var(--blue)] focus:outline-none"
+              />
+            </div>
+            <div class="flex items-center justify-between text-xs text-[var(--ink)] opacity-70">
+              <label class="flex items-center gap-2">
+                <input type="checkbox" class="h-4 w-4 rounded border-[var(--mist)]" />
+                Mantener sesión
+              </label>
+              <a href="#contact" class="font-semibold text-[var(--blue)]">¿Olvidaste tu acceso?</a>
+            </div>
+            <a
+              routerLink="/home"
+              class="inline-flex items-center justify-center rounded-full bg-[var(--blue)] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[var(--blue)]/30 transition hover:translate-y-[-1px]"
+            >
+              Entrar al panel
+            </a>
+          </form>
+
+          <div class="mt-6 rounded-2xl bg-[var(--ice)] p-4 text-xs text-[var(--ink)] opacity-70">
+            ¿No tienes acceso? <a href="#contact" class="font-semibold text-[var(--blue)]">Solicítalo aquí</a>.
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
