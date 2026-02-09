@@ -1,18 +1,289 @@
-<div class="min-h-screen flex items-center justify-center bg-gray-100 p-6">
-  <div class="w-full max-w-md bg-white rounded-lg shadow p-6">
-    <h1 class="text-2xl font-bold mb-4">Iniciar sesión</h1>
+﻿<ng-container *ngIf="isLanding(); else routed">
+  <div class="min-h-screen bg-[var(--ice)] text-[var(--ink)]">
+    <div class="border-b border-[var(--mist)] bg-white">
+      <div class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-2 text-xs text-[var(--ink)] opacity-70">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--mist)]">
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.3-4.3M10.8 18a7.2 7.2 0 1 1 0-14.4 7.2 7.2 0 0 1 0 14.4Z" />
+            </svg>
+          </span>
+          <span>Solo equipos técnicos</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <a href="#resources" class="transition hover:text-[var(--blue)]">Stakeholders documentados</a>
+          <a href="#contact" class="transition hover:text-[var(--blue)]">Solicitar acceso</a>
+        </div>
+      </div>
+    </div>
 
-    <label class="block text-sm font-medium mb-1">Email</label>
-    <input class="w-full border rounded p-2 mb-4" />
+    <header class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
+      <div class="flex items-center gap-3">
+        <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--blue)] text-white shadow-lg shadow-[var(--blue)]/30">
+          <svg viewBox="0 0 48 48" class="h-8 w-8" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 34c6-10 12-15 16-15s10 5 16 15" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14 30c4-7 8-10 10-10s6 3 10 10" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20 26c2-4 4-6 4-6s2 2 4 6" />
+          </svg>
+        </div>
+        <div>
+          <p class="font-display text-2xl font-semibold">Graficación</p>
+          <p class="text-xs uppercase tracking-[0.3em] text-[var(--blue)]">Arquitectura de Proyectos</p>
+        </div>
+      </div>
+      <nav class="hidden items-center gap-8 text-sm font-semibold lg:flex">
+        <a href="#serve" class="transition hover:text-[var(--blue)]">Para quién es</a>
+        <a href="#services" class="transition hover:text-[var(--blue)]">Qué hace diferente</a>
+        <a href="#resources" class="transition hover:text-[var(--blue)]">Más allá de Jira</a>
+        <a href="#about" class="transition hover:text-[var(--blue)]">Cómo funciona</a>
+        <a href="#careers" class="transition hover:text-[var(--blue)]">Empezar</a>
+      </nav>
+      <a
+        routerLink="/login"
+        class="hidden items-center justify-center rounded-full bg-[var(--blue)] px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-[var(--blue)]/30 transition hover:translate-y-[-1px] md:inline-flex"
+      >
+        Iniciar sesión
+      </a>
+    </header>
 
-    <label class="block text-sm font-medium mb-1">Password</label>
-    <input type="password" class="w-full border rounded p-2 mb-6" />
+    <section class="relative overflow-hidden">
+      <div class="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--cyan)_0%,_var(--blue)_40%,_var(--navy)_80%)]"></div>
+      <div class="absolute inset-0 bg-[linear-gradient(120deg,_rgba(11,31,75,0.85)_0%,_rgba(11,31,75,0.45)_45%,_rgba(16,184,255,0.25)_100%)]"></div>
+      <div class="absolute inset-0 opacity-40" style="background-image: linear-gradient(120deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 60%);"></div>
+      <div class="absolute right-0 top-0 h-full w-[45%] opacity-90">
+        <svg viewBox="0 0 520 540" class="h-full w-full" fill="none">
+          <path d="M440 60c-70 20-150 120-180 230-35 130-70 190-150 210" stroke="#4fd1ff" stroke-width="48" stroke-linecap="round" />
+          <path d="M510 120c-60 20-130 120-155 220-28 120-65 170-140 190" stroke="#1fb7ff" stroke-width="56" stroke-linecap="round" />
+          <path d="M520 210c-55 20-110 110-130 190-25 95-55 135-105 155" stroke="#0b5ed7" stroke-width="64" stroke-linecap="round" />
+        </svg>
+      </div>
 
-    <a
-      routerLink="/home"
-      class="block text-center bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-    >
-      Entrar
-    </a>
+      <div class="relative mx-auto grid w-full max-w-6xl items-center gap-10 px-6 py-20 md:grid-cols-[1.05fr_0.95fr]">
+        <div class="space-y-6 text-white">
+          <p class="text-sm font-semibold uppercase tracking-[0.3em] text-[var(--aqua)]">Arquitectura antes que backlog</p>
+          <h1 class="font-display text-4xl leading-tight md:text-6xl">
+            Ordena tu software desde la estructura del proyecto
+          </h1>
+          <p class="text-base text-white/80 md:text-lg">
+            Plataforma para equipos técnicos que define procesos, roles y decisiones técnicas desde el inicio. No es
+            solo qué ticket sigue, es cómo está construido tu software.
+          </p>
+          <div class="flex flex-col gap-3 sm:flex-row">
+            <a
+              routerLink="/login"
+              class="inline-flex items-center justify-center rounded-full bg-[var(--cyan)] px-6 py-3 text-sm font-semibold text-[var(--navy)] shadow-lg shadow-[var(--cyan)]/40 transition hover:translate-y-[-1px]"
+            >
+              Comenzar ahora
+            </a>
+            <a
+              href="#services"
+              class="inline-flex items-center justify-center rounded-full border border-white/40 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white hover:text-[var(--navy)]"
+            >
+              Ver cómo funciona
+            </a>
+          </div>
+        </div>
+
+        <div class="rounded-3xl border border-white/20 bg-white/10 p-6 text-white backdrop-blur">
+          <p class="text-xs uppercase tracking-[0.3em] text-[var(--aqua)]">Vista del proyecto</p>
+          <h3 class="mt-4 font-display text-2xl">Claridad técnica en tiempo real</h3>
+          <div class="mt-6 space-y-4">
+            <div>
+              <div class="flex items-center justify-between text-xs font-semibold">
+                <span>Procesos documentados</span>
+                <span>94%</span>
+              </div>
+              <div class="mt-2 h-2 w-full rounded-full bg-white/20">
+                <div class="h-2 w-[94%] rounded-full bg-[var(--cyan)]"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between text-xs font-semibold">
+                <span>Roles definidos</span>
+                <span>88%</span>
+              </div>
+              <div class="mt-2 h-2 w-full rounded-full bg-white/20">
+                <div class="h-2 w-[88%] rounded-full bg-[var(--aqua)]"></div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-6 grid grid-cols-2 gap-4 text-xs">
+            <div class="rounded-2xl bg-white/10 p-4">
+              <p class="text-white/70">Subprocesos</p>
+              <p class="mt-2 text-lg font-semibold">62 activos</p>
+            </div>
+            <div class="rounded-2xl bg-white/10 p-4">
+              <p class="text-white/70">Técnicas</p>
+              <p class="mt-2 text-lg font-semibold">18 definidas</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="serve" class="mx-auto w-full max-w-6xl px-6 py-16">
+      <div class="grid gap-8 md:grid-cols-[1fr_1.2fr]">
+        <div>
+          <p class="text-sm font-semibold uppercase tracking-[0.3em] text-[var(--blue)]">Para quién es</p>
+          <h2 class="font-display text-3xl md:text-4xl">Equipos técnicos que necesitan contexto</h2>
+          <p class="mt-4 text-sm text-[var(--ink)] opacity-70">
+            Diseñada para equipos de software que ya usan herramientas como Jira, pero requieren más estructura y menos
+            improvisación.
+          </p>
+        </div>
+        <div class="grid gap-4 md:grid-cols-3">
+          <div class="rounded-2xl border border-[var(--mist)] bg-white p-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-[var(--blue)]">Tech Leads</p>
+            <p class="mt-2 text-sm font-semibold">Arquitectura y decisiones</p>
+          </div>
+          <div class="rounded-2xl border border-[var(--mist)] bg-white p-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-[var(--blue)]">Startups</p>
+            <p class="mt-2 text-sm font-semibold">Crecimiento ordenado</p>
+          </div>
+          <div class="rounded-2xl border border-[var(--mist)] bg-white p-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-[var(--blue)]">PM técnicos</p>
+            <p class="mt-2 text-sm font-semibold">Visión integral</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="services" class="bg-white">
+      <div class="mx-auto w-full max-w-6xl px-6 py-16">
+        <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-[0.3em] text-[var(--blue)]">Qué hace diferente</p>
+            <h2 class="font-display text-3xl md:text-4xl">Una capa superior de organización técnica</h2>
+          </div>
+          <p class="max-w-md text-sm text-[var(--ink)] opacity-70">
+            No reemplaza tu gestor de tareas: lo complementa con estructura real de procesos, roles y metodologías.
+          </p>
+        </div>
+        <div class="mt-8 grid gap-6 md:grid-cols-3">
+          <article class="rounded-3xl border border-[var(--mist)] bg-[var(--ice)] p-6">
+            <h3 class="font-display text-xl">Panel técnico central</h3>
+            <p class="mt-2 text-sm text-[var(--ink)] opacity-70">Acceso único para entender el proyecto completo.</p>
+          </article>
+          <article class="rounded-3xl border border-[var(--mist)] bg-[var(--ice)] p-6">
+            <h3 class="font-display text-xl">Procesos y subprocesos</h3>
+            <p class="mt-2 text-sm text-[var(--ink)] opacity-70">Modela la lógica del software, no solo el sprint.</p>
+          </article>
+          <article class="rounded-3xl border border-[var(--mist)] bg-[var(--ice)] p-6">
+            <h3 class="font-display text-xl">Técnicas documentadas</h3>
+            <p class="mt-2 text-sm text-[var(--ink)] opacity-70">Asocia metodologías a cada parte del desarrollo.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="resources" class="mx-auto w-full max-w-6xl px-6 py-16">
+      <div class="grid gap-8 md:grid-cols-[1.1fr_0.9fr]">
+        <div class="rounded-3xl border border-[var(--mist)] bg-white p-6">
+          <p class="text-sm font-semibold uppercase tracking-[0.3em] text-[var(--blue)]">Más allá de Jira</p>
+          <h3 class="mt-3 font-display text-2xl">Contexto técnico, no solo tickets</h3>
+          <p class="mt-2 text-sm text-[var(--ink)] opacity-70">
+            Jira organiza el backlog. Graficación organiza la arquitectura del proyecto: procesos, roles, decisiones y
+            razones detrás del software.
+          </p>
+          <a href="#contact" class="mt-6 inline-flex items-center text-sm font-semibold text-[var(--blue)]">
+            Comparar enfoques
+            <span class="ml-2">→</span>
+          </a>
+        </div>
+        <div class="rounded-3xl bg-[var(--navy)] p-6 text-white">
+          <p class="text-sm uppercase tracking-[0.3em] text-[var(--aqua)]">Stakeholders</p>
+          <h3 class="mt-3 font-display text-2xl">Documentados, no operativos</h3>
+          <p class="mt-2 text-sm text-white/70">
+            Su impacto y responsabilidades quedan claros para el equipo técnico, sin acceso directo a la plataforma.
+          </p>
+          <button class="mt-6 inline-flex items-center rounded-full bg-white px-4 py-2 text-sm font-semibold text-[var(--navy)]">
+            Ver ejemplo
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section id="about" class="bg-[var(--ice)]">
+      <div class="mx-auto w-full max-w-6xl px-6 py-16">
+        <div class="grid gap-8 md:grid-cols-[0.9fr_1.1fr]">
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-[0.3em] text-[var(--blue)]">Cómo funciona</p>
+            <h2 class="font-display text-3xl md:text-4xl">El porqué y el cómo quedan visibles</h2>
+          </div>
+          <p class="text-sm text-[var(--ink)] opacity-70">
+            Define roles técnicos, diseña procesos y documenta técnicas para que el equipo entienda el sistema completo.
+          </p>
+        </div>
+        <div class="mt-8 grid gap-4 md:grid-cols-3">
+          <div class="rounded-2xl border border-[var(--mist)] bg-white p-5">
+            <p class="text-xs uppercase tracking-[0.2em] text-[var(--blue)]">Paso 1</p>
+            <p class="mt-2 text-sm font-semibold">Define roles y responsables</p>
+          </div>
+          <div class="rounded-2xl border border-[var(--mist)] bg-white p-5">
+            <p class="text-xs uppercase tracking-[0.2em] text-[var(--blue)]">Paso 2</p>
+            <p class="mt-2 text-sm font-semibold">Diseña procesos y subprocesos</p>
+          </div>
+          <div class="rounded-2xl border border-[var(--mist)] bg-white p-5">
+            <p class="text-xs uppercase tracking-[0.2em] text-[var(--blue)]">Paso 3</p>
+            <p class="mt-2 text-sm font-semibold">Asocia técnicas y metodologías</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="careers" class="mx-auto w-full max-w-6xl px-6 py-16">
+      <div class="rounded-3xl border border-[var(--mist)] bg-white px-8 py-10">
+        <div class="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-[0.3em] text-[var(--blue)]">Empezar</p>
+            <h2 class="font-display text-3xl">Convierte tu proyecto en un sistema claro</h2>
+            <p class="mt-2 text-sm text-[var(--ink)] opacity-70">Menos improvisación, más arquitectura compartida.</p>
+          </div>
+          <a
+            routerLink="/login"
+            class="inline-flex items-center justify-center rounded-full bg-[var(--blue)] px-5 py-2 text-sm font-semibold text-white"
+          >
+            Probar ahora
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section id="contact" class="bg-[var(--navy)] text-white">
+      <div class="mx-auto w-full max-w-6xl px-6 py-16">
+        <div class="grid gap-8 md:grid-cols-[1.1fr_0.9fr]">
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-[0.3em] text-[var(--aqua)]">Acceso</p>
+            <h2 class="font-display text-3xl md:text-4xl">Solicita acceso para tu equipo técnico</h2>
+            <p class="mt-4 text-sm text-white/70">Te respondemos con un plan inicial en menos de 24 horas.</p>
+          </div>
+          <div class="rounded-3xl bg-white/10 p-6">
+            <div class="grid gap-4">
+              <input class="w-full rounded-2xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/50" placeholder="Nombre" />
+              <input class="w-full rounded-2xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/50" placeholder="Email" />
+              <textarea class="min-h-[120px] w-full rounded-2xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/50" placeholder="Describe tu proyecto"></textarea>
+              <button class="inline-flex items-center justify-center rounded-full bg-[var(--cyan)] px-5 py-2 text-sm font-semibold text-[var(--navy)]">
+                Solicitar acceso
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="bg-white">
+      <div class="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 text-xs text-[var(--ink)] opacity-70 md:flex-row">
+        <p>© 2026 Graficación. Todos los derechos reservados.</p>
+        <div class="flex gap-4">
+          <a href="#services" class="transition hover:text-[var(--blue)]">Producto</a>
+          <a href="#resources" class="transition hover:text-[var(--blue)]">Comparativa</a>
+          <a href="#contact" class="transition hover:text-[var(--blue)]">Acceso</a>
+        </div>
+      </div>
+    </footer>
   </div>
-</div>
+</ng-container>
+
+<ng-template #routed>
+  <router-outlet></router-outlet>
+</ng-template>
