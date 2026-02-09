@@ -13,12 +13,17 @@ export const routes: Routes = [
   { path: '', redirectTo: 'landing', pathMatch: 'full' },
   { path: 'landing', component: Landing },
   { path: 'login', component: Login },
-  { path: 'home', component: Home },
-  { path: 'users', component: Users },
-  { path: 'projects/:id', component: ProjectDetail },
-  { path: 'projects/:projectId/processes', component: ProcessesPage },
-  { path: 'projects/:projectId/processes/:processId/subprocesses', component: SubprocessesPage },
-  { path: 'projects/:projectId/subprocesses/:subprocessId/techniques', component: TechniquesPage },
-  { path: 'app-shell', component: AppShell },
+  {
+    path: '',
+    component: AppShell,
+    children: [
+      { path: 'home', component: Home },
+      { path: 'users', component: Users },
+      { path: 'projects/:id', component: ProjectDetail },
+      { path: 'projects/:projectId/processes', component: ProcessesPage },
+      { path: 'projects/:projectId/processes/:processId/subprocesses', component: SubprocessesPage },
+      { path: 'projects/:projectId/subprocesses/:subprocessId/techniques', component: TechniquesPage }
+    ]
+  }
 ];
 

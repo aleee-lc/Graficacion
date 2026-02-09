@@ -1,22 +1,46 @@
-<div class="flex min-h-screen">
-  <!-- Sidebar bonito  -->
-  <aside class="w-64 bg-gray-900 text-white p-4">
-    <div class="text-xl font-bold mb-6">Mi Sistema</div>
+<div class="min-h-screen bg-slate-950 text-slate-100">
+  <aside
+    class="group fixed left-0 top-0 z-40 flex h-screen w-16 flex-col border-r border-slate-800 bg-slate-950/95 backdrop-blur transition-all duration-300 hover:w-64"
+  >
+    <div class="flex items-center gap-3 px-4 py-4">
+      <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-semibold text-white">
+        G
+      </div>
+      <div class="opacity-0 transition-all duration-300 group-hover:opacity-100">
+        <p class="text-sm font-semibold text-white">Graficacion</p>
+        <p class="text-xs text-slate-400">Workspace tecnico</p>
+      </div>
+    </div>
 
-    <nav class="space-y-2">
-      <a routerLink="/app/home" class="block p-2 rounded hover:bg-gray-800">
-        Home
+    <nav class="mt-2 space-y-1 px-2 text-sm text-slate-300">
+      <a
+        routerLink="/home"
+        title="Home"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="material-icons text-lg">dashboard</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Dashboard</span>
       </a>
-      <a routerLink="/app/projects" class="block p-2 rounded hover:bg-gray-800">
-        Proyectos
+      <a
+        routerLink="/users"
+        title="Admin"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="material-icons text-lg">settings</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Admin</span>
       </a>
-      <a routerLink="/login" class="block p-2 rounded hover:bg-gray-800">
-        Salir
+      <a
+        routerLink="/login"
+        title="Log-Out"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+      >
+        <span class="material-icons text-lg">logout</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Log-Out</span>
       </a>
     </nav>
   </aside>
 
-  <main class="flex-1 p-6 bg-gray-50">
+  <div class="pl-16">
     <router-outlet></router-outlet>
-  </main>
+  </div>
 </div>
