@@ -42,6 +42,9 @@ export class ProjectDetail {
   readonly techResults = signal<UserSummary[]>([]);
   readonly clientResults = signal<UserSummary[]>([]);
   readonly memberSaving = signal(false);
+  readonly memberModalOpen = signal(false);
+  readonly memberModalType = signal<'TECH' | 'CLIENT'>('TECH');
+  readonly memberModalMode = signal<'existing' | 'create'>('existing');
 
   readonly techForm;
   readonly clientForm;
@@ -91,6 +94,43 @@ export class ProjectDetail {
 
   setClientSearch(value: string) {
     this.clientSearch.set(value);
+  }
+
+  openMemberModal(type: 'TECH' | 'CLIENT') {
+    this.memberModalType.set(type);
+    this.memberModalMode.set('existing');
+    this.membersError.set(null);
+    this.memberModalOpen.set(true);
+  }
+
+  closeMemberModal() {
+    this.memberModalOpen.set(false);
+    this.memberModalMode.set('existing');
+    this.memberSaving.set(false);
+    this.membersError.set(null);
+    this.techSearch.set('');
+    this.clientSearch.set('');
+    this.techResults.set([]);
+    this.clientResults.set([]);
+    this.techForm.reset({
+      name: '',
+      email: '',
+      mobile: '',
+      password: '',
+      techRoleIds: []
+    });
+    this.clientForm.reset({
+      name: '',
+      email: '',
+      mobile: '',
+      company: '',
+      stakeholderRoleId: null
+    });
+  }
+
+  setMemberModalMode(mode: 'existing' | 'create') {
+    this.memberModalMode.set(mode);
+    this.membersError.set(null);
   }
 
   searchTech() {
@@ -321,6 +361,7 @@ export class ProjectDetail {
         this.techSearch.set('');
         this.clientSearch.set('');
         this.loadMembers(projectId);
+        this.closeMemberModal();
       },
       error: (err) => {
         this.memberSaving.set(false);

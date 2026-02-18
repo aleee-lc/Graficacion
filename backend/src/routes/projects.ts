@@ -1,12 +1,13 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
-import type { ResultSetHeader, RowDataPacket } from 'mysql2';
+import { getUserTypeIdByCode } from '../db/catalogs';
 import { pool } from '../db/pool';
 import { requireAuth, type AuthRequest } from '../middleware/auth';
 import { hashPassword } from '../utils/password';
 
 const router = Router();
 router.use(requireAuth);
+const PROJECT_MANAGER_ROLE_ID = 1;
 
 const projectSchema = z.object({
   name: z.string().min(1),
@@ -59,7 +60,7 @@ const wizardSchema = z.object({
   clientOwner: clientOwnerSchema
 });
 
-type ProjectRow = RowDataPacket & {
+type ProjectRow = {
   id: number;
   name: string;
   description: string | null;
@@ -67,38 +68,38 @@ type ProjectRow = RowDataPacket & {
   end_date: string | null;
 };
 
-type ProjectUserRow = RowDataPacket & {
+type ProjectUserRow = {
   id: number;
   name: string;
   email: string;
   mobile: string | null;
-  userType: 'TECH' | 'CLIENT';
+  userType: string;
   companyName?: string | null;
   roleName?: string | null;
   stakeholderRoleId?: number | null;
 };
 
-type ProcessRow = RowDataPacket & {
+type ProcessRow = {
   id: number;
   project_id: number;
   name: string;
   description: string | null;
 };
 
-type UserRow = RowDataPacket & {
+type UserRow = {
   id: number;
 };
 
-type RoleRow = RowDataPacket & {
+type RoleRow = {
   id: number;
 };
 
 const hasProjectAccess = async (projectId: number, userId: number) => {
-  const [rows] = await pool.query<RowDataPacket[]>(
-    'SELECT 1 FROM project_users WHERE project_id = ? AND user_id = ? LIMIT 1',
+  const rows = await pool.query(
+    'SELECT 1 FROM project_users WHERE project_id = $1 AND user_id = $2 LIMIT 1',
     [projectId, userId]
   );
-  return rows.length > 0;
+  return rows.rows.length > 0;
 };
 
 router.get('/', async (req: AuthRequest, res) => {
@@ -108,16 +109,16 @@ router.get('/', async (req: AuthRequest, res) => {
     return;
   }
 
-  const [rows] = await pool.query<ProjectRow[]>(
-    `SELECT p.id, p.name, p.description, p.start_date, p.end_date
+  const rows = await pool.query<ProjectRow>(
+    `SELECT p.id, p.name, p.description, p.start_date::text, p.end_date::text
      FROM projects p
      INNER JOIN project_users pu ON pu.project_id = p.id
-     WHERE pu.user_id = ?
+     WHERE pu.user_id = $1
      ORDER BY p.id DESC`,
     [userId]
   );
 
-  res.json({ projects: rows });
+  res.json({ projects: rows.rows });
 });
 
 router.post('/wizard', async (req: AuthRequest, res) => {
@@ -134,123 +135,140 @@ router.post('/wizard', async (req: AuthRequest, res) => {
   }
 
   const { project, techOwner, clientOwner } = parsed.data;
-  const connection = await pool.getConnection();
+  const client = await pool.connect();
 
   try {
-    await connection.beginTransaction();
+    await client.query('BEGIN');
+
+    const techTypeId = await getUserTypeIdByCode('TECH', client);
+    const clientTypeId = await getUserTypeIdByCode('CLIENT', client);
+    if (!techTypeId || !clientTypeId) {
+      await client.query('ROLLBACK');
+      res.status(500).json({ message: 'Catalog user_types missing TECH/CLIENT codes' });
+      return;
+    }
+
+    const projectManagerRole = await client.query<RoleRow>(
+      'SELECT id FROM tech_roles WHERE id = $1 LIMIT 1',
+      [PROJECT_MANAGER_ROLE_ID]
+    );
+    if (projectManagerRole.rows.length === 0) {
+      await client.query('ROLLBACK');
+      res.status(500).json({ message: 'No existe el rol tecnico Project Manager (id 1).' });
+      return;
+    }
+
     let techUserId: number;
     if (techOwner.mode === 'existing') {
-      const [techRows] = await connection.query<UserRow[]>(
-        'SELECT id FROM users WHERE id = ? AND user_type = ?',
-        [techOwner.userId, 'TECH']
+      const techRows = await client.query<UserRow>(
+        'SELECT id FROM users WHERE id = $1 AND user_type = $2',
+        [techOwner.userId, techTypeId]
       );
-      if (techRows.length === 0) {
-        await connection.rollback();
+      if (techRows.rows.length === 0) {
+        await client.query('ROLLBACK');
         res.status(404).json({ message: 'Responsable técnico no encontrado' });
         return;
       }
-      techUserId = techRows[0].id;
+      techUserId = techRows.rows[0].id;
     } else {
-      const [existingTech] = await connection.query<UserRow[]>(
-        'SELECT id FROM users WHERE email = ?',
-        [techOwner.email]
-      );
-      if (existingTech.length > 0) {
-        await connection.rollback();
+      const existingTech = await client.query<UserRow>('SELECT id FROM users WHERE email = $1', [
+        techOwner.email
+      ]);
+      if (existingTech.rows.length > 0) {
+        await client.query('ROLLBACK');
         res.status(409).json({ message: 'El correo del responsable técnico ya existe' });
         return;
       }
 
       const hashed = await hashPassword(techOwner.password);
-      const [techResult] = await connection.query<ResultSetHeader>(
-        'INSERT INTO users (name, email, password, user_type, created_at, mobile) VALUES (?, ?, ?, ?, ?, ?)',
-        [techOwner.name, techOwner.email, hashed, 'TECH', new Date(), techOwner.mobile]
+      const techResult = await client.query<UserRow>(
+        'INSERT INTO users (name, email, password, user_type, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id',
+        [techOwner.name, techOwner.email, hashed, techTypeId]
       );
-      techUserId = techResult.insertId;
+      techUserId = techResult.rows[0].id;
+
+      await client.query(
+        'INSERT INTO tech_user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT (user_id, role_id) DO NOTHING',
+        [techUserId, PROJECT_MANAGER_ROLE_ID]
+      );
     }
 
     let clientUserId: number;
     if (clientOwner.mode === 'existing') {
-      const [clientRows] = await connection.query<UserRow[]>(
-        'SELECT id FROM users WHERE id = ? AND user_type = ?',
-        [clientOwner.userId, 'CLIENT']
+      const clientRows = await client.query<UserRow>(
+        'SELECT id FROM users WHERE id = $1 AND user_type = $2',
+        [clientOwner.userId, clientTypeId]
       );
-      if (clientRows.length === 0) {
-        await connection.rollback();
+      if (clientRows.rows.length === 0) {
+        await client.query('ROLLBACK');
         res.status(404).json({ message: 'Responsable del cliente no encontrado' });
         return;
       }
-      clientUserId = clientRows[0].id;
+      clientUserId = clientRows.rows[0].id;
     } else {
-      const [existingClient] = await connection.query<UserRow[]>(
-        'SELECT id FROM users WHERE email = ?',
-        [clientOwner.email]
-      );
-      if (existingClient.length > 0) {
-        await connection.rollback();
+      const existingClient = await client.query<UserRow>('SELECT id FROM users WHERE email = $1', [
+        clientOwner.email
+      ]);
+      if (existingClient.rows.length > 0) {
+        await client.query('ROLLBACK');
         res.status(409).json({ message: 'El correo del responsable del cliente ya existe' });
         return;
       }
 
-      const [clientResult] = await connection.query<ResultSetHeader>(
-        'INSERT INTO users (name, email, password, user_type, created_at, mobile) VALUES (?, ?, ?, ?, ?, ?)',
-        [clientOwner.name, clientOwner.email, null, 'CLIENT', new Date(), clientOwner.mobile]
+      const clientResult = await client.query<UserRow>(
+        'INSERT INTO users (name, email, password, user_type, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id',
+        [clientOwner.name, clientOwner.email, null, clientTypeId]
       );
-      clientUserId = clientResult.insertId;
+      clientUserId = clientResult.rows[0].id;
 
-      let stakeholderRoleId: number | null = null;
-      const [roleRows] = await connection.query<RoleRow[]>(
-        'SELECT id FROM stakeholder_roles WHERE name = ?',
+      let stakeholderRoleId: number;
+      const roleRows = await client.query<RoleRow>(
+        'SELECT id FROM stakeholder_roles WHERE name = $1 LIMIT 1',
         [clientOwner.role]
       );
-      if (roleRows.length > 0) {
-        stakeholderRoleId = roleRows[0].id;
+      if (roleRows.rows.length > 0) {
+        stakeholderRoleId = roleRows.rows[0].id;
       } else {
-        const [roleResult] = await connection.query<ResultSetHeader>(
-          'INSERT INTO stakeholder_roles (name) VALUES (?)',
+        const roleResult = await client.query<RoleRow>(
+          'INSERT INTO stakeholder_roles (name) VALUES ($1) RETURNING id',
           [clientOwner.role]
         );
-        stakeholderRoleId = roleResult.insertId;
+        stakeholderRoleId = roleResult.rows[0].id;
       }
 
-      await connection.query(
-        'INSERT INTO stakeholder_profile (user_id, stakeholder_role_id, company_name) VALUES (?, ?, ?)',
+      await client.query(
+        'INSERT INTO stakeholder_profile (user_id, stakeholder_role_id, company_name) VALUES ($1, $2, $3)',
         [clientUserId, stakeholderRoleId, clientOwner.company]
       );
     }
 
-    const [projectResult] = await connection.query<ResultSetHeader>(
-      'INSERT INTO projects (name, description, start_date, end_date) VALUES (?, ?, ?, ?)',
-      [
-        project.name,
-        project.description ?? null,
-        project.start_date ?? null,
-        project.end_date ?? null
-      ]
+    const projectResult = await client.query<ProjectRow>(
+      'INSERT INTO projects (name, description, start_date, end_date) VALUES ($1, $2, $3, $4) RETURNING id',
+      [project.name, project.description ?? null, project.start_date ?? null, project.end_date ?? null]
     );
-    const projectId = projectResult.insertId;
+    const projectId = projectResult.rows[0].id;
 
-    await connection.query('INSERT IGNORE INTO project_users (project_id, user_id) VALUES (?, ?)', [
-      projectId,
-      techUserId
-    ]);
-    await connection.query('INSERT IGNORE INTO project_users (project_id, user_id) VALUES (?, ?)', [
-      projectId,
-      clientUserId
-    ]);
-    await connection.query('INSERT IGNORE INTO project_users (project_id, user_id) VALUES (?, ?)', [
-      projectId,
-      userId
-    ]);
+    await client.query(
+      'INSERT INTO project_users (project_id, user_id) VALUES ($1, $2) ON CONFLICT (project_id, user_id) DO NOTHING',
+      [projectId, techUserId]
+    );
+    await client.query(
+      'INSERT INTO project_users (project_id, user_id) VALUES ($1, $2) ON CONFLICT (project_id, user_id) DO NOTHING',
+      [projectId, clientUserId]
+    );
+    await client.query(
+      'INSERT INTO project_users (project_id, user_id) VALUES ($1, $2) ON CONFLICT (project_id, user_id) DO NOTHING',
+      [projectId, userId]
+    );
 
-    await connection.commit();
+    await client.query('COMMIT');
 
     res.status(201).json({ projectId, techUserId, clientUserId });
-  } catch (error) {
-    await connection.rollback();
+  } catch {
+    await client.query('ROLLBACK');
     res.status(500).json({ message: 'No se pudo crear el proyecto.' });
   } finally {
-    connection.release();
+    client.release();
   }
 });
 
@@ -269,16 +287,16 @@ router.post('/', async (req: AuthRequest, res) => {
 
   const { name, description, start_date, end_date } = parsed.data;
 
-  const [result] = await pool.query<ResultSetHeader>(
-    'INSERT INTO projects (name, description, start_date, end_date) VALUES (?, ?, ?, ?)',
+  const result = await pool.query<ProjectRow>(
+    'INSERT INTO projects (name, description, start_date, end_date) VALUES ($1, $2, $3, $4) RETURNING id',
     [name, description ?? null, start_date ?? null, end_date ?? null]
   );
 
-  const projectId = result.insertId;
-  await pool.query('INSERT IGNORE INTO project_users (project_id, user_id) VALUES (?, ?)', [
-    projectId,
-    userId
-  ]);
+  const projectId = result.rows[0].id;
+  await pool.query(
+    'INSERT INTO project_users (project_id, user_id) VALUES ($1, $2) ON CONFLICT (project_id, user_id) DO NOTHING',
+    [projectId, userId]
+  );
 
   res.status(201).json({ id: projectId });
 });
@@ -295,21 +313,21 @@ router.get('/:id', async (req: AuthRequest, res) => {
     return;
   }
 
-  const [rows] = await pool.query<ProjectRow[]>(
-    `SELECT p.id, p.name, p.description, p.start_date, p.end_date
+  const rows = await pool.query<ProjectRow>(
+    `SELECT p.id, p.name, p.description, p.start_date::text, p.end_date::text
      FROM projects p
      INNER JOIN project_users pu ON pu.project_id = p.id
-     WHERE p.id = ? AND pu.user_id = ?
+     WHERE p.id = $1 AND pu.user_id = $2
      LIMIT 1`,
     [id, userId]
   );
 
-  if (rows.length === 0) {
+  if (rows.rows.length === 0) {
     res.status(404).json({ message: 'Project not found' });
     return;
   }
 
-  res.json({ project: rows[0] });
+  res.json({ project: rows.rows[0] });
 });
 
 router.get('/:id/users', async (req: AuthRequest, res) => {
@@ -330,21 +348,32 @@ router.get('/:id/users', async (req: AuthRequest, res) => {
     return;
   }
 
-  const [rows] = await pool.query<ProjectUserRow[]>(
-    `SELECT u.id, u.name, u.email, u.mobile, u.user_type as userType,
-            sp.company_name as companyName, sr.name as roleName,
-            sp.stakeholder_role_id as stakeholderRoleId
+  const rows = await pool.query<ProjectUserRow>(
+    `SELECT u.id,
+            u.name,
+            u.email,
+            NULL::text AS "mobile",
+            ut.code AS "userType",
+            sp.company_name AS "companyName",
+            sr.name AS "roleName",
+            sp.stakeholder_role_id AS "stakeholderRoleId"
      FROM project_users pu
      INNER JOIN users u ON u.id = pu.user_id
+     INNER JOIN user_types ut ON ut.id = u.user_type
      LEFT JOIN stakeholder_profile sp ON sp.user_id = u.id
      LEFT JOIN stakeholder_roles sr ON sp.stakeholder_role_id = sr.id
-     WHERE pu.project_id = ?
+     WHERE pu.project_id = $1
      ORDER BY u.id DESC`,
     [id]
   );
 
-  const techUsers = rows.filter((row) => row.userType === 'TECH');
-  const clientUsers = rows.filter((row) => row.userType === 'CLIENT');
+  const normalizedRows = rows.rows.map((row: ProjectUserRow) => ({
+    ...row,
+    userType: row.userType.toUpperCase() as 'TECH' | 'CLIENT'
+  }));
+
+  const techUsers = normalizedRows.filter((row: ProjectUserRow) => row.userType === 'TECH');
+  const clientUsers = normalizedRows.filter((row: ProjectUserRow) => row.userType === 'CLIENT');
 
   res.json({ techUsers, clientUsers });
 });
@@ -373,19 +402,16 @@ router.post('/:id/users', async (req: AuthRequest, res) => {
     return;
   }
 
-  const [userRows] = await pool.query<UserRow[]>(
-    'SELECT id FROM users WHERE id = ?',
-    [parsed.data.userId]
-  );
-  if (userRows.length === 0) {
+  const userRows = await pool.query<UserRow>('SELECT id FROM users WHERE id = $1', [parsed.data.userId]);
+  if (userRows.rows.length === 0) {
     res.status(404).json({ message: 'User not found' });
     return;
   }
 
-  await pool.query('INSERT IGNORE INTO project_users (project_id, user_id) VALUES (?, ?)', [
-    id,
-    parsed.data.userId
-  ]);
+  await pool.query(
+    'INSERT INTO project_users (project_id, user_id) VALUES ($1, $2) ON CONFLICT (project_id, user_id) DO NOTHING',
+    [id, parsed.data.userId]
+  );
 
   res.status(201).json({ message: 'User added to project' });
 });
@@ -415,12 +441,12 @@ router.put('/:id', async (req: AuthRequest, res) => {
   }
 
   const { name, description, start_date, end_date } = parsed.data;
-  const [result] = await pool.query<ResultSetHeader>(
-    'UPDATE projects SET name = ?, description = ?, start_date = ?, end_date = ? WHERE id = ?',
+  const result = await pool.query(
+    'UPDATE projects SET name = $1, description = $2, start_date = $3, end_date = $4 WHERE id = $5',
     [name, description ?? null, start_date ?? null, end_date ?? null, id]
   );
 
-  if (result.affectedRows === 0) {
+  if (result.rowCount === 0) {
     res.status(404).json({ message: 'Project not found' });
     return;
   }
@@ -446,12 +472,12 @@ router.get('/:id/processes', async (req: AuthRequest, res) => {
     return;
   }
 
-  const [rows] = await pool.query<ProcessRow[]>(
-    'SELECT id, project_id, name, description FROM processes WHERE project_id = ? ORDER BY id DESC',
+  const rows = await pool.query<ProcessRow>(
+    'SELECT id, project_id, name, description FROM processes WHERE project_id = $1 ORDER BY id DESC',
     [projectId]
   );
 
-  res.json({ processes: rows });
+  res.json({ processes: rows.rows });
 });
 
 router.post('/:id/processes', async (req: AuthRequest, res) => {
@@ -480,12 +506,12 @@ router.post('/:id/processes', async (req: AuthRequest, res) => {
 
   const { name, description } = parsed.data;
 
-  const [result] = await pool.query<ResultSetHeader>(
-    'INSERT INTO processes (project_id, name, description) VALUES (?, ?, ?)',
+  const result = await pool.query<ProcessRow>(
+    'INSERT INTO processes (project_id, name, description) VALUES ($1, $2, $3) RETURNING id',
     [projectId, name, description ?? null]
   );
 
-  res.status(201).json({ id: result.insertId });
+  res.status(201).json({ id: result.rows[0].id });
 });
 
 export default router;

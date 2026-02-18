@@ -1,11 +1,21 @@
-﻿import mysql from 'mysql2/promise';
+import { Pool } from 'pg';
 import { env } from '../config/env';
 
-export const pool = mysql.createPool({
-  host: env.DB_HOST,
-  port: env.DB_PORT,
-  user: env.DB_USER,
-  password: env.DB_PASSWORD,
-  database: env.DB_NAME,
-  connectionLimit: 10
-});
+const ssl = env.DB_SSL ? { rejectUnauthorized: false } : undefined;
+
+export const pool = new Pool(
+  env.DATABASE_URL
+    ? {
+        connectionString: env.DATABASE_URL,
+        ssl
+      }
+    : {
+        host: env.DB_HOST,
+        port: env.DB_PORT,
+        user: env.DB_USER,
+        password: env.DB_PASSWORD,
+        database: env.DB_NAME,
+        max: 10,
+        ssl
+      }
+);

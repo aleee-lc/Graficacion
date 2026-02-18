@@ -1,6 +1,5 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
-import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 import { pool } from '../db/pool';
 import { requireAuth } from '../middleware/auth';
 
@@ -11,14 +10,14 @@ const roleSchema = z.object({
   name: z.string().min(1)
 });
 
-type RoleRow = RowDataPacket & {
+type RoleRow = {
   id: number;
   name: string;
 };
 
 router.get('/tech', async (_req, res) => {
-  const [rows] = await pool.query<RoleRow[]>('SELECT id, name FROM tech_roles ORDER BY id DESC');
-  res.json({ roles: rows });
+  const rows = await pool.query<RoleRow>('SELECT id, name FROM tech_roles ORDER BY id DESC');
+  res.json({ roles: rows.rows });
 });
 
 router.post('/tech', async (req, res) => {
@@ -28,12 +27,11 @@ router.post('/tech', async (req, res) => {
     return;
   }
 
-  const [result] = await pool.query<ResultSetHeader>(
-    'INSERT INTO tech_roles (name) VALUES (?)',
-    [parsed.data.name]
-  );
+  const result = await pool.query<RoleRow>('INSERT INTO tech_roles (name) VALUES ($1) RETURNING id', [
+    parsed.data.name
+  ]);
 
-  res.status(201).json({ id: result.insertId });
+  res.status(201).json({ id: result.rows[0].id });
 });
 
 router.put('/tech/:id', async (req, res) => {
@@ -49,12 +47,9 @@ router.put('/tech/:id', async (req, res) => {
     return;
   }
 
-  const [result] = await pool.query<ResultSetHeader>(
-    'UPDATE tech_roles SET name = ? WHERE id = ?',
-    [parsed.data.name, id]
-  );
+  const result = await pool.query('UPDATE tech_roles SET name = $1 WHERE id = $2', [parsed.data.name, id]);
 
-  if (result.affectedRows === 0) {
+  if (result.rowCount === 0) {
     res.status(404).json({ message: 'Role not found' });
     return;
   }
@@ -69,21 +64,15 @@ router.delete('/tech/:id', async (req, res) => {
     return;
   }
 
-  const [usageRows] = await pool.query<RowDataPacket[]>(
-    'SELECT 1 FROM tech_user_roles WHERE role_id = ? LIMIT 1',
-    [id]
-  );
-  if (usageRows.length > 0) {
+  const usageRows = await pool.query('SELECT 1 FROM tech_user_roles WHERE role_id = $1 LIMIT 1', [id]);
+  if (usageRows.rows.length > 0) {
     res.status(409).json({ message: 'Role is in use by tech users' });
     return;
   }
 
-  const [result] = await pool.query<ResultSetHeader>(
-    'DELETE FROM tech_roles WHERE id = ?',
-    [id]
-  );
+  const result = await pool.query('DELETE FROM tech_roles WHERE id = $1', [id]);
 
-  if (result.affectedRows === 0) {
+  if (result.rowCount === 0) {
     res.status(404).json({ message: 'Role not found' });
     return;
   }
@@ -92,8 +81,8 @@ router.delete('/tech/:id', async (req, res) => {
 });
 
 router.get('/stakeholders', async (_req, res) => {
-  const [rows] = await pool.query<RoleRow[]>('SELECT id, name FROM stakeholder_roles ORDER BY id DESC');
-  res.json({ roles: rows });
+  const rows = await pool.query<RoleRow>('SELECT id, name FROM stakeholder_roles ORDER BY id DESC');
+  res.json({ roles: rows.rows });
 });
 
 router.post('/stakeholders', async (req, res) => {
@@ -103,12 +92,12 @@ router.post('/stakeholders', async (req, res) => {
     return;
   }
 
-  const [result] = await pool.query<ResultSetHeader>(
-    'INSERT INTO stakeholder_roles (name) VALUES (?)',
+  const result = await pool.query<RoleRow>(
+    'INSERT INTO stakeholder_roles (name) VALUES ($1) RETURNING id',
     [parsed.data.name]
   );
 
-  res.status(201).json({ id: result.insertId });
+  res.status(201).json({ id: result.rows[0].id });
 });
 
 router.put('/stakeholders/:id', async (req, res) => {
@@ -124,12 +113,9 @@ router.put('/stakeholders/:id', async (req, res) => {
     return;
   }
 
-  const [result] = await pool.query<ResultSetHeader>(
-    'UPDATE stakeholder_roles SET name = ? WHERE id = ?',
-    [parsed.data.name, id]
-  );
+  const result = await pool.query('UPDATE stakeholder_roles SET name = $1 WHERE id = $2', [parsed.data.name, id]);
 
-  if (result.affectedRows === 0) {
+  if (result.rowCount === 0) {
     res.status(404).json({ message: 'Role not found' });
     return;
   }
@@ -144,21 +130,18 @@ router.delete('/stakeholders/:id', async (req, res) => {
     return;
   }
 
-  const [usageRows] = await pool.query<RowDataPacket[]>(
-    'SELECT 1 FROM stakeholder_profile WHERE stakeholder_role_id = ? LIMIT 1',
+  const usageRows = await pool.query(
+    'SELECT 1 FROM stakeholder_profile WHERE stakeholder_role_id = $1 LIMIT 1',
     [id]
   );
-  if (usageRows.length > 0) {
+  if (usageRows.rows.length > 0) {
     res.status(409).json({ message: 'Role is in use by stakeholders' });
     return;
   }
 
-  const [result] = await pool.query<ResultSetHeader>(
-    'DELETE FROM stakeholder_roles WHERE id = ?',
-    [id]
-  );
+  const result = await pool.query('DELETE FROM stakeholder_roles WHERE id = $1', [id]);
 
-  if (result.affectedRows === 0) {
+  if (result.rowCount === 0) {
     res.status(404).json({ message: 'Role not found' });
     return;
   }

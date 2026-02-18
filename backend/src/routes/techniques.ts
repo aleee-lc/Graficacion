@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 import { pool } from '../db/pool';
 import { requireAuth } from '../middleware/auth';
 
@@ -12,17 +11,17 @@ const techniqueSchema = z.object({
   description: z.string().optional().nullable()
 });
 
-type TechniqueRow = RowDataPacket & {
+type TechniqueRow = {
   id: number;
   name: string;
   description: string | null;
 };
 
 router.get('/', async (_req, res) => {
-  const [rows] = await pool.query<TechniqueRow[]>(
+  const rows = await pool.query<TechniqueRow>(
     'SELECT id, name, description FROM techniques ORDER BY id DESC'
   );
-  res.json({ techniques: rows });
+  res.json({ techniques: rows.rows });
 });
 
 router.post('/', async (req, res) => {
@@ -33,12 +32,12 @@ router.post('/', async (req, res) => {
   }
 
   const { name, description } = parsed.data;
-  const [result] = await pool.query<ResultSetHeader>(
-    'INSERT INTO techniques (name, description) VALUES (?, ?)',
+  const result = await pool.query<TechniqueRow>(
+    'INSERT INTO techniques (name, description) VALUES ($1, $2) RETURNING id',
     [name, description ?? null]
   );
 
-  res.status(201).json({ id: result.insertId });
+  res.status(201).json({ id: result.rows[0].id });
 });
 
 export default router;

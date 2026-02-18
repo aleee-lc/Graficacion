@@ -1,404 +1,422 @@
-<header class="border-b border-slate-800">
-      <div class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
-        <div>
-          <p class="text-xs uppercase tracking-[0.3em] text-blue-400">Gestion</p>
-          <h1 class="mt-1 text-2xl font-semibold text-white">Administracion</h1>
-        </div>
-        <div class="text-xs text-slate-500">Workspace tecnico</div>
+﻿<header class="border-b border-slate-800">
+  <div class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
+    <div>
+      <p class="text-xs uppercase tracking-[0.3em] text-blue-400">Gestion</p>
+      <h1 class="mt-1 text-2xl font-semibold text-white">Usuarios</h1>
+    </div>
+    <div class="text-xs text-slate-500">Workspace tecnico</div>
+  </div>
+</header>
+
+<main class="mx-auto w-full max-w-6xl space-y-8 px-6 py-10">
+  <section class="space-y-2">
+    <h2 class="text-3xl font-semibold">Administración de usuarios y roles</h2>
+    <p class="text-sm text-slate-400">
+      Visualiza usuarios y crea nuevos perfiles segun el tipo.
+    </p>
+  </section>
+
+  <section class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+    <div class="flex flex-wrap items-center gap-3">
+      <div class="segment-toggle">
+        <span class="segment-toggle__thumb" [class.segment-toggle__thumb--right]="activeUserType() === 'CLIENT'"></span>
+        <button
+          type="button"
+          class="segment-toggle__btn"
+          [class.segment-toggle__btn--active]="activeUserType() === 'TECH'"
+          (click)="setUserType('TECH')"
+        >
+          Tecnicos
+        </button>
+        <button
+          type="button"
+          class="segment-toggle__btn"
+          [class.segment-toggle__btn--active]="activeUserType() === 'CLIENT'"
+          (click)="setUserType('CLIENT')"
+        >
+          Clientes
+        </button>
       </div>
+
+      <div class="flex min-w-[240px] flex-1 items-center gap-2">
+        <input
+          type="text"
+          [value]="searchTerm()"
+          (input)="setSearch($any($event.target).value)"
+          (keydown.enter)="loadUsers()"
+          placeholder="Buscar por nombre o correo"
+          class="w-full rounded-full border border-slate-800 bg-slate-950 px-4 py-2 text-xs text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+        />
+        <button type="button" class="rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white" (click)="loadUsers()">
+          Buscar
+        </button>
+      </div>
+
+      <button type="button" class="create-user-btn" (click)="openCreateModal()">
+        + Crear usuario
+      </button>
+    </div>
+
+    <div *ngIf="success()" class="mt-4 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-200">
+      {{ success() }}
+    </div>
+
+    <div *ngIf="error()" class="mt-4 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-xs text-amber-300">
+      {{ error() }}
+    </div>
+
+    <div *ngIf="loading()" class="mt-6 grid gap-3">
+      <div class="h-20 animate-pulse rounded-2xl bg-slate-950"></div>
+      <div class="h-20 animate-pulse rounded-2xl bg-slate-950"></div>
+    </div>
+
+    <div *ngIf="!loading() && users().length === 0" class="mt-6 rounded-2xl border border-dashed border-slate-800 bg-slate-950/40 px-4 py-6 text-sm text-slate-400">
+      No hay usuarios registrados con ese criterio.
+    </div>
+
+    <div *ngIf="!loading() && users().length > 0" class="mt-6 grid gap-3">
+      <div *ngFor="let user of users()" class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-4">
+        <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p class="text-sm font-semibold text-white">{{ user.name }}</p>
+            <p class="text-xs text-slate-400">{{ user.email }}</p>
+            <p *ngIf="activeUserType() === 'CLIENT'" class="text-[11px] text-slate-500">
+              {{ user.companyName || 'Sin empresa' }} - {{ user.roleName || 'Sin rol' }}
+            </p>
+            <div *ngIf="activeUserType() === 'TECH'" class="mt-2 flex flex-wrap gap-2">
+              <span
+                *ngFor="let role of user.techRoles"
+                class="rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-slate-300"
+              >
+                {{ role.name }}
+              </span>
+              <span *ngIf="!user.techRoles || user.techRoles.length === 0" class="text-[11px] text-slate-500">
+                Sin roles asignados
+              </span>
+            </div>
+          </div>
+          <span class="text-xs text-slate-500">{{ user.mobile || 'Sin movil' }}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h3 class="text-xl font-semibold text-white">Roles</h3>
+        <p class="text-sm text-slate-400">
+          {{ activeRoleType() === 'TECH'
+            ? 'Administra roles para usuarios técnicos.'
+            : 'Administra roles para stakeholders cliente.' }}
+        </p>
+      </div>
+      <div class="segment-toggle segment-toggle--compact">
+        <span class="segment-toggle__thumb" [class.segment-toggle__thumb--right]="activeRoleType() === 'CLIENT'"></span>
+        <button
+          type="button"
+          class="segment-toggle__btn"
+          [class.segment-toggle__btn--active]="activeRoleType() === 'TECH'"
+          (click)="setRoleType('TECH')"
+        >
+          Roles TECH
+        </button>
+        <button
+          type="button"
+          class="segment-toggle__btn"
+          [class.segment-toggle__btn--active]="activeRoleType() === 'CLIENT'"
+          (click)="setRoleType('CLIENT')"
+        >
+          Roles CLIENT
+        </button>
+      </div>
+    </div>
+
+    <div *ngIf="rolesError()" class="mt-4 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-xs text-amber-300">
+      {{ rolesError() }}
+    </div>
+
+    <div *ngIf="rolesLoading()" class="mt-4 grid gap-3">
+      <div class="h-10 animate-pulse rounded-2xl bg-slate-950"></div>
+      <div class="h-10 animate-pulse rounded-2xl bg-slate-950"></div>
+    </div>
+
+    <div *ngIf="!rolesLoading()" class="mt-4 space-y-2">
+      <ng-container *ngIf="activeRoleType() === 'TECH'; else clientRoleList">
+        <div
+          *ngFor="let role of techRoles()"
+          class="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-800 bg-slate-950 px-3 py-2"
+        >
+          <div class="flex-1">
+            <span *ngIf="editingRoleId() !== role.id" class="text-xs text-slate-300">{{ role.name }}</span>
+            <input
+              *ngIf="editingRoleId() === role.id"
+              type="text"
+              [value]="editingRoleName()"
+              (input)="setEditingRoleName($any($event.target).value)"
+              class="w-full rounded-full border border-slate-800 bg-slate-900 px-3 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              *ngIf="editingRoleId() !== role.id"
+              type="button"
+              class="rounded-full border border-slate-700 px-3 py-1 text-[10px] font-semibold text-slate-300"
+              (click)="startEditRole(role)"
+              [disabled]="roleActionId() === role.id"
+            >
+              Editar
+            </button>
+            <button
+              *ngIf="editingRoleId() === role.id"
+              type="button"
+              class="rounded-full bg-blue-600 px-3 py-1 text-[10px] font-semibold text-white"
+              (click)="saveRole()"
+              [disabled]="roleActionId() === role.id"
+            >
+              Guardar
+            </button>
+            <button
+              *ngIf="editingRoleId() === role.id"
+              type="button"
+              class="rounded-full border border-slate-700 px-3 py-1 text-[10px] font-semibold text-slate-300"
+              (click)="cancelEditRole()"
+            >
+              Cancelar
+            </button>
+            <button
+              *ngIf="editingRoleId() !== role.id"
+              type="button"
+              class="rounded-full border border-rose-500/40 px-3 py-1 text-[10px] font-semibold text-rose-200"
+              (click)="deleteRole(role.id)"
+              [disabled]="roleActionId() === role.id"
+            >
+              Eliminar
+            </button>
+          </div>
+        </div>
+        <span *ngIf="techRoles().length === 0" class="text-xs text-slate-500">Sin roles registrados.</span>
+      </ng-container>
+
+      <ng-template #clientRoleList>
+        <div
+          *ngFor="let role of clientRoles()"
+          class="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-800 bg-slate-950 px-3 py-2"
+        >
+          <div class="flex-1">
+            <span *ngIf="editingRoleId() !== role.id" class="text-xs text-slate-300">{{ role.name }}</span>
+            <input
+              *ngIf="editingRoleId() === role.id"
+              type="text"
+              [value]="editingRoleName()"
+              (input)="setEditingRoleName($any($event.target).value)"
+              class="w-full rounded-full border border-slate-800 bg-slate-900 px-3 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              *ngIf="editingRoleId() !== role.id"
+              type="button"
+              class="rounded-full border border-slate-700 px-3 py-1 text-[10px] font-semibold text-slate-300"
+              (click)="startEditRole(role)"
+              [disabled]="roleActionId() === role.id"
+            >
+              Editar
+            </button>
+            <button
+              *ngIf="editingRoleId() === role.id"
+              type="button"
+              class="rounded-full bg-blue-600 px-3 py-1 text-[10px] font-semibold text-white"
+              (click)="saveRole()"
+              [disabled]="roleActionId() === role.id"
+            >
+              Guardar
+            </button>
+            <button
+              *ngIf="editingRoleId() === role.id"
+              type="button"
+              class="rounded-full border border-slate-700 px-3 py-1 text-[10px] font-semibold text-slate-300"
+              (click)="cancelEditRole()"
+            >
+              Cancelar
+            </button>
+            <button
+              *ngIf="editingRoleId() !== role.id"
+              type="button"
+              class="rounded-full border border-rose-500/40 px-3 py-1 text-[10px] font-semibold text-rose-200"
+              (click)="deleteRole(role.id)"
+              [disabled]="roleActionId() === role.id"
+            >
+              Eliminar
+            </button>
+          </div>
+        </div>
+        <span *ngIf="clientRoles().length === 0" class="text-xs text-slate-500">Sin roles registrados.</span>
+      </ng-template>
+    </div>
+
+    <div class="mt-4 flex flex-col gap-2 md:flex-row">
+      <input
+        type="text"
+        [value]="newRoleName()"
+        (input)="setNewRoleName($any($event.target).value)"
+        placeholder="Nombre del rol"
+        class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+      />
+      <button
+        type="button"
+        class="rounded-2xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+        [disabled]="roleSaving()"
+        (click)="createRole()"
+      >
+        {{ roleSaving() ? 'Guardando...' : 'Crear rol' }}
+      </button>
+    </div>
+  </section>
+</main>
+
+<div *ngIf="createModalOpen()" class="user-modal-overlay">
+  <div class="user-modal-overlay__backdrop" (click)="closeCreateModal()"></div>
+
+  <section class="user-modal">
+    <header class="user-modal__header">
+      <div>
+        <p class="text-xs uppercase tracking-[0.3em] text-blue-400">Crear usuario</p>
+        <h3 class="mt-1 text-xl font-semibold text-white">Nuevo perfil de usuario</h3>
+      </div>
+      <button class="user-modal__close" (click)="closeCreateModal()">✕</button>
     </header>
 
-    <main class="mx-auto w-full max-w-6xl space-y-8 px-6 py-10">
-      <section class="space-y-2">
-        <h2 class="text-3xl font-semibold">Control de usuarios tecnicos y clientes</h2>
-        <p class="text-sm text-slate-400">
-          Administra perfiles internos y stakeholders sin perder contexto del proyecto.
-        </p>
-      </section>
+    <div class="user-modal__body">
+      <div class="segment-toggle">
+        <span class="segment-toggle__thumb" [class.segment-toggle__thumb--right]="createUserType() === 'CLIENT'"></span>
+        <button
+          type="button"
+          class="segment-toggle__btn"
+          [class.segment-toggle__btn--active]="createUserType() === 'TECH'"
+          (click)="setCreateUserType('TECH')"
+        >
+          Tecnico
+        </button>
+        <button
+          type="button"
+          class="segment-toggle__btn"
+          [class.segment-toggle__btn--active]="createUserType() === 'CLIENT'"
+          (click)="setCreateUserType('CLIENT')"
+        >
+          Cliente
+        </button>
+      </div>
 
-      <section class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="flex flex-wrap gap-2">
-              <button
-                type="button"
-                class="rounded-full border px-4 py-2 text-xs font-semibold"
-                [ngClass]="activeUserType() === 'TECH' ? 'border-blue-500 bg-blue-600 text-white' : 'border-slate-800 text-slate-300'"
-                (click)="setUserType('TECH')"
-              >
-                Tecnicos
-              </button>
-              <button
-                type="button"
-                class="rounded-full border px-4 py-2 text-xs font-semibold"
-                [ngClass]="activeUserType() === 'CLIENT' ? 'border-blue-500 bg-blue-600 text-white' : 'border-slate-800 text-slate-300'"
-                (click)="setUserType('CLIENT')"
-              >
-                Clientes
-              </button>
-            </div>
-            <div class="flex flex-1 items-center gap-2 min-w-[220px]">
-              <input
-                type="text"
-                [value]="searchTerm()"
-                (input)="setSearch($any($event.target).value)"
-                (keydown.enter)="loadUsers()"
-                placeholder="Buscar por nombre o correo"
-                class="w-full rounded-full border border-slate-800 bg-slate-950 px-4 py-2 text-xs text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-              />
-              <button
-                type="button"
-                class="rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white"
-                (click)="loadUsers()"
-              >
-                Buscar
-              </button>
-            </div>
-          </div>
+      <p class="mt-4 text-sm text-slate-400">
+        {{ createUserType() === 'TECH'
+          ? 'Usuario con acceso al sistema. Debe tener contrasena y roles tecnicos.'
+          : 'Usuario stakeholder sin acceso al sistema. No requiere contrasena.' }}
+      </p>
 
-          <div *ngIf="error()" class="mt-4 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-xs text-amber-300">
-            {{ error() }}
-          </div>
+      <div *ngIf="rolesError()" class="mt-4 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-xs text-amber-300">
+        {{ rolesError() }}
+      </div>
 
-          <div *ngIf="loading()" class="mt-6 grid gap-3">
-            <div class="h-20 animate-pulse rounded-2xl bg-slate-950"></div>
-            <div class="h-20 animate-pulse rounded-2xl bg-slate-950"></div>
-          </div>
-
-          <div *ngIf="!loading() && users().length === 0" class="mt-6 rounded-2xl border border-dashed border-slate-800 bg-slate-950/40 px-4 py-6 text-sm text-slate-400">
-            No hay usuarios registrados con ese criterio.
-          </div>
-
-          <div *ngIf="!loading() && users().length > 0" class="mt-6 grid gap-3">
-            <div
-              *ngFor="let user of users()"
-              class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-4"
-            >
-              <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p class="text-sm font-semibold text-white">{{ user.name }}</p>
-                  <p class="text-xs text-slate-400">{{ user.email }}</p>
-                  <p *ngIf="activeUserType() === 'CLIENT'" class="text-[11px] text-slate-500">
-                    {{ user.companyName || 'Sin empresa' }} - {{ user.roleName || 'Sin rol' }}
-                  </p>
-                  <div *ngIf="activeUserType() === 'TECH'" class="mt-2 flex flex-wrap gap-2">
-                    <span
-                      *ngFor="let role of user.techRoles"
-                      class="rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-slate-300"
-                    >
-                      {{ role.name }}
-                    </span>
-                    <span
-                      *ngIf="!user.techRoles || user.techRoles.length === 0"
-                      class="text-[11px] text-slate-500"
-                    >
-                      Sin roles asignados
-                    </span>
-                  </div>
-                </div>
-                <span class="text-xs text-slate-500">{{ user.mobile || 'Sin movil' }}</span>
-              </div>
-            </div>
-          </div>
+      <form class="mt-6 space-y-4" [formGroup]="form" (ngSubmit)="submitUser()">
+        <div>
+          <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Nombre completo</label>
+          <input
+            formControlName="name"
+            placeholder="Ej: Ana Ruiz"
+            class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+          />
         </div>
 
-        <div class="space-y-6">
-          <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
-            <div class="space-y-2">
-              <h3 class="text-xl font-semibold">Crear usuario</h3>
-            <p class="text-sm text-slate-400">
-              {{ activeUserType() === 'TECH'
-                ? 'El responsable tecnico tendra acceso completo al sistema.'
-                : 'El cliente queda documentado como stakeholder sin acceso directo.' }}
+        <div>
+          <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Correo</label>
+          <input
+            formControlName="email"
+            placeholder="ana@equipo.dev"
+            class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Movil</label>
+          <input
+            formControlName="mobile"
+            placeholder="+52 55 0000 0000"
+            class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+
+        <div *ngIf="createUserType() === 'TECH'" class="space-y-4">
+          <div>
+            <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Contrasena</label>
+            <input
+              type="password"
+              formControlName="password"
+              placeholder="********"
+              class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Roles tecnicos</label>
+            <div class="mt-2 flex flex-wrap gap-2" *ngIf="!rolesLoading(); else rolesLoadingState">
+              <button
+                type="button"
+                *ngFor="let role of techRoles()"
+                (click)="toggleTechRole(role.id)"
+                class="rounded-full border px-3 py-1 text-xs font-semibold"
+                [ngClass]="isTechRoleSelected(role.id) ? 'border-blue-500 bg-blue-600 text-white' : 'border-slate-800 text-slate-300'"
+              >
+                {{ role.name }}
+              </button>
+            </div>
+            <p *ngIf="!rolesLoading() && techRoles().length === 0" class="mt-2 text-xs text-slate-500">
+              No hay roles tecnicos. Crea uno desde Roles.
             </p>
           </div>
+        </div>
 
-            <form class="mt-6 space-y-4" [formGroup]="form" (ngSubmit)="submitUser()">
-              <div>
-                <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Nombre completo</label>
-                <input
-                  formControlName="name"
-                  placeholder="Ej: Ana Ruiz"
-                  class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                />
-                <p *ngIf="form.get('name')?.touched && form.get('name')?.invalid" class="mt-2 text-xs text-amber-300">
-                  Nombre obligatorio.
-                </p>
-              </div>
-              <div>
-                <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Correo</label>
-                <input
-                  formControlName="email"
-                  placeholder="ana@equipo.dev"
-                  class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                />
-                <p *ngIf="form.get('email')?.touched && form.get('email')?.invalid" class="mt-2 text-xs text-amber-300">
-                  Email valido requerido.
-                </p>
-              </div>
-              <div>
-                <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Movil</label>
-                <input
-                  formControlName="mobile"
-                  placeholder="+52 55 0000 0000"
-                  class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                />
-                <p *ngIf="form.get('mobile')?.touched && form.get('mobile')?.invalid" class="mt-2 text-xs text-amber-300">
-                  Telefono requerido.
-                </p>
-              </div>
-
-              <div *ngIf="activeUserType() === 'TECH'" class="space-y-4">
-                <div>
-                  <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Contrasena</label>
-                  <input
-                    type="password"
-                    formControlName="password"
-                    placeholder="********"
-                    class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                  />
-                  <p *ngIf="form.get('password')?.touched && form.get('password')?.invalid" class="mt-2 text-xs text-amber-300">
-                    Minimo 8 caracteres.
-                  </p>
-                </div>
-                <div>
-                  <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Roles tecnicos</label>
-                  <div class="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      *ngFor="let role of techRoles()"
-                      (click)="toggleTechRole(role.id)"
-                      class="rounded-full border px-3 py-1 text-xs font-semibold"
-                      [ngClass]="isTechRoleSelected(role.id) ? 'border-blue-500 bg-blue-600 text-white' : 'border-slate-800 text-slate-300'"
-                    >
-                      {{ role.name }}
-                    </button>
-                  </div>
-                  <p *ngIf="techRoles().length === 0" class="mt-2 text-xs text-slate-500">
-                    No hay roles tecnicos. Crea uno en el panel de roles.
-                  </p>
-                  <p
-                    *ngIf="form.get('techRoleIds')?.touched && form.get('techRoleIds')?.invalid"
-                    class="mt-2 text-xs text-amber-300"
-                  >
-                    Selecciona al menos un rol tecnico.
-                  </p>
-                </div>
-              </div>
-
-              <div *ngIf="activeUserType() === 'CLIENT'" class="space-y-4">
-                <div>
-                  <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Empresa</label>
-                  <input
-                    formControlName="company"
-                    placeholder="Nombre de la empresa"
-                    class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                  />
-                  <p *ngIf="form.get('company')?.touched && form.get('company')?.invalid" class="mt-2 text-xs text-amber-300">
-                    Empresa requerida.
-                  </p>
-                </div>
-                <div>
-                  <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Rol stakeholder</label>
-                  <select
-                    formControlName="stakeholderRoleId"
-                    class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white focus:border-blue-500 focus:outline-none"
-                  >
-                    <option [ngValue]="null">Selecciona un rol</option>
-                    <option *ngFor="let role of clientRoles()" [ngValue]="role.id">{{ role.name }}</option>
-                  </select>
-                  <p *ngIf="form.get('stakeholderRoleId')?.touched && form.get('stakeholderRoleId')?.invalid" class="mt-2 text-xs text-amber-300">
-                    Rol requerido.
-                  </p>
-                </div>
-              </div>
-
-              <div *ngIf="success()" class="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-200">
-                {{ success() }}
-              </div>
-
-              <button
-                type="submit"
-                class="w-full rounded-full bg-blue-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
-                [disabled]="saving()"
-              >
-                {{ saving() ? 'Guardando...' : 'Crear usuario' }}
-              </button>
-            </form>
+        <div *ngIf="createUserType() === 'CLIENT'" class="space-y-4">
+          <div>
+            <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Empresa</label>
+            <input
+              formControlName="company"
+              placeholder="Nombre de la empresa"
+              class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
           </div>
-
-          <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
-            <div class="space-y-2">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h3 class="text-xl font-semibold">Roles</h3>
-                  <p class="text-sm text-slate-400">
-                    {{ activeRoleType() === 'TECH'
-                      ? 'Administra roles tecnicos disponibles.'
-                      : 'Administra roles para stakeholders.' }}
-                  </p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    class="rounded-full border px-3 py-1 text-[10px] font-semibold"
-                    [ngClass]="activeRoleType() === 'TECH' ? 'border-blue-500 bg-blue-600 text-white' : 'border-slate-800 text-slate-300'"
-                    (click)="setRoleType('TECH')"
-                  >
-                    Roles TECH
-                  </button>
-                  <button
-                    type="button"
-                    class="rounded-full border px-3 py-1 text-[10px] font-semibold"
-                    [ngClass]="activeRoleType() === 'CLIENT' ? 'border-blue-500 bg-blue-600 text-white' : 'border-slate-800 text-slate-300'"
-                    (click)="setRoleType('CLIENT')"
-                  >
-                    Roles CLIENT
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div *ngIf="rolesError()" class="mt-4 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-xs text-amber-300">
-              {{ rolesError() }}
-            </div>
-
-            <div *ngIf="rolesLoading()" class="mt-4 grid gap-3">
-              <div class="h-10 animate-pulse rounded-2xl bg-slate-950"></div>
-              <div class="h-10 animate-pulse rounded-2xl bg-slate-950"></div>
-            </div>
-
-            <div *ngIf="!rolesLoading()" class="mt-4 space-y-2">
-              <ng-container *ngIf="activeRoleType() === 'TECH'; else clientRoleList">
-                <div
-                  *ngFor="let role of techRoles()"
-                  class="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-800 bg-slate-950 px-3 py-2"
-                >
-                  <div class="flex-1">
-                    <span *ngIf="editingRoleId() !== role.id" class="text-xs text-slate-300">{{ role.name }}</span>
-                    <input
-                      *ngIf="editingRoleId() === role.id"
-                      type="text"
-                      [value]="editingRoleName()"
-                      (input)="setEditingRoleName($any($event.target).value)"
-                      class="w-full rounded-full border border-slate-800 bg-slate-900 px-3 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
-                    />
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <button
-                      *ngIf="editingRoleId() !== role.id"
-                      type="button"
-                      class="rounded-full border border-slate-700 px-3 py-1 text-[10px] font-semibold text-slate-300"
-                      (click)="startEditRole(role)"
-                      [disabled]="roleActionId() === role.id"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      *ngIf="editingRoleId() === role.id"
-                      type="button"
-                      class="rounded-full bg-blue-600 px-3 py-1 text-[10px] font-semibold text-white"
-                      (click)="saveRole()"
-                      [disabled]="roleActionId() === role.id"
-                    >
-                      Guardar
-                    </button>
-                    <button
-                      *ngIf="editingRoleId() === role.id"
-                      type="button"
-                      class="rounded-full border border-slate-700 px-3 py-1 text-[10px] font-semibold text-slate-300"
-                      (click)="cancelEditRole()"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      *ngIf="editingRoleId() !== role.id"
-                      type="button"
-                      class="rounded-full border border-rose-500/40 px-3 py-1 text-[10px] font-semibold text-rose-200"
-                      (click)="deleteRole(role.id)"
-                      [disabled]="roleActionId() === role.id"
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-                </div>
-                <span *ngIf="techRoles().length === 0" class="text-xs text-slate-500">Sin roles registrados.</span>
-              </ng-container>
-              <ng-template #clientRoleList>
-                <div
-                  *ngFor="let role of clientRoles()"
-                  class="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-800 bg-slate-950 px-3 py-2"
-                >
-                  <div class="flex-1">
-                    <span *ngIf="editingRoleId() !== role.id" class="text-xs text-slate-300">{{ role.name }}</span>
-                    <input
-                      *ngIf="editingRoleId() === role.id"
-                      type="text"
-                      [value]="editingRoleName()"
-                      (input)="setEditingRoleName($any($event.target).value)"
-                      class="w-full rounded-full border border-slate-800 bg-slate-900 px-3 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
-                    />
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <button
-                      *ngIf="editingRoleId() !== role.id"
-                      type="button"
-                      class="rounded-full border border-slate-700 px-3 py-1 text-[10px] font-semibold text-slate-300"
-                      (click)="startEditRole(role)"
-                      [disabled]="roleActionId() === role.id"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      *ngIf="editingRoleId() === role.id"
-                      type="button"
-                      class="rounded-full bg-blue-600 px-3 py-1 text-[10px] font-semibold text-white"
-                      (click)="saveRole()"
-                      [disabled]="roleActionId() === role.id"
-                    >
-                      Guardar
-                    </button>
-                    <button
-                      *ngIf="editingRoleId() === role.id"
-                      type="button"
-                      class="rounded-full border border-slate-700 px-3 py-1 text-[10px] font-semibold text-slate-300"
-                      (click)="cancelEditRole()"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      *ngIf="editingRoleId() !== role.id"
-                      type="button"
-                      class="rounded-full border border-rose-500/40 px-3 py-1 text-[10px] font-semibold text-rose-200"
-                      (click)="deleteRole(role.id)"
-                      [disabled]="roleActionId() === role.id"
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-                </div>
-                <span *ngIf="clientRoles().length === 0" class="text-xs text-slate-500">Sin roles registrados.</span>
-              </ng-template>
-            </div>
-
-            <div class="mt-4 flex flex-col gap-2 md:flex-row">
-              <input
-                type="text"
-                [value]="newRoleName()"
-                (input)="setNewRoleName($any($event.target).value)"
-                placeholder="Nombre del rol"
-                class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-              />
-              <button
-                type="button"
-                class="rounded-2xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
-                [disabled]="roleSaving()"
-                (click)="createRole()"
-              >
-                {{ roleSaving() ? 'Guardando...' : 'Crear rol' }}
-              </button>
-            </div>
+          <div>
+            <label class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Rol stakeholder</label>
+            <select
+              formControlName="stakeholderRoleId"
+              class="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white focus:border-blue-500 focus:outline-none"
+            >
+              <option [ngValue]="null">Selecciona un rol</option>
+              <option *ngFor="let role of clientRoles()" [ngValue]="role.id">{{ role.name }}</option>
+            </select>
           </div>
         </div>
-      </section>
-    </main>
+
+        <ng-template #rolesLoadingState>
+          <div class="h-10 animate-pulse rounded-2xl bg-slate-900"></div>
+        </ng-template>
+
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button
+            type="button"
+            class="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300"
+            (click)="closeCreateModal()"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            class="rounded-full bg-blue-600 px-5 py-2 text-xs font-semibold text-white disabled:opacity-60"
+            [disabled]="saving()"
+          >
+            {{ saving() ? 'Guardando...' : 'Crear usuario' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>

@@ -1,6 +1,6 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
-import type { ResultSetHeader, RowDataPacket } from 'mysql2';
+import { getTechniqueStatusIdByCode } from '../db/catalogs';
 import { pool } from '../db/pool';
 import { requireAuth, type AuthRequest } from '../middleware/auth';
 
@@ -12,27 +12,27 @@ const subprocessSchema = z.object({
   description: z.string().optional().nullable()
 });
 
-type SubprocessRow = RowDataPacket & {
+type SubprocessRow = {
   id: number;
   process_id: number;
   name: string;
   description: string | null;
 };
 
-type TechniqueRow = RowDataPacket & {
+type TechniqueRow = {
   id: number;
   name: string;
   description: string | null;
 };
 
-type SubprocessTechniqueRow = RowDataPacket & {
+type SubprocessTechniqueRow = {
   id: number;
   subprocess_id: number;
   technique_id: number;
   tech_user_id: number | null;
   scheduled_date: string | null;
   duration_minutes: number | null;
-  status: 'PLANNED' | 'DONE' | 'CANCELLED';
+  status: string;
   name: string;
   description: string | null;
 };
@@ -45,16 +45,16 @@ const assignTechniqueSchema = z.object({
 });
 
 const hasSubprocessAccess = async (subprocessId: number, userId: number) => {
-  const [rows] = await pool.query<RowDataPacket[]>(
+  const rows = await pool.query(
     `SELECT 1
      FROM subprocesses sp
      INNER JOIN processes p ON p.id = sp.process_id
      INNER JOIN project_users pu ON pu.project_id = p.project_id
-     WHERE sp.id = ? AND pu.user_id = ?
+     WHERE sp.id = $1 AND pu.user_id = $2
      LIMIT 1`,
     [subprocessId, userId]
   );
-  return rows.length > 0;
+  return rows.rows.length > 0;
 };
 
 router.get('/:id', async (req: AuthRequest, res) => {
@@ -75,17 +75,17 @@ router.get('/:id', async (req: AuthRequest, res) => {
     return;
   }
 
-  const [rows] = await pool.query<SubprocessRow[]>(
-    'SELECT id, process_id, name, description FROM subprocesses WHERE id = ?',
+  const rows = await pool.query<SubprocessRow>(
+    'SELECT id, process_id, name, description FROM subprocesses WHERE id = $1',
     [id]
   );
 
-  if (rows.length === 0) {
+  if (rows.rows.length === 0) {
     res.status(404).json({ message: 'Subprocess not found' });
     return;
   }
 
-  res.json({ subprocess: rows[0] });
+  res.json({ subprocess: rows.rows[0] });
 });
 
 router.put('/:id', async (req: AuthRequest, res) => {
@@ -114,12 +114,13 @@ router.put('/:id', async (req: AuthRequest, res) => {
 
   const { name, description } = parsed.data;
 
-  const [result] = await pool.query<ResultSetHeader>(
-    'UPDATE subprocesses SET name = ?, description = ? WHERE id = ?',
-    [name, description ?? null, id]
-  );
+  const result = await pool.query('UPDATE subprocesses SET name = $1, description = $2 WHERE id = $3', [
+    name,
+    description ?? null,
+    id
+  ]);
 
-  if (result.affectedRows === 0) {
+  if (result.rowCount === 0) {
     res.status(404).json({ message: 'Subprocess not found' });
     return;
   }
@@ -145,18 +146,30 @@ router.get('/:id/techniques', async (req: AuthRequest, res) => {
     return;
   }
 
-  const [rows] = await pool.query<SubprocessTechniqueRow[]>(
-    `SELECT st.id, st.subprocess_id, st.technique_id, st.tech_user_id,
-            st.scheduled_date, st.duration_minutes, st.status,
-            t.name, t.description
+  const rows = await pool.query<SubprocessTechniqueRow>(
+    `SELECT st.id,
+            st.subprocess_id,
+            st.technique_id,
+            st.tech_user_id,
+            st.scheduled_date::text,
+            st.duration_minutes,
+            ts.code AS status,
+            t.name,
+            t.description
      FROM subprocess_techniques st
      INNER JOIN techniques t ON t.id = st.technique_id
-     WHERE st.subprocess_id = ?
+     INNER JOIN technique_statuses ts ON ts.id = st.status
+     WHERE st.subprocess_id = $1
      ORDER BY st.id DESC`,
     [id]
   );
 
-  res.json({ techniques: rows });
+  res.json({
+    techniques: rows.rows.map((row: SubprocessTechniqueRow) => ({
+      ...row,
+      status: row.status.toUpperCase() as 'PLANNED' | 'DONE' | 'CANCELLED'
+    }))
+  });
 });
 
 router.post('/:id/techniques', async (req: AuthRequest, res) => {
@@ -185,39 +198,36 @@ router.post('/:id/techniques', async (req: AuthRequest, res) => {
 
   const { technique_id, tech_user_id, scheduled_date, duration_minutes } = parsed.data;
 
-  const [techniqueRows] = await pool.query<TechniqueRow[]>(
-    'SELECT id FROM techniques WHERE id = ?',
-    [technique_id]
-  );
-  if (techniqueRows.length === 0) {
+  const techniqueRows = await pool.query<TechniqueRow>('SELECT id FROM techniques WHERE id = $1', [technique_id]);
+  if (techniqueRows.rows.length === 0) {
     res.status(404).json({ message: 'Technique not found' });
     return;
   }
 
-  const [existingRows] = await pool.query<RowDataPacket[]>(
-    'SELECT id FROM subprocess_techniques WHERE subprocess_id = ? AND technique_id = ? LIMIT 1',
+  const existingRows = await pool.query(
+    'SELECT id FROM subprocess_techniques WHERE subprocess_id = $1 AND technique_id = $2 LIMIT 1',
     [id, technique_id]
   );
-  if (existingRows.length > 0) {
+  if (existingRows.rows.length > 0) {
     res.status(409).json({ message: 'Technique already assigned to subprocess' });
     return;
   }
 
-  const [result] = await pool.query<ResultSetHeader>(
+  const plannedStatusId = await getTechniqueStatusIdByCode('PLANNED');
+  if (!plannedStatusId) {
+    res.status(500).json({ message: 'Catalog technique_statuses missing PLANNED code' });
+    return;
+  }
+
+  const result = await pool.query<{ id: number }>(
     `INSERT INTO subprocess_techniques
      (subprocess_id, technique_id, tech_user_id, scheduled_date, duration_minutes, status)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [
-      id,
-      technique_id,
-      tech_user_id ?? null,
-      scheduled_date ?? null,
-      duration_minutes ?? null,
-      'PLANNED'
-    ]
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
+    [id, technique_id, tech_user_id ?? null, scheduled_date ?? null, duration_minutes ?? null, plannedStatusId]
   );
 
-  res.status(201).json({ id: result.insertId });
+  res.status(201).json({ id: result.rows[0].id });
 });
 
 export default router;

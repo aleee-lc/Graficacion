@@ -1,6 +1,5 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
-import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 import { pool } from '../db/pool';
 import { requireAuth, type AuthRequest } from '../middleware/auth';
 
@@ -17,14 +16,14 @@ const subprocessSchema = z.object({
   description: z.string().optional().nullable()
 });
 
-type ProcessRow = RowDataPacket & {
+type ProcessRow = {
   id: number;
   project_id: number;
   name: string;
   description: string | null;
 };
 
-type SubprocessRow = RowDataPacket & {
+type SubprocessRow = {
   id: number;
   process_id: number;
   name: string;
@@ -32,15 +31,15 @@ type SubprocessRow = RowDataPacket & {
 };
 
 const hasProcessAccess = async (processId: number, userId: number) => {
-  const [rows] = await pool.query<RowDataPacket[]>(
+  const rows = await pool.query(
     `SELECT 1
      FROM processes p
      INNER JOIN project_users pu ON pu.project_id = p.project_id
-     WHERE p.id = ? AND pu.user_id = ?
+     WHERE p.id = $1 AND pu.user_id = $2
      LIMIT 1`,
     [processId, userId]
   );
-  return rows.length > 0;
+  return rows.rows.length > 0;
 };
 
 router.get('/:id', async (req: AuthRequest, res) => {
@@ -61,17 +60,17 @@ router.get('/:id', async (req: AuthRequest, res) => {
     return;
   }
 
-  const [rows] = await pool.query<ProcessRow[]>(
-    'SELECT id, project_id, name, description FROM processes WHERE id = ?',
+  const rows = await pool.query<ProcessRow>(
+    'SELECT id, project_id, name, description FROM processes WHERE id = $1',
     [id]
   );
 
-  if (rows.length === 0) {
+  if (rows.rows.length === 0) {
     res.status(404).json({ message: 'Process not found' });
     return;
   }
 
-  res.json({ process: rows[0] });
+  res.json({ process: rows.rows[0] });
 });
 
 router.put('/:id', async (req: AuthRequest, res) => {
@@ -100,12 +99,13 @@ router.put('/:id', async (req: AuthRequest, res) => {
 
   const { name, description } = parsed.data;
 
-  const [result] = await pool.query<ResultSetHeader>(
-    'UPDATE processes SET name = ?, description = ? WHERE id = ?',
-    [name, description ?? null, id]
-  );
+  const result = await pool.query('UPDATE processes SET name = $1, description = $2 WHERE id = $3', [
+    name,
+    description ?? null,
+    id
+  ]);
 
-  if (result.affectedRows === 0) {
+  if (result.rowCount === 0) {
     res.status(404).json({ message: 'Process not found' });
     return;
   }
@@ -131,12 +131,12 @@ router.get('/:id/subprocesses', async (req: AuthRequest, res) => {
     return;
   }
 
-  const [rows] = await pool.query<SubprocessRow[]>(
-    'SELECT id, process_id, name, description FROM subprocesses WHERE process_id = ? ORDER BY id DESC',
+  const rows = await pool.query<SubprocessRow>(
+    'SELECT id, process_id, name, description FROM subprocesses WHERE process_id = $1 ORDER BY id DESC',
     [processId]
   );
 
-  res.json({ subprocesses: rows });
+  res.json({ subprocesses: rows.rows });
 });
 
 router.post('/:id/subprocesses', async (req: AuthRequest, res) => {
@@ -165,12 +165,12 @@ router.post('/:id/subprocesses', async (req: AuthRequest, res) => {
 
   const { name, description } = parsed.data;
 
-  const [result] = await pool.query<ResultSetHeader>(
-    'INSERT INTO subprocesses (process_id, name, description) VALUES (?, ?, ?)',
+  const result = await pool.query<SubprocessRow>(
+    'INSERT INTO subprocesses (process_id, name, description) VALUES ($1, $2, $3) RETURNING id',
     [processId, name, description ?? null]
   );
 
-  res.status(201).json({ id: result.insertId });
+  res.status(201).json({ id: result.rows[0].id });
 });
 
 export default router;

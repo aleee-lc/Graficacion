@@ -1,4 +1,4 @@
-﻿<ng-container *ngIf="isLanding(); else routed">
+﻿@if (isLanding()) {
   <div class="min-h-screen bg-[var(--ice)] text-[var(--ink)]">
     <div class="border-b border-[var(--mist)] bg-white">
       <div class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-2 text-xs text-[var(--ink)] opacity-70">
@@ -282,8 +282,6 @@
       </div>
     </footer>
   </div>
-</ng-container>
-
-<ng-template #routed>
+} @else {
   <router-outlet></router-outlet>
-</ng-template>
+}

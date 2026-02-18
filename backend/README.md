@@ -1,51 +1,53 @@
-﻿# Graficación Backend (Node.js + TypeScript + Express + MySQL)
+# Graficacion Backend (Node.js + TypeScript + Express + PostgreSQL)
 
 ## Requisitos
 - Node.js 18+
-- MySQL 8+
+- PostgreSQL (o Supabase PostgreSQL)
 
-## 1) Importar la base de datos
-El dump está en `C:\Users\el_al\Downloads\graficacionbdd.sql`.
+## Variables de entorno
+Copia `.env.example` a `.env` y configura:
 
-Ejemplo (PowerShell):
-```
-mysql -u root -p < "C:\Users\el_al\Downloads\graficacionbdd.sql"
-```
-
-## 2) Variables de entorno
-Copia `.env.example` a `.env` y actualiza credenciales:
-```
+```env
 PORT=4000
+DATABASE_URL=postgresql://postgres:password@localhost:5432/graficacion
 DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
+DB_PORT=5432
+DB_USER=postgres
 DB_PASSWORD=your_password
 DB_NAME=graficacion
+DB_SSL=false
 JWT_SECRET=super_secret_change_me
 JWT_EXPIRES_IN=7d
 CORS_ORIGIN=http://localhost:4200
 ```
 
-## 3) Instalar dependencias
-```
+Notas:
+- Para Supabase usa `DATABASE_URL` y `DB_SSL=true`.
+- Si `DATABASE_URL` existe, tiene prioridad sobre `DB_HOST/DB_PORT/...`.
+
+## Ejecutar
+```bash
 npm install
+npm run dev
 ```
 
-## 4) Ejecutar en desarrollo
-```
-npm run dev
+## Build
+```bash
+npm run build
 ```
 
 ## Endpoints base
 - `GET /health`
-- `POST /auth/register` (name, email, password, mobile)
+- `POST /auth/register`
 - `POST /auth/login`
-- `GET /auth/me` (Bearer token)
+- `GET /auth/me`
 - `GET /projects`
 - `POST /projects`
 - `POST /projects/wizard`
 - `GET /projects/:id`
 - `PUT /projects/:id`
+- `GET /projects/:id/users`
+- `POST /projects/:id/users`
 - `GET /projects/:id/processes`
 - `POST /projects/:id/processes`
 - `GET /processes/:id`
@@ -54,15 +56,21 @@ npm run dev
 - `POST /processes/:id/subprocesses`
 - `GET /subprocesses/:id`
 - `PUT /subprocesses/:id`
+- `GET /subprocesses/:id/techniques`
+- `POST /subprocesses/:id/techniques`
 - `GET /roles/tech`
 - `POST /roles/tech`
+- `PUT /roles/tech/:id`
+- `DELETE /roles/tech/:id`
 - `GET /roles/stakeholders`
 - `POST /roles/stakeholders`
+- `PUT /roles/stakeholders/:id`
+- `DELETE /roles/stakeholders/:id`
 - `GET /users?type=TECH|CLIENT&query=`
 - `POST /users`
 
-## Notas
-- Solo usuarios con `user_type = 'TECH'` pueden autenticarse.
-- Passwords se guardan hasheados con bcrypt.
-- La tabla `users` debe incluir la columna `mobile`.
-- Los endpoints de proyectos devuelven solo los proyectos asociados al usuario autenticado.
+## Catálogos usados
+- `user_types` (ej: `TECH`, `CLIENT`)
+- `technique_statuses` (ej: `PLANNED`, `DONE`, `CANCELLED`)
+
+El backend guarda IDs en FK y expone `code` en respuestas cuando aplica.

@@ -20,8 +20,34 @@ export const requireAuth = (req: AuthRequest, res: Response, next: NextFunction)
   const token = header.replace('Bearer ', '').trim();
 
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET) as AuthPayload;
-    req.user = payload;
+    const payload = jwt.verify(token, env.JWT_SECRET);
+
+    if (typeof payload !== 'object' || payload === null) {
+      res.status(401).json({ message: 'Invalid or expired token' });
+      return;
+    }
+
+    const subValue = payload.sub;
+    const parsedSub =
+      typeof subValue === 'number'
+        ? subValue
+        : typeof subValue === 'string'
+          ? Number(subValue)
+          : Number.NaN;
+
+    const email = typeof payload.email === 'string' ? payload.email : null;
+    const rawUserType = typeof payload.userType === 'string' ? payload.userType.toUpperCase() : null;
+
+    if (Number.isNaN(parsedSub) || !email || (rawUserType !== 'TECH' && rawUserType !== 'CLIENT')) {
+      res.status(401).json({ message: 'Invalid or expired token' });
+      return;
+    }
+
+    req.user = {
+      sub: parsedSub,
+      email,
+      userType: rawUserType
+    };
     next();
   } catch {
     res.status(401).json({ message: 'Invalid or expired token' });

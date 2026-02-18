@@ -1,11 +1,11 @@
-﻿import { Router } from 'express';
-import jwt from 'jsonwebtoken';
+import { Router } from 'express';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import { z } from 'zod';
-import type { RowDataPacket } from 'mysql2';
 import { env } from '../config/env';
+import { getUserTypeIdByCode } from '../db/catalogs';
 import { pool } from '../db/pool';
-import { comparePassword, hashPassword } from '../utils/password';
 import { requireAuth, type AuthRequest } from '../middleware/auth';
+import { comparePassword, hashPassword } from '../utils/password';
 
 const router = Router();
 
@@ -21,15 +21,17 @@ const loginSchema = z.object({
   password: z.string().min(8)
 });
 
-type UserRow = RowDataPacket & {
+type UserRow = {
   id: number;
   name: string;
   email: string;
   password: string | null;
-  user_type: 'TECH' | 'CLIENT';
-  mobile?: string | null;
-  created_at?: Date;
+  user_type_id: number;
+  user_type_code: string;
+  created_at: string | null;
 };
+
+const resolveTechUserTypeId = async () => getUserTypeIdByCode('TECH');
 
 router.post('/register', async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
@@ -38,18 +40,24 @@ router.post('/register', async (req, res) => {
     return;
   }
 
-  const { name, email, password, mobile } = parsed.data;
+  const { name, email, password } = parsed.data;
 
-  const [existing] = await pool.query<UserRow[]>('SELECT id FROM users WHERE email = ?', [email]);
-  if (existing.length > 0) {
+  const existing = await pool.query<{ id: number }>('SELECT id FROM users WHERE email = $1', [email]);
+  if (existing.rows.length > 0) {
     res.status(409).json({ message: 'Email already registered' });
+    return;
+  }
+
+  const techTypeId = await resolveTechUserTypeId();
+  if (!techTypeId) {
+    res.status(500).json({ message: 'Catalog user_types missing TECH code' });
     return;
   }
 
   const hashed = await hashPassword(password);
   await pool.query(
-    'INSERT INTO users (name, email, password, user_type, created_at, mobile) VALUES (?, ?, ?, ?, ?, ?)',
-    [name, email, hashed, 'TECH', new Date(), mobile]
+    'INSERT INTO users (name, email, password, user_type, created_at) VALUES ($1, $2, $3, $4, NOW())',
+    [name, email, hashed, techTypeId]
   );
 
   res.status(201).json({ message: 'User created' });
@@ -64,14 +72,28 @@ router.post('/login', async (req, res) => {
 
   const { email, password } = parsed.data;
 
-  const [rows] = await pool.query<UserRow[]>('SELECT * FROM users WHERE email = ?', [email]);
-  if (rows.length === 0) {
+  const result = await pool.query<UserRow>(
+    `SELECT u.id,
+            u.name,
+            u.email,
+            u.password,
+            u.user_type AS user_type_id,
+            ut.code AS user_type_code,
+            u.created_at::text AS created_at
+     FROM users u
+     INNER JOIN user_types ut ON ut.id = u.user_type
+     WHERE u.email = $1
+     LIMIT 1`,
+    [email]
+  );
+
+  if (result.rows.length === 0) {
     res.status(401).json({ message: 'Invalid credentials' });
     return;
   }
 
-  const user = rows[0];
-  if (user.user_type !== 'TECH') {
+  const user = result.rows[0];
+  if (user.user_type_code.toUpperCase() !== 'TECH') {
     res.status(403).json({ message: 'Only technical users can access the platform' });
     return;
   }
@@ -86,14 +108,19 @@ router.post('/login', async (req, res) => {
     return;
   }
 
+  const userType = user.user_type_code.toUpperCase() as 'TECH' | 'CLIENT';
+  const signOptions: SignOptions = {
+    expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn']
+  };
+
   const token = jwt.sign(
     {
       sub: user.id,
       email: user.email,
-      userType: user.user_type
+      userType
     },
     env.JWT_SECRET,
-    { expiresIn: env.JWT_EXPIRES_IN }
+    signOptions
   );
 
   res.json({
@@ -102,8 +129,8 @@ router.post('/login', async (req, res) => {
       id: user.id,
       name: user.name,
       email: user.email,
-      userType: user.user_type,
-      mobile: user.mobile ?? null
+      userType,
+      mobile: null
     }
   });
 });
@@ -115,25 +142,35 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
-  const [rows] = await pool.query<UserRow[]>(
-    'SELECT id, name, email, user_type, mobile, created_at FROM users WHERE id = ?',
+  const result = await pool.query<UserRow>(
+    `SELECT u.id,
+            u.name,
+            u.email,
+            u.password,
+            u.user_type AS user_type_id,
+            ut.code AS user_type_code,
+            u.created_at::text AS created_at
+     FROM users u
+     INNER JOIN user_types ut ON ut.id = u.user_type
+     WHERE u.id = $1
+     LIMIT 1`,
     [userId]
   );
 
-  if (rows.length === 0) {
+  if (result.rows.length === 0) {
     res.status(404).json({ message: 'User not found' });
     return;
   }
 
-  const user = rows[0];
+  const user = result.rows[0];
 
   res.json({
     user: {
       id: user.id,
       name: user.name,
       email: user.email,
-      userType: user.user_type,
-      mobile: user.mobile ?? null,
+      userType: user.user_type_code.toUpperCase(),
+      mobile: null,
       createdAt: user.created_at
     }
   });

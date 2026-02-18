@@ -1,301 +1,330 @@
-<header class="border-b border-slate-800">
-      <div class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
-        <div class="flex items-center gap-3">
-          <a routerLink="/home" class="text-xs font-semibold text-blue-400">Volver</a>
-          <span class="text-slate-600">|</span>
-          <h1 class="text-lg font-semibold">Detalle del proyecto</h1>
+﻿<header class="border-b border-slate-800">
+  <div class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
+    <div class="flex items-center gap-3">
+      <a routerLink="/home" class="text-xs font-semibold text-blue-400">Volver</a>
+      <span class="text-slate-600">|</span>
+      <h1 class="text-lg font-semibold">Detalle del proyecto</h1>
+    </div>
+    <div class="text-xs text-slate-500">Workspace tecnico</div>
+  </div>
+</header>
+
+<main class="mx-auto w-full max-w-6xl space-y-8 px-6 py-10">
+  <div *ngIf="loading()" class="space-y-4">
+    <div class="h-8 w-1/3 animate-pulse rounded-full bg-slate-900"></div>
+    <div class="h-28 animate-pulse rounded-2xl bg-slate-900"></div>
+  </div>
+
+  <div *ngIf="error()" class="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-amber-300">
+    {{ error() }}
+  </div>
+
+  <div *ngIf="!loading() && project()" class="space-y-6">
+    <section class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+      <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Proyecto</p>
+          <h2 class="mt-2 text-3xl font-semibold">{{ project()?.name }}</h2>
+          <p class="mt-2 text-sm text-slate-400">
+            {{ project()?.description || 'Sin descripcion todavia.' }}
+          </p>
         </div>
-        <div class="text-xs text-slate-500">Workspace tecnico</div>
+        <div class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-xs text-slate-400">
+          <p>Inicio: {{ project()?.start_date || '-' }}</p>
+          <p>Fin: {{ project()?.end_date || '-' }}</p>
+        </div>
       </div>
+    </section>
+
+    <section class="grid gap-4 md:grid-cols-3">
+      <div class="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Procesos</p>
+        <p class="mt-3 text-sm text-slate-400">Crea y estructura los procesos principales.</p>
+        <a [routerLink]="['/projects', project()?.id, 'processes']" class="mt-4 inline-flex text-xs font-semibold text-blue-400">
+          Ir a procesos
+        </a>
+      </div>
+      <div class="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Stakeholders</p>
+        <p class="mt-3 text-sm text-slate-400">Gestiona roles y perfiles del cliente.</p>
+        <button class="mt-4 text-xs font-semibold text-blue-400">Ir a stakeholders</button>
+      </div>
+      <div class="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Requerimientos</p>
+        <p class="mt-3 text-sm text-slate-400">Documenta requerimientos y tecnicas asociadas.</p>
+        <button class="mt-4 text-xs font-semibold text-blue-400">Ir a requerimientos</button>
+      </div>
+    </section>
+
+    <section class="space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-xl font-semibold">Equipo y stakeholders</h3>
+        <span class="text-xs text-slate-500">Gestion por proyecto</span>
+      </div>
+
+      <div *ngIf="membersError()" class="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-amber-300">
+        {{ membersError() }}
+      </div>
+      <div *ngIf="rolesError()" class="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-amber-300">
+        {{ rolesError() }}
+      </div>
+
+      <div *ngIf="membersLoading()" class="grid gap-3 md:grid-cols-2">
+        <div class="h-32 animate-pulse rounded-2xl bg-slate-900"></div>
+        <div class="h-32 animate-pulse rounded-2xl bg-slate-900"></div>
+      </div>
+
+      <div *ngIf="!membersLoading()" class="grid gap-6 lg:grid-cols-2">
+        <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+          <div class="space-y-1">
+            <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Equipo tecnico</p>
+            <p class="text-sm text-slate-400">Usuarios TECH asignados al proyecto.</p>
+          </div>
+
+          <div class="mt-4 space-y-3">
+            <div *ngIf="techMembers().length === 0" class="text-xs text-slate-500">
+              No hay tecnicos asignados.
+            </div>
+            <div *ngFor="let member of techMembers()" class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3">
+              <p class="text-sm font-semibold text-white">{{ member.name }}</p>
+              <p class="text-xs text-slate-400">{{ member.email }}</p>
+              <p class="text-xs text-slate-500">{{ member.mobile || 'Sin movil' }}</p>
+            </div>
+          </div>
+
+          <button type="button" class="member-add-btn mt-6" (click)="openMemberModal('TECH')">
+            Agregar tecnico
+          </button>
+        </div>
+
+        <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+          <div class="space-y-1">
+            <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Stakeholders</p>
+            <p class="text-sm text-slate-400">Usuarios CLIENT documentados en el proyecto.</p>
+          </div>
+
+          <div class="mt-4 space-y-3">
+            <div *ngIf="clientMembers().length === 0" class="text-xs text-slate-500">
+              No hay stakeholders asignados.
+            </div>
+            <div *ngFor="let member of clientMembers()" class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3">
+              <p class="text-sm font-semibold text-white">{{ member.name }}</p>
+              <p class="text-xs text-slate-400">{{ member.email }}</p>
+              <p class="text-xs text-slate-500">{{ member.companyName || 'Sin empresa' }} - {{ member.roleName || 'Sin rol' }}</p>
+            </div>
+          </div>
+
+          <button type="button" class="member-add-btn mt-6" (click)="openMemberModal('CLIENT')">
+            Agregar stakeholder
+          </button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div *ngIf="memberModalOpen()" class="member-modal-overlay">
+  <div class="member-modal-overlay__backdrop" (click)="closeMemberModal()"></div>
+
+  <section class="member-modal">
+    <header class="member-modal__header">
+      <div>
+        <p class="text-xs uppercase tracking-[0.2em] text-blue-400">{{ memberModalType() === 'TECH' ? 'Equipo tecnico' : 'Stakeholders' }}</p>
+        <h4 class="mt-1 text-xl font-semibold text-white">
+          {{ memberModalType() === 'TECH' ? 'Agregar tecnico al proyecto' : 'Agregar stakeholder al proyecto' }}
+        </h4>
+      </div>
+      <button class="member-modal__close" (click)="closeMemberModal()">✕</button>
     </header>
 
-    <main class="mx-auto w-full max-w-6xl space-y-8 px-6 py-10">
-      <div *ngIf="loading()" class="space-y-4">
-        <div class="h-8 w-1/3 animate-pulse rounded-full bg-slate-900"></div>
-        <div class="h-28 animate-pulse rounded-2xl bg-slate-900"></div>
+    <div class="member-modal__body space-y-4">
+      <div class="mode-toggle">
+        <span class="mode-toggle__thumb" [class.mode-toggle__thumb--right]="memberModalMode() === 'create'"></span>
+        <button
+          type="button"
+          class="mode-toggle__button"
+          [class.mode-toggle__button--active]="memberModalMode() === 'existing'"
+          (click)="setMemberModalMode('existing')"
+        >
+          Buscar existente
+        </button>
+        <button
+          type="button"
+          class="mode-toggle__button"
+          [class.mode-toggle__button--active]="memberModalMode() === 'create'"
+          (click)="setMemberModalMode('create')"
+        >
+          Crear nuevo
+        </button>
       </div>
 
-      <div *ngIf="error()" class="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-amber-300">
-        {{ error() }}
+      <div *ngIf="membersError()" class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-xs text-amber-300">
+        {{ membersError() }}
       </div>
 
-      <div *ngIf="!loading() && project()" class="space-y-6">
-        <section class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
-          <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <ng-container *ngIf="memberModalType() === 'TECH'; else clientModal">
+        <ng-container *ngIf="memberModalMode() === 'existing'; else createTechModal">
+          <div class="flex flex-col gap-2 md:flex-row">
+            <input
+              type="text"
+              [value]="techSearch()"
+              (input)="setTechSearch($any($event.target).value)"
+              placeholder="Buscar tecnico por nombre o correo"
+              class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+            <button type="button" class="rounded-2xl bg-blue-600 px-4 py-3 text-xs font-semibold text-white" (click)="searchTech()">
+              Buscar
+            </button>
+          </div>
+
+          <div class="grid gap-2">
+            <button
+              type="button"
+              *ngFor="let user of techResults()"
+              (click)="addTechMember(user)"
+              class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-left"
+              [disabled]="memberSaving()"
+            >
+              <div>
+                <p class="text-sm font-semibold text-white">{{ user.name }}</p>
+                <p class="text-xs text-slate-400">{{ user.email }}</p>
+              </div>
+              <span class="text-xs text-slate-500">Agregar</span>
+            </button>
+            <div *ngIf="techResults().length === 0 && techSearch()" class="text-xs text-slate-500">Sin resultados.</div>
+          </div>
+        </ng-container>
+
+        <ng-template #createTechModal>
+          <form class="space-y-3" [formGroup]="techForm" (ngSubmit)="createTechMember()">
+            <input
+              formControlName="name"
+              placeholder="Nombre completo"
+              class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+            <input
+              formControlName="email"
+              placeholder="Correo"
+              class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+            <input
+              formControlName="mobile"
+              placeholder="Movil"
+              class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+            <input
+              type="password"
+              formControlName="password"
+              placeholder="Contrasena"
+              class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+
             <div>
-              <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Proyecto</p>
-              <h2 class="mt-2 text-3xl font-semibold">{{ project()?.name }}</h2>
-              <p class="mt-2 text-sm text-slate-400">
-                {{ project()?.description || 'Sin descripcion todavia.' }}
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Roles tecnicos</p>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  *ngFor="let role of techRoles()"
+                  (click)="toggleTechRole(role.id)"
+                  class="rounded-full border px-3 py-1 text-xs font-semibold"
+                  [ngClass]="isTechRoleSelected(role.id) ? 'border-blue-500 bg-blue-600 text-white' : 'border-slate-800 text-slate-300'"
+                >
+                  {{ role.name }}
+                </button>
+              </div>
+              <p *ngIf="techRoles().length === 0" class="mt-2 text-xs text-slate-500">No hay roles tecnicos disponibles.</p>
+              <p *ngIf="techForm.get('techRoleIds')?.touched && techForm.get('techRoleIds')?.invalid" class="mt-2 text-xs text-amber-300">
+                Selecciona al menos un rol tecnico.
               </p>
             </div>
-            <div class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-xs text-slate-400">
-              <p>Inicio: {{ project()?.start_date || '-' }}</p>
-              <p>Fin: {{ project()?.end_date || '-' }}</p>
-            </div>
-          </div>
-        </section>
 
-        <section class="grid gap-4 md:grid-cols-3">
-          <div class="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-            <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Procesos</p>
-            <p class="mt-3 text-sm text-slate-400">Crea y estructura los procesos principales.</p>
-            <a
-              [routerLink]="['/projects', project()?.id, 'processes']"
-              class="mt-4 inline-flex text-xs font-semibold text-blue-400"
+            <button
+              type="submit"
+              class="w-full rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+              [disabled]="memberSaving()"
             >
-              Ir a procesos
-            </a>
-          </div>
-          <div class="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-            <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Stakeholders</p>
-            <p class="mt-3 text-sm text-slate-400">Gestiona roles y perfiles del cliente.</p>
-            <button class="mt-4 text-xs font-semibold text-blue-400">Ir a stakeholders</button>
-          </div>
-          <div class="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-            <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Requerimientos</p>
-            <p class="mt-3 text-sm text-slate-400">Documenta requerimientos y tecnicas asociadas.</p>
-            <button class="mt-4 text-xs font-semibold text-blue-400">Ir a requerimientos</button>
-          </div>
-        </section>
+              Crear y asignar
+            </button>
+          </form>
+        </ng-template>
+      </ng-container>
 
-        <section class="space-y-4">
-          <div class="flex items-center justify-between">
-            <h3 class="text-xl font-semibold">Equipo y stakeholders</h3>
-            <span class="text-xs text-slate-500">Gestion por proyecto</span>
-          </div>
-
-          <div *ngIf="membersError()" class="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-amber-300">
-            {{ membersError() }}
-          </div>
-          <div *ngIf="rolesError()" class="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-amber-300">
-            {{ rolesError() }}
+      <ng-template #clientModal>
+        <ng-container *ngIf="memberModalMode() === 'existing'; else createClientModal">
+          <div class="flex flex-col gap-2 md:flex-row">
+            <input
+              type="text"
+              [value]="clientSearch()"
+              (input)="setClientSearch($any($event.target).value)"
+              placeholder="Buscar cliente por nombre o correo"
+              class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+            <button type="button" class="rounded-2xl bg-blue-600 px-4 py-3 text-xs font-semibold text-white" (click)="searchClient()">
+              Buscar
+            </button>
           </div>
 
-          <div *ngIf="membersLoading()" class="grid gap-3 md:grid-cols-2">
-            <div class="h-32 animate-pulse rounded-2xl bg-slate-900"></div>
-            <div class="h-32 animate-pulse rounded-2xl bg-slate-900"></div>
+          <div class="grid gap-2">
+            <button
+              type="button"
+              *ngFor="let user of clientResults()"
+              (click)="addClientMember(user)"
+              class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-left"
+              [disabled]="memberSaving()"
+            >
+              <div>
+                <p class="text-sm font-semibold text-white">{{ user.name }}</p>
+                <p class="text-xs text-slate-400">{{ user.email }}</p>
+              </div>
+              <span class="text-xs text-slate-500">Agregar</span>
+            </button>
+            <div *ngIf="clientResults().length === 0 && clientSearch()" class="text-xs text-slate-500">Sin resultados.</div>
           </div>
+        </ng-container>
 
-          <div *ngIf="!membersLoading()" class="grid gap-6 lg:grid-cols-2">
-            <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
-              <div class="space-y-1">
-                <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Equipo tecnico</p>
-                <p class="text-sm text-slate-400">Usuarios TECH asignados al proyecto.</p>
-              </div>
+        <ng-template #createClientModal>
+          <form class="space-y-3" [formGroup]="clientForm" (ngSubmit)="createClientMember()">
+            <input
+              formControlName="name"
+              placeholder="Nombre completo"
+              class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+            <input
+              formControlName="email"
+              placeholder="Correo"
+              class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+            <input
+              formControlName="mobile"
+              placeholder="Movil"
+              class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+            <input
+              formControlName="company"
+              placeholder="Empresa"
+              class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+            <select
+              formControlName="stakeholderRoleId"
+              class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white focus:border-blue-500 focus:outline-none"
+            >
+              <option [ngValue]="null">Selecciona un rol</option>
+              <option *ngFor="let role of clientRoles()" [ngValue]="role.id">{{ role.name }}</option>
+            </select>
+            <p *ngIf="clientForm.get('stakeholderRoleId')?.touched && clientForm.get('stakeholderRoleId')?.invalid" class="text-xs text-amber-300">
+              Selecciona un rol para el stakeholder.
+            </p>
 
-              <div class="mt-4 space-y-3">
-                <div *ngIf="techMembers().length === 0" class="text-xs text-slate-500">
-                  No hay tecnicos asignados.
-                </div>
-                <div *ngFor="let member of techMembers()" class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3">
-                  <p class="text-sm font-semibold text-white">{{ member.name }}</p>
-                  <p class="text-xs text-slate-400">{{ member.email }}</p>
-                  <p class="text-xs text-slate-500">{{ member.mobile || 'Sin movil' }}</p>
-                </div>
-              </div>
-
-              <div class="mt-6 space-y-3">
-                <div class="flex flex-col gap-2 md:flex-row">
-                  <input
-                    type="text"
-                    [value]="techSearch()"
-                    (input)="setTechSearch($any($event.target).value)"
-                    placeholder="Buscar tecnico por nombre o correo"
-                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    class="rounded-2xl bg-blue-600 px-4 py-3 text-xs font-semibold text-white"
-                    (click)="searchTech()"
-                  >
-                    Buscar
-                  </button>
-                </div>
-
-                <div class="grid gap-2">
-                  <button
-                    type="button"
-                    *ngFor="let user of techResults()"
-                    (click)="addTechMember(user)"
-                    class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-left"
-                    [disabled]="memberSaving()"
-                  >
-                    <div>
-                      <p class="text-sm font-semibold text-white">{{ user.name }}</p>
-                      <p class="text-xs text-slate-400">{{ user.email }}</p>
-                    </div>
-                    <span class="text-xs text-slate-500">Agregar</span>
-                  </button>
-                  <div *ngIf="techResults().length === 0 && techSearch()" class="text-xs text-slate-500">
-                    Sin resultados.
-                  </div>
-                </div>
-              </div>
-
-              <div class="mt-6 border-t border-slate-800 pt-6">
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Crear tecnico</p>
-                <form class="mt-4 space-y-3" [formGroup]="techForm" (ngSubmit)="createTechMember()">
-                  <input
-                    formControlName="name"
-                    placeholder="Nombre completo"
-                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                  />
-                  <input
-                    formControlName="email"
-                    placeholder="Correo"
-                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                  />
-                  <input
-                    formControlName="mobile"
-                    placeholder="Movil"
-                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                  />
-                  <input
-                    type="password"
-                    formControlName="password"
-                    placeholder="Contrasena"
-                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                  />
-
-                  <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">Roles tecnicos</p>
-                    <div class="mt-2 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        *ngFor="let role of techRoles()"
-                        (click)="toggleTechRole(role.id)"
-                        class="rounded-full border px-3 py-1 text-xs font-semibold"
-                        [ngClass]="isTechRoleSelected(role.id) ? 'border-blue-500 bg-blue-600 text-white' : 'border-slate-800 text-slate-300'"
-                      >
-                        {{ role.name }}
-                      </button>
-                    </div>
-                    <p *ngIf="techRoles().length === 0" class="mt-2 text-xs text-slate-500">
-                      No hay roles tecnicos disponibles.
-                    </p>
-                    <p
-                      *ngIf="techForm.get('techRoleIds')?.touched && techForm.get('techRoleIds')?.invalid"
-                      class="mt-2 text-xs text-amber-300"
-                    >
-                      Selecciona al menos un rol tecnico.
-                    </p>
-                  </div>
-
-                  <button
-                    type="submit"
-                    class="w-full rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
-                    [disabled]="memberSaving()"
-                  >
-                    Crear y asignar
-                  </button>
-                </form>
-              </div>
-            </div>
-
-            <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
-              <div class="space-y-1">
-                <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Stakeholders</p>
-                <p class="text-sm text-slate-400">Usuarios CLIENT documentados en el proyecto.</p>
-              </div>
-
-              <div class="mt-4 space-y-3">
-                <div *ngIf="clientMembers().length === 0" class="text-xs text-slate-500">
-                  No hay stakeholders asignados.
-                </div>
-                <div *ngFor="let member of clientMembers()" class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3">
-                  <p class="text-sm font-semibold text-white">{{ member.name }}</p>
-                  <p class="text-xs text-slate-400">{{ member.email }}</p>
-                  <p class="text-xs text-slate-500">{{ member.companyName || 'Sin empresa' }} - {{ member.roleName || 'Sin rol' }}</p>
-                </div>
-              </div>
-
-              <div class="mt-6 space-y-3">
-                <div class="flex flex-col gap-2 md:flex-row">
-                  <input
-                    type="text"
-                    [value]="clientSearch()"
-                    (input)="setClientSearch($any($event.target).value)"
-                    placeholder="Buscar cliente por nombre o correo"
-                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    class="rounded-2xl bg-blue-600 px-4 py-3 text-xs font-semibold text-white"
-                    (click)="searchClient()"
-                  >
-                    Buscar
-                  </button>
-                </div>
-
-                <div class="grid gap-2">
-                  <button
-                    type="button"
-                    *ngFor="let user of clientResults()"
-                    (click)="addClientMember(user)"
-                    class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-left"
-                    [disabled]="memberSaving()"
-                  >
-                    <div>
-                      <p class="text-sm font-semibold text-white">{{ user.name }}</p>
-                      <p class="text-xs text-slate-400">{{ user.email }}</p>
-                    </div>
-                    <span class="text-xs text-slate-500">Agregar</span>
-                  </button>
-                  <div *ngIf="clientResults().length === 0 && clientSearch()" class="text-xs text-slate-500">
-                    Sin resultados.
-                  </div>
-                </div>
-              </div>
-
-              <div class="mt-6 border-t border-slate-800 pt-6">
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Crear stakeholder</p>
-                <form class="mt-4 space-y-3" [formGroup]="clientForm" (ngSubmit)="createClientMember()">
-                  <input
-                    formControlName="name"
-                    placeholder="Nombre completo"
-                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                  />
-                  <input
-                    formControlName="email"
-                    placeholder="Correo"
-                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                  />
-                  <input
-                    formControlName="mobile"
-                    placeholder="Movil"
-                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                  />
-                  <input
-                    formControlName="company"
-                    placeholder="Empresa"
-                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                  />
-                  <select
-                    formControlName="stakeholderRoleId"
-                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-white focus:border-blue-500 focus:outline-none"
-                  >
-                    <option [ngValue]="null">Selecciona un rol</option>
-                    <option *ngFor="let role of clientRoles()" [ngValue]="role.id">{{ role.name }}</option>
-                  </select>
-                  <p
-                    *ngIf="clientForm.get('stakeholderRoleId')?.touched && clientForm.get('stakeholderRoleId')?.invalid"
-                    class="text-xs text-amber-300"
-                  >
-                    Selecciona un rol para el stakeholder.
-                  </p>
-
-                  <button
-                    type="submit"
-                    class="w-full rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
-                    [disabled]="memberSaving()"
-                  >
-                    Crear y asignar
-                  </button>
-                </form>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    </main>
+            <button
+              type="submit"
+              class="w-full rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+              [disabled]="memberSaving()"
+            >
+              Crear y asignar
+            </button>
+          </form>
+        </ng-template>
+      </ng-template>
+    </div>
+  </section>
+</div>
