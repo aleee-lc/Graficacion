@@ -8,6 +8,7 @@ import {
   type ValidationErrors
 } from '@angular/forms';
 import { RolesService, type Role } from '../../services/roles.service';
+import { TechniquesService, type Technique } from '../../services/techniques.service';
 import { UsersService, type CreateUserPayload, type UserSummary } from '../../services/users.service';
 
 type UserType = 'TECH' | 'CLIENT';
@@ -49,12 +50,24 @@ export class Users {
   readonly editingRoleName = signal('');
   readonly newRoleName = signal('');
 
+  readonly techniques = signal<Technique[]>([]);
+  readonly techniquesLoading = signal(false);
+  readonly techniquesError = signal<string | null>(null);
+  readonly techniqueSaving = signal(false);
+  readonly techniqueActionId = signal<number | null>(null);
+  readonly editingTechniqueId = signal<number | null>(null);
+  readonly editingTechniqueName = signal('');
+  readonly editingTechniqueDescription = signal('');
+  readonly newTechniqueName = signal('');
+  readonly newTechniqueDescription = signal('');
+
   readonly form;
 
   constructor(
     private readonly fb: FormBuilder,
     private readonly usersService: UsersService,
-    private readonly rolesService: RolesService
+    private readonly rolesService: RolesService,
+    private readonly techniquesService: TechniquesService
   ) {
     this.form = this.fb.group({
       name: ['', [Validators.required, Validators.minLength(2)]],
@@ -69,6 +82,7 @@ export class Users {
     this.applyTypeValidators(this.createUserType());
     this.loadUsers();
     this.loadRoles();
+    this.loadTechniques();
   }
 
   setUserType(type: UserType) {
@@ -129,6 +143,22 @@ export class Users {
 
   setEditingRoleName(value: string) {
     this.editingRoleName.set(value);
+  }
+
+  setNewTechniqueName(value: string) {
+    this.newTechniqueName.set(value);
+  }
+
+  setNewTechniqueDescription(value: string) {
+    this.newTechniqueDescription.set(value);
+  }
+
+  setEditingTechniqueName(value: string) {
+    this.editingTechniqueName.set(value);
+  }
+
+  setEditingTechniqueDescription(value: string) {
+    this.editingTechniqueDescription.set(value);
   }
 
   toggleTechRole(roleId: number) {
@@ -296,6 +326,102 @@ export class Users {
     });
   }
 
+  createTechnique() {
+    const name = this.newTechniqueName().trim();
+    const description = this.newTechniqueDescription().trim();
+
+    if (!name) {
+      this.techniquesError.set('El nombre de la tecnica es obligatorio.');
+      return;
+    }
+
+    this.techniqueSaving.set(true);
+    this.techniquesError.set(null);
+
+    this.techniquesService
+      .createTechnique({
+        name,
+        description: description || null
+      })
+      .subscribe({
+        next: () => {
+          this.newTechniqueName.set('');
+          this.newTechniqueDescription.set('');
+          this.techniqueSaving.set(false);
+          this.loadTechniques();
+        },
+        error: (err) => {
+          this.techniqueSaving.set(false);
+          const message = err?.error?.message ?? 'No se pudo crear la tecnica.';
+          this.techniquesError.set(message);
+        }
+      });
+  }
+
+  startEditTechnique(technique: Technique) {
+    this.editingTechniqueId.set(technique.id);
+    this.editingTechniqueName.set(technique.name);
+    this.editingTechniqueDescription.set(technique.description ?? '');
+    this.techniquesError.set(null);
+  }
+
+  cancelEditTechnique() {
+    this.editingTechniqueId.set(null);
+    this.editingTechniqueName.set('');
+    this.editingTechniqueDescription.set('');
+  }
+
+  saveTechnique() {
+    const techniqueId = this.editingTechniqueId();
+    const name = this.editingTechniqueName().trim();
+    const description = this.editingTechniqueDescription().trim();
+
+    if (!techniqueId || !name) {
+      return;
+    }
+
+    this.techniqueActionId.set(techniqueId);
+    this.techniquesError.set(null);
+
+    this.techniquesService
+      .updateTechnique(techniqueId, {
+        name,
+        description: description || null
+      })
+      .subscribe({
+        next: () => {
+          this.techniqueActionId.set(null);
+          this.cancelEditTechnique();
+          this.loadTechniques();
+        },
+        error: (err) => {
+          this.techniqueActionId.set(null);
+          const message = err?.error?.message ?? 'No se pudo actualizar la tecnica.';
+          this.techniquesError.set(message);
+        }
+      });
+  }
+
+  deleteTechnique(techniqueId: number) {
+    this.techniqueActionId.set(techniqueId);
+    this.techniquesError.set(null);
+
+    this.techniquesService.deleteTechnique(techniqueId).subscribe({
+      next: () => {
+        this.techniqueActionId.set(null);
+        if (this.editingTechniqueId() === techniqueId) {
+          this.cancelEditTechnique();
+        }
+        this.loadTechniques();
+      },
+      error: (err) => {
+        this.techniqueActionId.set(null);
+        const message = err?.error?.message ?? 'No se pudo eliminar la tecnica.';
+        this.techniquesError.set(message);
+      }
+    });
+  }
+
   private loadRoles() {
     this.rolesLoading.set(true);
     this.rolesError.set(null);
@@ -334,6 +460,23 @@ export class Users {
         this.rolesError.set('No se pudieron cargar los roles de stakeholders.');
         clientLoaded = true;
         finalize();
+      }
+    });
+  }
+
+  private loadTechniques() {
+    this.techniquesLoading.set(true);
+    this.techniquesError.set(null);
+
+    this.techniquesService.getTechniques().subscribe({
+      next: (response) => {
+        this.techniques.set(response.techniques ?? []);
+        this.techniquesLoading.set(false);
+      },
+      error: () => {
+        this.techniques.set([]);
+        this.techniquesError.set('No se pudieron cargar las tecnicas.');
+        this.techniquesLoading.set(false);
       }
     });
   }

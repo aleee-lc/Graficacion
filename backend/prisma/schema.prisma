@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model UserType {
+  id    Int    @id
+  code  String @unique
+  users User[]
+
+  @@map("user_types")
+}
+
+model User {
+  id                 Int                 @id @default(autoincrement())
+  name               String?
+  email              String?             @unique
+  password           String?
+  createdAt          DateTime?           @default(now()) @map("created_at") @db.Timestamptz(6)
+  userTypeId         Int?                @map("user_type")
+  userType           UserType?           @relation(fields: [userTypeId], references: [id], map: "fk_user_type")
+  stakeholderProfile StakeholderProfile?
+  techUserRoles      TechUserRole[]
+  projectUsers       ProjectUser[]
+
+  @@map("users")
+}
+
+model TechRole {
+  id            Int           @id @default(autoincrement())
+  name          String?
+  techUserRoles TechUserRole[]
+
+  @@map("tech_roles")
+}
+
+model TechUserRole {
+  userId Int      @map("user_id")
+  roleId Int      @map("role_id")
+  user   User     @relation(fields: [userId], references: [id], map: "tech_user_roles_user_id_fkey")
+  role   TechRole @relation(fields: [roleId], references: [id], map: "tech_user_roles_role_id_fkey")
+
+  @@id([userId, roleId], map: "tech_user_roles_pkey")
+  @@map("tech_user_roles")
+}
+
+model StakeholderRole {
+  id                 Int                 @id @default(autoincrement())
+  name               String?
+  stakeholderProfile StakeholderProfile[]
+
+  @@map("stakeholder_roles")
+}
+
+model StakeholderProfile {
+  userId            Int              @id @map("user_id")
+  stakeholderRoleId Int?             @map("stakeholder_role_id")
+  companyName       String?          @map("company_name")
+  user              User             @relation(fields: [userId], references: [id], map: "stakeholder_profile_user_id_fkey")
+  stakeholderRole   StakeholderRole? @relation(fields: [stakeholderRoleId], references: [id], map: "stakeholder_profile_stakeholder_role_id_fkey")
+
+  @@map("stakeholder_profile")
+}
+
+model Project {
+  id          Int          @id @default(autoincrement())
+  name        String?
+  description String?
+  startDate   DateTime?    @map("start_date") @db.Date
+  endDate     DateTime?    @map("end_date") @db.Date
+  projectUsers ProjectUser[]
+
+  @@map("projects")
+}
+
+model ProjectUser {
+  projectId Int     @map("project_id")
+  userId    Int     @map("user_id")
+  project   Project @relation(fields: [projectId], references: [id], map: "project_users_project_id_fkey")
+  user      User    @relation(fields: [userId], references: [id], map: "project_users_user_id_fkey")
+
+  @@id([projectId, userId], map: "project_users_pkey")
+  @@map("project_users")
+}

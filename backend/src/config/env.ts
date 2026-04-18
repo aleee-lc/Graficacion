@@ -14,7 +14,13 @@ const envSchema = z.object({
   DB_SSL: z.string().default('false'),
   JWT_SECRET: z.string().min(10, 'JWT_SECRET is required'),
   JWT_EXPIRES_IN: z.string().default('7d'),
-  CORS_ORIGIN: z.string().default('http://localhost:4200')
+  CORS_ORIGIN: z.string().default('http://localhost:4200'),
+  SUPABASE_URL: z.string().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  SUPABASE_STORAGE_BUCKET: z.string().optional(),
+  EVIDENCE_MAX_SIZE_MB: z.string().default('25'),
+  EVIDENCE_ALLOWED_MIME: z.string().optional(),
+  EVIDENCE_SIGNED_URL_TTL_SECONDS: z.string().default('600')
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -24,6 +30,9 @@ if (!parsed.success) {
   console.error('Invalid environment variables:', parsed.error.flatten().fieldErrors);
   throw new Error('Invalid environment variables');
 }
+
+const parsedEvidenceMaxSizeMb = Number(parsed.data.EVIDENCE_MAX_SIZE_MB);
+const parsedEvidenceTtlSeconds = Number(parsed.data.EVIDENCE_SIGNED_URL_TTL_SECONDS);
 
 export const env = {
   PORT: Number(parsed.data.PORT),
@@ -36,5 +45,18 @@ export const env = {
   DB_SSL: parsed.data.DB_SSL.toLowerCase() === 'true',
   JWT_SECRET: parsed.data.JWT_SECRET,
   JWT_EXPIRES_IN: parsed.data.JWT_EXPIRES_IN,
-  CORS_ORIGIN: parsed.data.CORS_ORIGIN
+  CORS_ORIGIN: parsed.data.CORS_ORIGIN,
+  SUPABASE_URL: parsed.data.SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY: parsed.data.SUPABASE_SERVICE_ROLE_KEY,
+  SUPABASE_STORAGE_BUCKET: parsed.data.SUPABASE_STORAGE_BUCKET,
+  EVIDENCE_MAX_SIZE_MB:
+    Number.isFinite(parsedEvidenceMaxSizeMb) && parsedEvidenceMaxSizeMb > 0 ? parsedEvidenceMaxSizeMb : 25,
+  EVIDENCE_ALLOWED_MIME: (parsed.data.EVIDENCE_ALLOWED_MIME ?? '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean),
+  EVIDENCE_SIGNED_URL_TTL_SECONDS:
+    Number.isFinite(parsedEvidenceTtlSeconds) && parsedEvidenceTtlSeconds >= 60
+      ? Math.floor(parsedEvidenceTtlSeconds)
+      : 600
 };

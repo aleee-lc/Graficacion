@@ -34,6 +34,7 @@ export class Home {
 
   readonly projectsCount = computed(() => this.projects().length);
   readonly form;
+  readonly modalOpen = this.wizardOpen;
 
   constructor(
     private readonly fb: FormBuilder,
@@ -95,6 +96,62 @@ export class Home {
       tech: { name: '', email: '', mobile: '', password: '' },
       client: { name: '', email: '', mobile: '', company: '', role: '' }
     });
+  }
+
+  // Backward-compatible aliases used by the current template.
+  openModal() {
+    this.openWizard();
+  }
+
+  closeModal() {
+    this.closeWizard();
+  }
+
+  submitProject() {
+    const projectGroup = this.form.get('project');
+    if (projectGroup?.invalid) {
+      projectGroup.markAllAsTouched();
+      return;
+    }
+
+    const project = this.form.getRawValue().project;
+    if (!project) {
+      return;
+    }
+
+    this.saving.set(true);
+    this.wizardError.set(null);
+
+    this.projectsService
+      .createProject({
+        name: project.name ?? '',
+        description: project.description || null,
+        start_date: project.start_date || null,
+        end_date: project.end_date || null
+      })
+      .subscribe({
+        next: (response) => {
+          this.projects.update((current) => [
+            {
+              id: response.id,
+              name: project.name ?? '',
+              description: project.description || null,
+              start_date: project.start_date || null,
+              end_date: project.end_date || null
+            },
+            ...current
+          ]);
+          this.saving.set(false);
+          this.closeModal();
+        },
+        error: (err) => {
+          this.saving.set(false);
+          const message =
+            err?.error?.message ??
+            'No se pudo crear el proyecto. Revisa los datos e intenta de nuevo.';
+          this.wizardError.set(message);
+        }
+      });
   }
 
   setTechMode(mode: 'existing' | 'create') {
@@ -318,3 +375,8 @@ export class Home {
     });
   }
 }
+
+
+
+
+
