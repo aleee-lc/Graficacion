@@ -5,6 +5,8 @@ import { API_BASE_URL } from '../config/api';
 export type Project = {
   id: number;
   name: string;
+  objective?: string | null;
+  scope?: string | null;
   description: string | null;
   start_date: string | null;
   end_date: string | null;
@@ -23,6 +25,8 @@ export type ProjectUser = {
 
 export type CreateProjectPayload = {
   name: string;
+  objective?: string | null;
+  scope?: string | null;
   description?: string | null;
   start_date?: string | null;
   end_date?: string | null;
@@ -61,6 +65,10 @@ export class ProjectsService {
 
   getProject(id: number) {
     return this.http.get<{ project: Project }>(`${API_BASE_URL}/projects/${id}`);
+  }
+
+  updateProject(id: number, payload: CreateProjectPayload) {
+    return this.http.put<{ message: string }>(`${API_BASE_URL}/projects/${id}`, payload);
   }
 
   getProjectUsers(id: number) {

@@ -1,0 +1,157 @@
+<main class="mx-auto w-full max-w-6xl space-y-6 px-6 py-8 text-slate-100">
+  <header class="rounded-3xl border border-slate-800 bg-slate-900 px-6 py-5">
+    <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Paso 1 de 5</p>
+    <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold">Proyecto y Stakeholders</h1>
+        <p class="mt-1 text-sm text-slate-400">
+          Define contexto de proyecto y actores fuente antes de capturar sesiones.
+        </p>
+        <p class="mt-2 text-xs" [class.text-emerald-300]="flowStatus()?.steps?.step1?.complete" [class.text-amber-300]="!flowStatus()?.steps?.step1?.complete">
+          {{ flowStatus()?.steps?.step1?.complete ? 'Completado' : 'Pendiente: objetivo + al menos 1 stakeholder' }}
+        </p>
+      </div>
+      <a
+        *ngIf="projectId() && canContinueToSessions()"
+        [routerLink]="['/projects', projectId(), 'sessions']"
+        class="rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white"
+      >
+        Siguiente accion: capturar sesiones
+      </a>
+      <span
+        *ngIf="projectId() && !canContinueToSessions()"
+        class="rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-400"
+      >
+        Completa este paso para continuar
+      </span>
+    </div>
+  </header>
+
+  <div *ngIf="error()" class="rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+    {{ error() }}
+  </div>
+  <div *ngIf="success()" class="rounded-2xl border border-emerald-400/40 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+    {{ success() }}
+  </div>
+
+  <section *ngIf="!loading()" class="grid gap-6 lg:grid-cols-2">
+    <article class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+      <h2 class="text-lg font-semibold">Contexto del proyecto</h2>
+      <form class="mt-4 space-y-4" [formGroup]="projectForm" (ngSubmit)="saveProject()">
+        <div>
+          <label class="text-xs uppercase tracking-[0.2em] text-slate-400">Nombre</label>
+          <input
+            formControlName="name"
+            class="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm"
+          />
+        </div>
+        <div>
+          <label class="text-xs uppercase tracking-[0.2em] text-slate-400">Objetivo</label>
+          <textarea
+            rows="3"
+            formControlName="objective"
+            class="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm"
+          ></textarea>
+          <p
+            *ngIf="projectForm.get('objective')?.touched && projectForm.get('objective')?.invalid"
+            class="mt-1 text-xs text-amber-300"
+          >
+            El objetivo es obligatorio (minimo 12 caracteres).
+          </p>
+        </div>
+        <div>
+          <label class="text-xs uppercase tracking-[0.2em] text-slate-400">Alcance</label>
+          <textarea
+            rows="2"
+            formControlName="scope"
+            class="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm"
+          ></textarea>
+        </div>
+        <div>
+          <label class="text-xs uppercase tracking-[0.2em] text-slate-400">Descripcion</label>
+          <textarea
+            rows="2"
+            formControlName="description"
+            class="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm"
+          ></textarea>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label class="text-xs uppercase tracking-[0.2em] text-slate-400">Inicio</label>
+            <input
+              type="date"
+              formControlName="start_date"
+              class="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm"
+            />
+          </div>
+          <div>
+            <label class="text-xs uppercase tracking-[0.2em] text-slate-400">Fin</label>
+            <input
+              type="date"
+              formControlName="end_date"
+              class="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm"
+            />
+          </div>
+        </div>
+        <button
+          type="submit"
+          class="w-full rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          [disabled]="savingProject()"
+        >
+          {{ savingProject() ? 'Guardando...' : 'Guardar proyecto' }}
+        </button>
+      </form>
+    </article>
+
+    <article class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+      <h2 class="text-lg font-semibold">Stakeholders fuente</h2>
+      <form class="mt-4 grid gap-3" [formGroup]="stakeholderForm" (ngSubmit)="addStakeholder()">
+        <input
+          formControlName="name"
+          placeholder="Nombre"
+          class="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm"
+        />
+        <input
+          formControlName="role"
+          placeholder="Rol"
+          class="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm"
+        />
+        <div class="grid gap-3 sm:grid-cols-2">
+          <select formControlName="type" class="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm">
+            <option value="internal">Interno</option>
+            <option value="external">Externo</option>
+          </select>
+          <input
+            formControlName="contact"
+            placeholder="Contacto"
+            class="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm"
+          />
+        </div>
+        <button
+          type="submit"
+          class="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          [disabled]="savingStakeholder()"
+        >
+          {{ savingStakeholder() ? 'Agregando...' : 'CTA principal: agregar stakeholder' }}
+        </button>
+      </form>
+
+      <div class="mt-5 space-y-2">
+        <div *ngIf="stakeholders().length === 0" class="rounded-2xl border border-dashed border-slate-700 px-4 py-4 text-sm text-slate-400">
+          Sin stakeholders registrados.
+        </div>
+        <div
+          *ngFor="let stakeholder of stakeholders()"
+          class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <p class="text-sm font-semibold">{{ stakeholder.name }}</p>
+            <span class="rounded-full border border-slate-700 px-2 py-1 text-[10px] uppercase">{{ stakeholder.type }}</span>
+          </div>
+          <p class="text-xs text-slate-400">{{ stakeholder.role }}</p>
+          <p class="text-xs text-slate-500">{{ stakeholder.contact || 'Sin contacto' }}</p>
+        </div>
+      </div>
+    </article>
+  </section>
+</main>

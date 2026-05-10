@@ -1,11 +1,29 @@
-import { Router } from 'express';
+import { randomUUID } from 'crypto';
+import { Router, type Response } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
+import { env } from '../config/env';
 import { getTechniqueStatusIdByCode } from '../db/catalogs';
 import { pool } from '../db/pool';
+import { getSupabaseStorageClient } from '../lib/supabase-storage';
 import { requireAuth, type AuthRequest } from '../middleware/auth';
 
 const router = Router();
 router.use(requireAuth);
+
+// DEPRECATED (traceability refactor):
+// These subprocess/technique assignment endpoints are legacy ERP-oriented behavior.
+// Keep existing consumers working while migrating to traceability core endpoints.
+router.use((req, res, next) => {
+  res.setHeader('Deprecation', 'true');
+  res.setHeader(
+    'Warning',
+    '299 - "Deprecated endpoint. Migrate to /projects/:id/sessions and traceability flow endpoints."'
+  );
+  // eslint-disable-next-line no-console
+  console.warn(`[DEPRECATED] ${req.method} ${req.originalUrl}`);
+  next();
+});
 
 const subprocessSchema = z.object({
   name: z.string().min(1),
@@ -35,6 +53,38 @@ const updateTechniqueAssignmentSchema = z
   .refine((value) => Object.keys(value).length > 0, {
     message: 'At least one field is required'
   });
+
+const evidenceNotesSchema = z.object({
+  notes: z.string().max(4000).optional().nullable()
+});
+
+const signedUrlRequestSchema = z.object({
+  expires_in: z.number().int().min(60).max(3600).optional()
+});
+
+const DEFAULT_ALLOWED_EVIDENCE_MIME_TYPES = [
+  'audio/*',
+  'image/*',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain'
+];
+
+const MAX_EVIDENCE_FILES_PER_REQUEST = 10;
+const effectiveAllowedEvidenceMimeTypes =
+  env.EVIDENCE_ALLOWED_MIME.length > 0 ? env.EVIDENCE_ALLOWED_MIME : DEFAULT_ALLOWED_EVIDENCE_MIME_TYPES;
+const evidenceMaxSizeBytes = Math.max(1, Math.floor(env.EVIDENCE_MAX_SIZE_MB * 1024 * 1024));
+const defaultSignedUrlTtlSeconds = Math.max(60, env.EVIDENCE_SIGNED_URL_TTL_SECONDS);
+const evidenceUploadMiddleware = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: evidenceMaxSizeBytes,
+    files: MAX_EVIDENCE_FILES_PER_REQUEST
+  }
+}).fields([
+  { name: 'files', maxCount: MAX_EVIDENCE_FILES_PER_REQUEST },
+  { name: 'file', maxCount: 1 }
+]);
 
 type SubprocessRow = {
   id: number;
@@ -88,6 +138,38 @@ type ExistingAssignmentRow = {
   scheduled_date: string | null;
   duration_minutes: number | null;
   status: string;
+};
+
+type TechniqueAssignmentContextRow = {
+  assignment_id: number;
+  subprocess_id: number;
+  process_id: number;
+  project_id: number;
+};
+
+type TechniqueEvidenceRow = {
+  id: number;
+  subprocess_technique_id: number;
+  project_id: number;
+  uploaded_by_user_id: number;
+  uploaded_by_name: string | null;
+  uploaded_by_email: string | null;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  bucket: string;
+  object_path: string;
+  notes: string | null;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+type TechniqueEvidenceStorageRow = {
+  id: number;
+  subprocess_technique_id: number;
+  bucket: string;
+  object_path: string;
+  deleted_at: string | null;
 };
 
 const parseId = (value: string) => {
@@ -212,6 +294,195 @@ const getTechniqueAssignmentById = async (
   );
 
   return rows.rows[0] ?? null;
+};
+
+const getTechniqueAssignmentContext = async (
+  subprocessId: number,
+  assignmentId: number,
+  db: Pick<typeof pool, 'query'> = pool
+): Promise<TechniqueAssignmentContextRow | null> => {
+  const rows = await db.query<TechniqueAssignmentContextRow>(
+    `SELECT st.id AS assignment_id,
+            st.subprocess_id,
+            sp.process_id,
+            p.project_id
+     FROM subprocess_techniques st
+     INNER JOIN subprocesses sp ON sp.id = st.subprocess_id
+     INNER JOIN processes p ON p.id = sp.process_id
+     WHERE st.subprocess_id = $1
+       AND st.id = $2
+     LIMIT 1`,
+    [subprocessId, assignmentId]
+  );
+
+  return rows.rows[0] ?? null;
+};
+
+const getTechniqueEvidenceById = async (
+  assignmentId: number,
+  evidenceId: number,
+  db: Pick<typeof pool, 'query'> = pool
+): Promise<TechniqueEvidenceStorageRow | null> => {
+  const rows = await db.query<TechniqueEvidenceStorageRow>(
+    `SELECT id,
+            subprocess_technique_id,
+            bucket,
+            object_path,
+            deleted_at::text
+     FROM technique_evidences
+     WHERE subprocess_technique_id = $1
+       AND id = $2
+     LIMIT 1`,
+    [assignmentId, evidenceId]
+  );
+
+  return rows.rows[0] ?? null;
+};
+
+const listTechniqueEvidencesByAssignment = async (
+  assignmentId: number,
+  db: Pick<typeof pool, 'query'> = pool
+) => {
+  const rows = await db.query<TechniqueEvidenceRow>(
+    `SELECT te.id,
+            te.subprocess_technique_id,
+            te.project_id,
+            te.uploaded_by_user_id,
+            u.name AS uploaded_by_name,
+            u.email AS uploaded_by_email,
+            te.original_name,
+            te.mime_type,
+            te.size_bytes,
+            te.bucket,
+            te.object_path,
+            te.notes,
+            te.created_at::text,
+            te.deleted_at::text
+     FROM technique_evidences te
+     INNER JOIN users u ON u.id = te.uploaded_by_user_id
+     WHERE te.subprocess_technique_id = $1
+       AND te.deleted_at IS NULL
+     ORDER BY te.created_at DESC`,
+    [assignmentId]
+  );
+
+  return rows.rows;
+};
+
+const normalizeOptionalText = (value: unknown) => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const isEvidenceMimeTypeAllowed = (mimeType: string) => {
+  const normalized = mimeType.trim().toLowerCase();
+  return effectiveAllowedEvidenceMimeTypes.some((allowed) => {
+    if (allowed.endsWith('/*')) {
+      const prefix = allowed.slice(0, allowed.length - 1);
+      return normalized.startsWith(prefix);
+    }
+
+    return normalized === allowed;
+  });
+};
+
+const sanitizeFileName = (fileName: string) => {
+  const normalized = fileName.normalize('NFKD').replace(/[^\x00-\x7F]/g, '');
+  const sanitized = normalized
+    .replace(/[/\\?%*:|"<>]/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^\.+/, '')
+    .replace(/^-+/, '');
+  const trimmed = sanitized.slice(0, 120);
+  return trimmed.length > 0 ? trimmed : 'file';
+};
+
+const buildEvidenceObjectPath = (
+  projectId: number,
+  subprocessId: number,
+  assignmentId: number,
+  originalName: string
+) => {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const safeName = sanitizeFileName(originalName);
+  const token = randomUUID().replace(/-/g, '').slice(0, 12);
+
+  return `projects/${projectId}/subprocesses/${subprocessId}/assignments/${assignmentId}/${timestamp}-${token}-${safeName}`;
+};
+
+const runEvidenceUpload = (req: AuthRequest, res: Response): Promise<void> =>
+  new Promise((resolve, reject) => {
+    evidenceUploadMiddleware(req, res, (error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+
+const getUploadedEvidenceFiles = (req: AuthRequest): Express.Multer.File[] => {
+  const rawFiles = (
+    req as AuthRequest & {
+      files?: Express.Multer.File[] | Record<string, Express.Multer.File[]>;
+    }
+  ).files;
+
+  if (!rawFiles) {
+    return [];
+  }
+
+  if (Array.isArray(rawFiles)) {
+    return rawFiles;
+  }
+
+  return [...(rawFiles.files ?? []), ...(rawFiles.file ?? [])];
+};
+
+const ensureEvidenceStorageConfiguration = () => {
+  if (!env.SUPABASE_STORAGE_BUCKET) {
+    return {
+      ok: false as const,
+      message: 'SUPABASE_STORAGE_BUCKET is not configured'
+    };
+  }
+
+  const client = getSupabaseStorageClient();
+  if (!client) {
+    return {
+      ok: false as const,
+      message: 'Supabase storage credentials are not configured'
+    };
+  }
+
+  return {
+    ok: true as const,
+    client,
+    bucket: env.SUPABASE_STORAGE_BUCKET
+  };
+};
+
+const removeEvidenceObjects = async (objectPaths: string[]) => {
+  if (objectPaths.length === 0) {
+    return;
+  }
+
+  const storage = ensureEvidenceStorageConfiguration();
+  if (!storage.ok) {
+    return;
+  }
+
+  const { error } = await storage.client.storage.from(storage.bucket).remove(objectPaths);
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to cleanup evidence objects', error);
+  }
 };
 
 router.get('/:id', async (req: AuthRequest, res) => {
@@ -730,6 +1001,324 @@ router.delete('/:id/techniques/:assignmentId', async (req: AuthRequest, res) => 
   } finally {
     client.release();
   }
+});
+
+router.post('/:id/techniques/:assignmentId/evidences', async (req: AuthRequest, res) => {
+  const userId = req.user?.sub;
+  const subprocessId = parseId(req.params.id);
+  const assignmentId = parseId(req.params.assignmentId);
+
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (!subprocessId || !assignmentId) {
+    res.status(400).json({ message: 'Invalid route params' });
+    return;
+  }
+  if (req.user?.userType !== 'TECH') {
+    res.status(403).json({ message: 'Only TECH users can upload evidences' });
+    return;
+  }
+
+  try {
+    await runEvidenceUpload(req, res);
+  } catch (error) {
+    if (error instanceof multer.MulterError) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        res.status(400).json({
+          message: `Evidence file exceeds max size of ${env.EVIDENCE_MAX_SIZE_MB} MB`
+        });
+        return;
+      }
+
+      res.status(400).json({ message: `Invalid evidence upload payload (${error.code})` });
+      return;
+    }
+
+    throw error;
+  }
+
+  const parsedNotes = evidenceNotesSchema.safeParse({
+    notes: normalizeOptionalText((req.body as { notes?: unknown })?.notes)
+  });
+  if (!parsedNotes.success) {
+    res.status(400).json({ message: 'Invalid request', errors: parsedNotes.error.flatten().fieldErrors });
+    return;
+  }
+
+  const files = getUploadedEvidenceFiles(req);
+  if (files.length === 0) {
+    res.status(400).json({ message: 'At least one evidence file is required' });
+    return;
+  }
+
+  const hasAccess = await hasSubprocessAccess(subprocessId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Subprocess not found' });
+    return;
+  }
+
+  const assignmentContext = await getTechniqueAssignmentContext(subprocessId, assignmentId);
+  if (!assignmentContext) {
+    res.status(404).json({ message: 'Technique assignment not found' });
+    return;
+  }
+
+  for (const file of files) {
+    if (!file.buffer || file.size <= 0) {
+      res.status(400).json({ message: `Evidence file "${file.originalname}" is empty` });
+      return;
+    }
+    if (!isEvidenceMimeTypeAllowed(file.mimetype)) {
+      res.status(400).json({
+        message: `Evidence file "${file.originalname}" has unsupported MIME type (${file.mimetype})`
+      });
+      return;
+    }
+  }
+
+  const storage = ensureEvidenceStorageConfiguration();
+  if (!storage.ok) {
+    res.status(500).json({ message: storage.message });
+    return;
+  }
+
+  const uploadedEvidence: Array<{
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    objectPath: string;
+  }> = [];
+
+  for (const file of files) {
+    const objectPath = buildEvidenceObjectPath(
+      assignmentContext.project_id,
+      subprocessId,
+      assignmentId,
+      file.originalname
+    );
+
+    const { error } = await storage.client.storage.from(storage.bucket).upload(objectPath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: false
+    });
+
+    if (error) {
+      await removeEvidenceObjects(uploadedEvidence.map((item) => item.objectPath));
+      res.status(502).json({
+        message: `Failed to store evidence "${file.originalname}" in Supabase Storage`
+      });
+      return;
+    }
+
+    uploadedEvidence.push({
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      objectPath
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    for (const item of uploadedEvidence) {
+      await client.query(
+        `INSERT INTO technique_evidences (
+          subprocess_technique_id,
+          project_id,
+          uploaded_by_user_id,
+          original_name,
+          mime_type,
+          size_bytes,
+          bucket,
+          object_path,
+          notes
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          assignmentId,
+          assignmentContext.project_id,
+          userId,
+          item.originalName,
+          item.mimeType,
+          item.sizeBytes,
+          storage.bucket,
+          item.objectPath,
+          parsedNotes.data.notes ?? null
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    const evidences = await listTechniqueEvidencesByAssignment(assignmentId);
+    res.status(201).json({ evidences });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    await removeEvidenceObjects(uploadedEvidence.map((item) => item.objectPath));
+    throw error;
+  } finally {
+    client.release();
+  }
+});
+
+router.get('/:id/techniques/:assignmentId/evidences', async (req: AuthRequest, res) => {
+  const userId = req.user?.sub;
+  const subprocessId = parseId(req.params.id);
+  const assignmentId = parseId(req.params.assignmentId);
+
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (!subprocessId || !assignmentId) {
+    res.status(400).json({ message: 'Invalid route params' });
+    return;
+  }
+
+  const hasAccess = await hasSubprocessAccess(subprocessId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Subprocess not found' });
+    return;
+  }
+
+  const assignmentContext = await getTechniqueAssignmentContext(subprocessId, assignmentId);
+  if (!assignmentContext) {
+    res.status(404).json({ message: 'Technique assignment not found' });
+    return;
+  }
+
+  const evidences = await listTechniqueEvidencesByAssignment(assignmentId);
+  res.json({ evidences });
+});
+
+router.post('/:id/techniques/:assignmentId/evidences/:evidenceId/signed-url', async (req: AuthRequest, res) => {
+  const userId = req.user?.sub;
+  const subprocessId = parseId(req.params.id);
+  const assignmentId = parseId(req.params.assignmentId);
+  const evidenceId = parseId(req.params.evidenceId);
+
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (!subprocessId || !assignmentId || !evidenceId) {
+    res.status(400).json({ message: 'Invalid route params' });
+    return;
+  }
+
+  const hasAccess = await hasSubprocessAccess(subprocessId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Subprocess not found' });
+    return;
+  }
+
+  const assignmentContext = await getTechniqueAssignmentContext(subprocessId, assignmentId);
+  if (!assignmentContext) {
+    res.status(404).json({ message: 'Technique assignment not found' });
+    return;
+  }
+
+  const parsed = signedUrlRequestSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ message: 'Invalid request', errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const evidence = await getTechniqueEvidenceById(assignmentId, evidenceId);
+  if (!evidence || evidence.deleted_at) {
+    res.status(404).json({ message: 'Evidence not found' });
+    return;
+  }
+
+  const expiresIn = parsed.data.expires_in ?? defaultSignedUrlTtlSeconds;
+  const storage = ensureEvidenceStorageConfiguration();
+  if (!storage.ok) {
+    res.status(500).json({ message: storage.message });
+    return;
+  }
+
+  const { data, error } = await storage.client.storage
+    .from(evidence.bucket)
+    .createSignedUrl(evidence.object_path, expiresIn);
+
+  if (error || !data?.signedUrl) {
+    res.status(502).json({ message: 'Failed to create evidence signed URL' });
+    return;
+  }
+
+  res.json({
+    url: data.signedUrl,
+    expires_in: expiresIn
+  });
+});
+
+router.delete('/:id/techniques/:assignmentId/evidences/:evidenceId', async (req: AuthRequest, res) => {
+  const userId = req.user?.sub;
+  const subprocessId = parseId(req.params.id);
+  const assignmentId = parseId(req.params.assignmentId);
+  const evidenceId = parseId(req.params.evidenceId);
+
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (!subprocessId || !assignmentId || !evidenceId) {
+    res.status(400).json({ message: 'Invalid route params' });
+    return;
+  }
+  if (req.user?.userType !== 'TECH') {
+    res.status(403).json({ message: 'Only TECH users can delete evidences' });
+    return;
+  }
+
+  const hasAccess = await hasSubprocessAccess(subprocessId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Subprocess not found' });
+    return;
+  }
+
+  const assignmentContext = await getTechniqueAssignmentContext(subprocessId, assignmentId);
+  if (!assignmentContext) {
+    res.status(404).json({ message: 'Technique assignment not found' });
+    return;
+  }
+
+  const evidence = await getTechniqueEvidenceById(assignmentId, evidenceId);
+  if (!evidence || evidence.deleted_at) {
+    res.status(404).json({ message: 'Evidence not found' });
+    return;
+  }
+
+  const storage = ensureEvidenceStorageConfiguration();
+  if (!storage.ok) {
+    res.status(500).json({ message: storage.message });
+    return;
+  }
+
+  const removeResult = await storage.client.storage.from(evidence.bucket).remove([evidence.object_path]);
+  if (removeResult.error) {
+    res.status(502).json({ message: 'Failed to delete evidence from Supabase Storage' });
+    return;
+  }
+
+  const result = await pool.query(
+    `UPDATE technique_evidences
+     SET deleted_at = NOW()
+     WHERE id = $1
+       AND subprocess_technique_id = $2
+       AND deleted_at IS NULL`,
+    [evidenceId, assignmentId]
+  );
+
+  if (!result.rowCount) {
+    res.status(409).json({ message: 'Evidence was already deleted' });
+    return;
+  }
+
+  res.json({ message: 'Evidence deleted' });
 });
 
 export default router;

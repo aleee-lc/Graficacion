@@ -1,43 +1,101 @@
 <div class="min-h-screen bg-slate-950 text-slate-100">
   <aside
-    class="group fixed left-0 top-0 z-50 flex h-screen w-16 flex-col border-r border-slate-800 bg-slate-950/95 backdrop-blur transition-all duration-300 hover:w-64"
+    class="group fixed left-0 top-0 z-50 flex h-screen w-16 flex-col border-r border-slate-800 bg-slate-950/95 backdrop-blur transition-all duration-300 hover:w-80"
   >
-    <div class="flex items-center gap-1 px-4 py-4">
-      <div class="flex h-10 w-20 items-center justify-center rounded-xl bg-blue-600 text-sm font-semibold text-white">
+    <div class="flex items-center gap-2 px-4 py-4">
+      <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-semibold text-white">
         G
       </div>
       <div class="opacity-0 transition-all duration-300 group-hover:opacity-100">
         <p class="text-sm font-semibold text-white">Graficacion</p>
-        <p class="text-xs text-slate-400">Workspace tecnico</p>
+        <p class="text-xs text-slate-400">Requirements traceability</p>
       </div>
     </div>
 
-    <nav class="mt-2 space-y-1 px-2 text-sm text-slate-300">
+    <nav class="mt-2 space-y-2 px-2 text-xs text-slate-300">
       <a
         routerLink="/home"
-        title="Home"
         class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+        [class.border]="isStepActive('/home')"
+        [class.border-slate-700]="isStepActive('/home')"
       >
-        <span class="material-icons text-lg">dashboard</span>
-        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Dashboard</span>
+        <span class="material-icons text-lg">home</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Projects</span>
       </a>
+
+      <div *ngIf="projectId()" class="px-1 pt-2">
+        <p class="px-2 text-[10px] uppercase tracking-[0.2em] text-slate-500 opacity-0 transition-all duration-300 group-hover:opacity-100">
+          Stepper 1-5
+        </p>
+        <div class="mt-2 hidden rounded-2xl border border-slate-800 bg-slate-900 p-3 text-[11px] group-hover:block">
+          <div class="flex items-center justify-between text-slate-400">
+            <span>Progress</span>
+            <span>{{ progressPercent() }}%</span>
+          </div>
+          <div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-800">
+            <div class="h-full rounded-full bg-blue-500 transition-all duration-300" [style.width.%]="progressPercent()"></div>
+          </div>
+          <p class="mt-2 text-[10px] text-slate-400">
+            Next action: {{ nextActionMessage() }}
+          </p>
+          <a
+            *ngIf="nextActionRoute()"
+            [routerLink]="nextActionRoute()!"
+            class="mt-2 inline-flex rounded-full bg-blue-600 px-3 py-1 text-[10px] font-semibold text-white"
+          >
+            Go to next action
+          </a>
+        </div>
+      </div>
+
+      <ng-container *ngFor="let step of flowSteps()">
+        <a
+          *ngIf="!step.locked"
+          [routerLink]="step.route"
+          class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+          [class.border]="isStepActive(step.route)"
+          [class.border-blue-500/50]="isStepActive(step.route)"
+          [class.bg-slate-900]="isStepActive(step.route)"
+        >
+          <span class="material-icons text-lg">
+            {{ step.complete ? 'task_alt' : 'radio_button_unchecked' }}
+          </span>
+          <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">
+            {{ step.label }}
+          </span>
+        </a>
+        <div
+          *ngIf="step.locked"
+          class="flex items-center gap-3 rounded-xl px-3 py-2 text-slate-500"
+          title="Complete previous step first"
+        >
+          <span class="material-icons text-lg">lock</span>
+          <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">
+            {{ step.label }}
+          </span>
+        </div>
+      </ng-container>
+    </nav>
+
+    <div class="mt-auto space-y-2 px-2 pb-3 text-xs text-slate-400">
       <a
         routerLink="/users"
-        title="Admin"
         class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
+        title="Legacy admin (hidden from primary workflow)"
       >
         <span class="material-icons text-lg">settings</span>
-        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Admin</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">
+          Legacy admin
+        </span>
       </a>
       <a
         routerLink="/login"
-        title="Log-Out"
         class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-slate-900"
       >
         <span class="material-icons text-lg">logout</span>
-        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Log-Out</span>
+        <span class="whitespace-nowrap opacity-0 transition-all duration-300 group-hover:opacity-100">Log out</span>
       </a>
-    </nav>
+    </div>
   </aside>
 
   <div class="pl-16">

@@ -20,7 +20,10 @@ const envSchema = z.object({
   SUPABASE_STORAGE_BUCKET: z.string().optional(),
   EVIDENCE_MAX_SIZE_MB: z.string().default('25'),
   EVIDENCE_ALLOWED_MIME: z.string().optional(),
-  EVIDENCE_SIGNED_URL_TTL_SECONDS: z.string().default('600')
+  EVIDENCE_SIGNED_URL_TTL_SECONDS: z.string().default('600'),
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENROUTER_MODEL: z.string().default('openai/gpt-4o-mini'),
+  OPENROUTER_BASE_URL: z.string().default('https://openrouter.ai/api/v1')
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -58,5 +61,8 @@ export const env = {
   EVIDENCE_SIGNED_URL_TTL_SECONDS:
     Number.isFinite(parsedEvidenceTtlSeconds) && parsedEvidenceTtlSeconds >= 60
       ? Math.floor(parsedEvidenceTtlSeconds)
-      : 600
+      : 600,
+  OPENROUTER_API_KEY: parsed.data.OPENROUTER_API_KEY,
+  OPENROUTER_MODEL: parsed.data.OPENROUTER_MODEL,
+  OPENROUTER_BASE_URL: parsed.data.OPENROUTER_BASE_URL
 };

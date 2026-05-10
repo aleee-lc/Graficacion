@@ -3,7 +3,6 @@ import { Component, computed, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ProjectsService, type Project } from '../../services/projects.service';
-import { RolesService } from '../../services/roles.service';
 import { UsersService, type UserSummary } from '../../services/users.service';
 
 @Component({
@@ -14,7 +13,6 @@ import { UsersService, type UserSummary } from '../../services/users.service';
 })
 export class Home {
   readonly projects = signal<Project[]>([]);
-  readonly rolesCount = signal(0);
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
 
@@ -39,7 +37,6 @@ export class Home {
   constructor(
     private readonly fb: FormBuilder,
     private readonly projectsService: ProjectsService,
-    private readonly rolesService: RolesService,
     private readonly usersService: UsersService
   ) {
     this.form = this.fb.group({
@@ -122,9 +119,10 @@ export class Home {
     this.saving.set(true);
     this.wizardError.set(null);
 
-    this.projectsService
+        this.projectsService
       .createProject({
         name: project.name ?? '',
+        objective: project.description || null,
         description: project.description || null,
         start_date: project.start_date || null,
         end_date: project.end_date || null
@@ -320,6 +318,7 @@ export class Home {
     const payload = {
       project: {
         name: project.name ?? '',
+        objective: project.description || null,
         description: project.description || null,
         start_date: project.start_date || null,
         end_date: project.end_date || null
@@ -362,15 +361,6 @@ export class Home {
       error: () => {
         this.error.set('No se pudieron cargar los proyectos.');
         this.loading.set(false);
-      }
-    });
-
-    this.rolesService.getTechRoles().subscribe({
-      next: (response) => {
-        this.rolesCount.set(response.roles.length);
-      },
-      error: () => {
-        this.rolesCount.set(0);
       }
     });
   }

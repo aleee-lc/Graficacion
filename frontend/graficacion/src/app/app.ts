@@ -1,4 +1,3 @@
-import { NgIf } from '@angular/common';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import {
   NavigationEnd,
@@ -11,7 +10,7 @@ import { filter } from 'rxjs/operators';
 
 @Component({
   selector: 'app-root',
-  imports: [NgIf, RouterLink, RouterOutlet],
+  imports: [RouterLink, RouterOutlet],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })

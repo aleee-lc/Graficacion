@@ -36,6 +36,23 @@ export type TechniqueAssignmentPayload = {
   status?: 'PLANNED' | 'DONE' | 'CANCELLED';
 };
 
+export type TechniqueEvidence = {
+  id: number;
+  subprocess_technique_id: number;
+  project_id: number;
+  uploaded_by_user_id: number;
+  uploaded_by_name: string | null;
+  uploaded_by_email: string | null;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  bucket: string;
+  object_path: string;
+  notes: string | null;
+  created_at: string;
+  deleted_at: string | null;
+};
+
 @Injectable({ providedIn: 'root' })
 export class TechniquesService {
   constructor(private readonly http: HttpClient) {}
@@ -94,6 +111,50 @@ export class TechniquesService {
   deleteTechniqueAssignment(subprocessId: number, assignmentId: number) {
     return this.http.delete<{ message: string }>(
       `${API_BASE_URL}/subprocesses/${subprocessId}/techniques/${assignmentId}`
+    );
+  }
+
+  getTechniqueEvidences(subprocessId: number, assignmentId: number) {
+    return this.http.get<{ evidences: TechniqueEvidence[] }>(
+      `${API_BASE_URL}/subprocesses/${subprocessId}/techniques/${assignmentId}/evidences`
+    );
+  }
+
+  uploadTechniqueEvidences(
+    subprocessId: number,
+    assignmentId: number,
+    files: File[],
+    notes?: string | null
+  ) {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append('files', file);
+    }
+    if (notes && notes.trim().length > 0) {
+      formData.append('notes', notes.trim());
+    }
+
+    return this.http.post<{ evidences: TechniqueEvidence[] }>(
+      `${API_BASE_URL}/subprocesses/${subprocessId}/techniques/${assignmentId}/evidences`,
+      formData
+    );
+  }
+
+  createTechniqueEvidenceSignedUrl(
+    subprocessId: number,
+    assignmentId: number,
+    evidenceId: number,
+    expiresIn?: number
+  ) {
+    return this.http.post<{ url: string; expires_in: number }>(
+      `${API_BASE_URL}/subprocesses/${subprocessId}/techniques/${assignmentId}/evidences/${evidenceId}/signed-url`,
+      expiresIn ? { expires_in: expiresIn } : {}
+    );
+  }
+
+  deleteTechniqueEvidence(subprocessId: number, assignmentId: number, evidenceId: number) {
+    return this.http.delete<{ message: string }>(
+      `${API_BASE_URL}/subprocesses/${subprocessId}/techniques/${assignmentId}/evidences/${evidenceId}`
     );
   }
 }

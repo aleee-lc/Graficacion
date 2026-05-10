@@ -1,0 +1,404 @@
+<div class="workspace-page" [class.workspace-dark]="darkMode()">
+  <header class="workspace-topbar">
+    <div class="brand-lockup">
+      <span class="brand-icon">G</span>
+      <div>
+        <p class="brand-title">Graficacion</p>
+        <p class="brand-subtitle">Requirements traceability workspace</p>
+      </div>
+    </div>
+    <button class="theme-button" type="button" (click)="toggleTheme()" aria-label="Cambiar tema">
+      <span class="material-icons">{{ darkMode() ? 'contrast' : 'contrast' }}</span>
+    </button>
+  </header>
+
+  <main class="workspace-main">
+    <a routerLink="/home" class="back-link">
+      <span class="material-icons">arrow_back</span>
+      Volver al dashboard
+    </a>
+
+    <section class="project-hero">
+      <p class="hero-kicker">Project workspace</p>
+      <h1>{{ project()?.name || 'Proyecto' }}</h1>
+      <p>{{ project()?.description || project()?.objective || 'Centraliza tecnicas, evidencias, hallazgos, requisitos y trazabilidad.' }}</p>
+    </section>
+
+    <div *ngIf="error()" class="alert alert-error">{{ error() }}</div>
+    <div *ngIf="success()" class="alert alert-success">{{ success() }}</div>
+
+    <section class="workspace-grid">
+      <aside class="module-sidebar">
+        <button
+          *ngFor="let module of modules"
+          type="button"
+          class="module-link"
+          [class.active]="activeModule() === module.key"
+          [attr.data-tone]="module.tone"
+          (click)="setActiveModule(module.key)"
+        >
+          <span class="material-icons">{{ module.icon }}</span>
+          <span>{{ module.label }}</span>
+        </button>
+      </aside>
+
+      <section class="module-content">
+        <div class="module-heading">
+          <div>
+            <p class="eyebrow">{{ activeModuleInfo().label }}</p>
+            <h2>{{ activeModuleInfo().key === 'summary' ? 'Resumen del Proyecto' : activeModuleInfo().label }}</h2>
+          </div>
+          <span class="module-badge" [attr.data-tone]="activeModuleInfo().tone">
+            {{ flowStatus()?.progress_percent ?? 0 }}% trazabilidad
+          </span>
+        </div>
+
+        <ng-container *ngIf="activeModule() === 'summary'">
+          <div class="stats-grid">
+            <article class="stat-card">
+              <span class="material-icons">group</span>
+              <p>Stakeholders</p>
+              <strong>{{ stakeholders().length }}</strong>
+            </article>
+            <article class="stat-card">
+              <span class="material-icons">account_tree</span>
+              <p>Procesos</p>
+              <strong>{{ processes().length }}</strong>
+            </article>
+            <article class="stat-card">
+              <span class="material-icons">folder_open</span>
+              <p>Evidencias</p>
+              <strong>{{ evidenceCount() }}</strong>
+            </article>
+            <article class="stat-card">
+              <span class="material-icons">search</span>
+              <p>Hallazgos</p>
+              <strong>{{ findings().length }}</strong>
+            </article>
+            <article class="stat-card">
+              <span class="material-icons">fact_check</span>
+              <p>Requisitos</p>
+              <strong>{{ requirements().length }}</strong>
+            </article>
+            <article class="stat-card">
+              <span class="material-icons">hub</span>
+              <p>Cadena completa</p>
+              <strong>{{ traceabilityHealth() }}%</strong>
+            </article>
+          </div>
+
+          <div class="summary-band">
+            <div>
+              <h3>Flujo inteligente</h3>
+              <p>Captura informacion por tecnica, conviertela en hallazgos, genera requisitos y valida la cadena completa.</p>
+            </div>
+            <div class="flow-strip">
+              <span>Stakeholder</span>
+              <span>Tecnica</span>
+              <span>Evidencia</span>
+              <span>Hallazgo</span>
+              <span>Requisito</span>
+            </div>
+          </div>
+
+          <div class="module-cards">
+            <article *ngFor="let module of captureModules()" class="mini-module-card" [attr.data-tone]="module.tone">
+              <span class="material-icons">{{ module.icon }}</span>
+              <div>
+                <h3>{{ module.label }}</h3>
+                <p>{{ moduleSessions(module.key).length }} registros</p>
+              </div>
+              <button type="button" (click)="setActiveModule(module.key)">Abrir</button>
+            </article>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'stakeholders'">
+          <form class="workspace-form" [formGroup]="stakeholderForm" (ngSubmit)="saveStakeholder()">
+            <div class="form-grid two">
+              <label>Nombre *<input formControlName="name" /></label>
+              <label>Rol *<input formControlName="role" /></label>
+              <label>Tipo
+                <select formControlName="type">
+                  <option value="external">Externo</option>
+                  <option value="internal">Interno</option>
+                </select>
+              </label>
+              <label>Contacto<input formControlName="contact" /></label>
+            </div>
+            <button class="primary-action" type="submit" [disabled]="saving()">Agregar Stakeholder</button>
+          </form>
+
+          <div *ngIf="stakeholders().length === 0" class="empty-state">
+            <span class="material-icons">group</span>
+            <p>No hay stakeholders registrados</p>
+            <small>Agrega responsables, usuarios y areas para dar contexto a la trazabilidad.</small>
+          </div>
+          <div class="card-grid">
+            <article *ngFor="let stakeholder of stakeholders()" class="data-card bordered">
+              <div class="avatar">{{ stakeholder.name.charAt(0) }}</div>
+              <div>
+                <h3>{{ stakeholder.name }}</h3>
+                <p>{{ stakeholder.role }} · {{ stakeholder.type }}</p>
+                <small>{{ stakeholder.contact || 'Sin contacto' }}</small>
+              </div>
+            </article>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'processes'">
+          <form class="workspace-form" [formGroup]="processForm" (ngSubmit)="saveProcess()">
+            <label>Nombre del Proceso *<input formControlName="name" /></label>
+            <label>Descripcion *<textarea formControlName="description" rows="3"></textarea></label>
+            <button class="primary-action green" type="submit" [disabled]="saving()">Agregar Proceso</button>
+          </form>
+
+          <div *ngIf="processes().length === 0" class="empty-state">
+            <span class="material-icons">account_tree</span>
+            <p>No hay procesos registrados</p>
+            <small>Modela los procesos base antes de levantar tecnicas de analisis.</small>
+          </div>
+          <article *ngFor="let process of processes()" class="data-card process-card">
+            <div>
+              <h3>{{ process.name }}</h3>
+              <p>{{ process.description || 'Sin descripcion.' }}</p>
+            </div>
+            <span class="material-icons">visibility</span>
+          </article>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'interviews'">
+          <form class="workspace-form" [formGroup]="interviewForm" (ngSubmit)="saveCapture('interviews')">
+            <h3>Crear Nueva Entrevista</h3>
+            <div class="form-grid three">
+              <label>Titulo *<input formControlName="title" placeholder="Ej: Entrevista con usuario final" /></label>
+              <label>Entrevistador *<input formControlName="interviewer" placeholder="Tu nombre" /></label>
+              <label>Entrevistado *<input formControlName="interviewed" /></label>
+            </div>
+            <label>Pregunta *<input formControlName="question" /></label>
+            <label>Respuesta / notas *<textarea formControlName="answer" rows="4"></textarea></label>
+            <label>Contexto<input formControlName="notes" /></label>
+            <button class="primary-action" type="submit" [disabled]="saving()">Nueva Entrevista</button>
+          </form>
+          <ng-container *ngTemplateOutlet="captureList; context: { module: 'interviews', empty: 'No hay entrevistas registradas' }"></ng-container>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'surveys'">
+          <form class="workspace-form" [formGroup]="surveyForm" (ngSubmit)="saveCapture('surveys')">
+            <h3>Crear Nueva Encuesta</h3>
+            <label>Titulo *<input formControlName="title" /></label>
+            <label>Descripcion *<textarea formControlName="description" rows="3"></textarea></label>
+            <div class="form-grid three">
+              <label>Participantes esperados<input type="number" formControlName="participants" /></label>
+              <label>Estado
+                <select formControlName="status">
+                  <option value="draft">Borrador</option>
+                  <option value="active">Activa</option>
+                  <option value="closed">Cerrada</option>
+                </select>
+              </label>
+              <label>Pregunta *<input formControlName="question" /></label>
+            </div>
+            <button class="primary-action green" type="submit" [disabled]="saving()">Nueva Encuesta</button>
+          </form>
+          <ng-container *ngTemplateOutlet="captureList; context: { module: 'surveys', empty: 'No hay encuestas registradas' }"></ng-container>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'observations'">
+          <form class="workspace-form" [formGroup]="observationForm" (ngSubmit)="saveCapture('observations')">
+            <h3>Nota Rapida</h3>
+            <label>Titulo *<input formControlName="title" /></label>
+            <label>Observaciones *<textarea formControlName="note" rows="6"></textarea></label>
+            <label>Hallazgos o puntos clave<input formControlName="keyPoint" /></label>
+            <button class="primary-action orange" type="submit" [disabled]="saving()">Nueva Nota</button>
+          </form>
+          <ng-container *ngTemplateOutlet="captureList; context: { module: 'observations', empty: 'No hay observaciones registradas' }"></ng-container>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'focus'">
+          <form class="workspace-form" [formGroup]="focusForm" (ngSubmit)="saveCapture('focus')">
+            <h3>Registrar Nuevo Focus Group</h3>
+            <label>Titulo *<input formControlName="title" /></label>
+            <div class="form-grid two">
+              <label>Moderador *<input formControlName="moderator" /></label>
+              <label>Tipo de media<input formControlName="mediaType" /></label>
+            </div>
+            <label>Objetivo *<textarea formControlName="objective" rows="3"></textarea></label>
+            <label>Conclusiones<textarea formControlName="conclusions" rows="3"></textarea></label>
+            <button class="primary-action pink" type="submit" [disabled]="saving()">Nuevo Focus Group</button>
+          </form>
+          <ng-container *ngTemplateOutlet="captureList; context: { module: 'focus', empty: 'No hay focus groups registrados' }"></ng-container>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'stories'">
+          <form class="workspace-form" [formGroup]="storyForm" (ngSubmit)="saveCapture('stories')">
+            <h3>Historia de Usuario</h3>
+            <label>Titulo *<input formControlName="title" /></label>
+            <div class="story-box">
+              <label>Como... *<input formControlName="role" /></label>
+              <label>Quiero... *<input formControlName="action" /></label>
+              <label>Para que... *<input formControlName="benefit" /></label>
+            </div>
+            <label>Criterios de aceptacion *<textarea formControlName="criteria" rows="4"></textarea></label>
+            <label>Prioridad
+              <select formControlName="priority">
+                <option value="low">Baja</option>
+                <option value="medium">Media</option>
+                <option value="high">Alta</option>
+                <option value="critical">Critica</option>
+              </select>
+            </label>
+            <button class="primary-action violet" type="submit" [disabled]="saving()">Nueva Historia</button>
+          </form>
+          <ng-container *ngTemplateOutlet="captureList; context: { module: 'stories', empty: 'No hay historias registradas' }"></ng-container>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'documents'">
+          <form class="workspace-form" [formGroup]="documentForm" (ngSubmit)="saveCapture('documents')">
+            <h3>Analisis de Documentos</h3>
+            <label>Titulo del analisis *<input formControlName="title" /></label>
+            <div class="form-grid two">
+              <label>Tipo de documento *<input formControlName="documentType" /></label>
+              <label>Fuente *<input formControlName="source" /></label>
+            </div>
+            <label>Documento analizado *<input formControlName="documentName" /></label>
+            <label>Hallazgos<textarea formControlName="findings" rows="4"></textarea></label>
+            <button class="primary-action amber" type="submit" [disabled]="saving()">Nuevo Analisis</button>
+          </form>
+          <ng-container *ngTemplateOutlet="captureList; context: { module: 'documents', empty: 'No hay documentos analizados' }"></ng-container>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'tracking'">
+          <form class="workspace-form" [formGroup]="trackingForm" (ngSubmit)="saveCapture('tracking')">
+            <h3>Seguimiento Transaccional</h3>
+            <label>Titulo *<input formControlName="title" /></label>
+            <div class="form-grid two">
+              <label>ID de Transaccion *<input formControlName="transactionId" /></label>
+              <label>Nombre del Proceso *<input formControlName="processName" /></label>
+              <label>Paso observado *<input formControlName="stepName" /></label>
+              <label>Duracion<input formControlName="duration" /></label>
+            </div>
+            <label>Metricas<textarea formControlName="metrics" rows="3"></textarea></label>
+            <button class="primary-action red" type="submit" [disabled]="saving()">Nuevo Seguimiento</button>
+          </form>
+          <ng-container *ngTemplateOutlet="captureList; context: { module: 'tracking', empty: 'No hay seguimientos registrados' }"></ng-container>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'findings'">
+          <form class="workspace-form" [formGroup]="findingForm" (ngSubmit)="saveFinding()">
+            <h3>Crear Hallazgo desde Evidencia</h3>
+            <label>Sesion con evidencia *
+              <select formControlName="session_id">
+                <option [ngValue]="null">Selecciona una sesion</option>
+                <option *ngFor="let session of sessionsForFindings()" [ngValue]="session.id">
+                  {{ session.technique }} - {{ session.title }}
+                </option>
+              </select>
+            </label>
+            <label>Categoria
+              <select formControlName="category">
+                <option value="problem">Problema</option>
+                <option value="need">Necesidad</option>
+                <option value="constraint">Restriccion</option>
+              </select>
+            </label>
+            <label>Hallazgo *<textarea formControlName="statement" rows="4"></textarea></label>
+            <button class="primary-action slate" type="submit" [disabled]="saving()">Crear Hallazgo</button>
+          </form>
+
+          <div *ngIf="findings().length === 0" class="empty-state">
+            <span class="material-icons">search</span>
+            <p>No hay hallazgos registrados</p>
+            <small>Primero crea tecnicas con evidencia para derivar hallazgos.</small>
+          </div>
+          <article *ngFor="let finding of findings()" class="data-card">
+            <h3>{{ finding.statement }}</h3>
+            <p>{{ finding.category }} · {{ finding.session_technique || 'Tecnica' }}</p>
+          </article>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'requirements'">
+          <form class="workspace-form" [formGroup]="requirementForm" (ngSubmit)="saveRequirement()">
+            <h3>Crear Requisito</h3>
+            <div class="form-grid two">
+              <label>Tipo
+                <select formControlName="type">
+                  <option value="functional">Funcional</option>
+                  <option value="non_functional">No funcional</option>
+                </select>
+              </label>
+              <label>Prioridad
+                <select formControlName="priority">
+                  <option value="low">Baja</option>
+                  <option value="medium">Media</option>
+                  <option value="high">Alta</option>
+                  <option value="critical">Critica</option>
+                </select>
+              </label>
+            </div>
+            <label>Descripcion *<textarea formControlName="description" rows="3"></textarea></label>
+            <label>Criterio de aceptacion *<textarea formControlName="acceptance_criteria" rows="3"></textarea></label>
+            <div class="pick-list">
+              <button
+                *ngFor="let finding of findings()"
+                type="button"
+                [class.selected]="selectedFinding(finding.id)"
+                (click)="toggleFinding(finding.id)"
+              >
+                {{ finding.statement }}
+              </button>
+            </div>
+            <button class="primary-action violet" type="submit" [disabled]="saving()">Crear Requisito</button>
+          </form>
+
+          <div *ngIf="requirements().length === 0" class="empty-state">
+            <span class="material-icons">fact_check</span>
+            <p>No hay requisitos registrados</p>
+            <small>Convierte hallazgos en requisitos verificables.</small>
+          </div>
+          <article *ngFor="let requirement of requirements()" class="data-card">
+            <h3>{{ requirement.code }} · {{ requirement.description }}</h3>
+            <p>{{ requirement.type }} · {{ requirement.priority }} · {{ requirement.finding_count }} hallazgos fuente</p>
+          </article>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'traceability'">
+          <div *ngIf="traceability().length === 0" class="empty-state">
+            <span class="material-icons">hub</span>
+            <p>No hay matriz de trazabilidad completa</p>
+            <small>Necesitas requisitos conectados con hallazgos y evidencias.</small>
+          </div>
+          <article *ngFor="let item of traceability()" class="trace-card">
+            <h3>{{ item.code }} · {{ item.description }}</h3>
+            <div *ngFor="let link of item.links" class="trace-chain">
+              <span>{{ link.stakeholders[0]?.name || 'Stakeholder pendiente' }}</span>
+              <span>{{ link.session.technique }}</span>
+              <span>{{ link.evidences.length }} evidencia(s)</span>
+              <span>{{ link.finding.statement }}</span>
+              <strong>{{ item.code }}</strong>
+            </div>
+          </article>
+        </ng-container>
+      </section>
+    </section>
+  </main>
+</div>
+
+<ng-template #captureList let-module="module" let-empty="empty">
+  <div *ngIf="moduleSessions(module).length === 0" class="empty-state">
+    <span class="material-icons">{{ activeModuleInfo().icon }}</span>
+    <p>{{ empty }}</p>
+    <small>Usa el formulario para registrar el primer elemento.</small>
+  </div>
+  <div class="card-grid">
+    <article *ngFor="let session of moduleSessions(module)" class="data-card">
+      <div class="card-topline">
+        <span>{{ session.technique }}</span>
+        <small>{{ session.evidence_count }} evidencia(s)</small>
+      </div>
+      <h3>{{ session.title }}</h3>
+      <p>{{ session.notes || 'Sin notas adicionales.' }}</p>
+      <small>{{ session.finding_count }} hallazgo(s) · {{ session.stakeholder_count }} stakeholder(s)</small>
+    </article>
+  </div>
+</ng-template>

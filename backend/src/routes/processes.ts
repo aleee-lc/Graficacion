@@ -6,6 +6,20 @@ import { requireAuth, type AuthRequest } from '../middleware/auth';
 const router = Router();
 router.use(requireAuth);
 
+// DEPRECATED (traceability refactor):
+// These process/subprocess routes are kept for backward compatibility only.
+// New core flow should use project -> sessions -> findings -> requirements -> traceability.
+router.use((req, res, next) => {
+  res.setHeader('Deprecation', 'true');
+  res.setHeader(
+    'Warning',
+    '299 - "Deprecated endpoint. Migrate to /projects/:id/sessions and traceability flow endpoints."'
+  );
+  // eslint-disable-next-line no-console
+  console.warn(`[DEPRECATED] ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 const processSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional().nullable()

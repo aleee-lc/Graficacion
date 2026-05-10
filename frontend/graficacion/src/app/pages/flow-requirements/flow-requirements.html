@@ -1,0 +1,233 @@
+<main class="mx-auto w-full max-w-6xl space-y-6 px-6 py-8 text-slate-100">
+  <header class="rounded-3xl border border-slate-800 bg-slate-900 px-6 py-5">
+    <p class="text-xs uppercase tracking-[0.2em] text-blue-400">Paso 4 de 5</p>
+    <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold">Generacion de Requisitos</h1>
+        <p class="mt-1 text-sm text-slate-400">
+          Cada requisito debe salir de hallazgos seleccionados. Sin fuente no se guarda.
+        </p>
+        <p class="mt-2 text-xs" [class.text-emerald-300]="flowStatus()?.steps?.step4?.complete" [class.text-amber-300]="!flowStatus()?.steps?.step4?.complete">
+          {{
+            flowStatus()?.steps?.step4?.complete
+              ? 'Completado'
+              : 'Pendiente: crea al menos un requisito trazable'
+          }}
+        </p>
+      </div>
+      <a
+        *ngIf="projectId() && canGoToTraceability()"
+        [routerLink]="['/projects', projectId(), 'traceability']"
+        class="rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white"
+      >
+        Siguiente accion: ver trazabilidad
+      </a>
+      <span
+        *ngIf="projectId() && !canGoToTraceability()"
+        class="rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-400"
+      >
+        Crea un requisito para habilitar trazabilidad
+      </span>
+    </div>
+    <div class="mt-3 flex justify-end">
+      <button
+        type="button"
+        class="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 disabled:opacity-60"
+        [disabled]="aiGenerating() || findings().length < 1"
+        (click)="generateAIDraftRequirements()"
+      >
+        {{ aiGenerating() ? 'Generando borradores IA...' : 'Generar con IA' }}
+      </button>
+    </div>
+  </header>
+
+  <div *ngIf="error()" class="rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+    {{ error() }}
+  </div>
+  <div *ngIf="success()" class="rounded-2xl border border-emerald-400/40 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+    {{ success() }}
+  </div>
+
+  <section class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-semibold">Borradores IA de requisitos</h2>
+        <p class="mt-1 text-xs text-slate-400">
+          Revisión obligatoria: acepta/edita/rechaza y luego crea el requisito final.
+        </p>
+      </div>
+      <div class="text-xs text-slate-400">
+        <span>{{ pendingAIDraftRequirements().length }} pendientes</span>
+        <span class="mx-2">|</span>
+        <span>{{ reviewedAIDraftRequirements().length }} revisados</span>
+      </div>
+    </div>
+
+    <div *ngIf="aiDraftRequirements().length === 0" class="mt-4 rounded-2xl border border-dashed border-slate-700 px-4 py-6 text-sm text-slate-400">
+      No hay borradores IA aún.
+    </div>
+
+    <div *ngFor="let draft of pendingAIDraftRequirements()" class="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <p class="text-sm font-semibold">Borrador #{{ draft.id }} | Fuentes: {{ draft.source_finding_ids.join(', ') }}</p>
+        <span class="rounded-full border border-slate-700 px-2 py-1 text-[10px] uppercase text-blue-300">
+          IA {{ draft.ai_model }}
+        </span>
+      </div>
+      <div class="mt-3 grid gap-2 sm:grid-cols-2">
+        <select
+          class="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+          [value]="aiDraftEdit(draft.id).type"
+          (change)="setAIDraftType(draft.id, $any($event.target).value)"
+        >
+          <option value="functional">Funcional</option>
+          <option value="non_functional">No funcional</option>
+        </select>
+        <select
+          class="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+          [value]="aiDraftEdit(draft.id).priority"
+          (change)="setAIDraftPriority(draft.id, $any($event.target).value)"
+        >
+          <option value="low">Baja</option>
+          <option value="medium">Media</option>
+          <option value="high">Alta</option>
+          <option value="critical">Crítica</option>
+        </select>
+      </div>
+      <textarea
+        rows="3"
+        class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+        [value]="aiDraftEdit(draft.id).description"
+        (input)="setAIDraftDescription(draft.id, $any($event.target).value)"
+      ></textarea>
+      <textarea
+        rows="3"
+        class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+        [value]="aiDraftEdit(draft.id).acceptance_criteria"
+        (input)="setAIDraftAcceptance(draft.id, $any($event.target).value)"
+      ></textarea>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="rounded-full bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60"
+          [disabled]="aiDraftSaving(draft.id)"
+          (click)="acceptAIDraftRequirement(draft.id)"
+        >
+          {{ aiDraftSaving(draft.id) ? 'Guardando...' : 'Aceptar' }}
+        </button>
+        <button
+          type="button"
+          class="rounded-full border border-rose-500/40 px-3 py-1.5 text-[11px] font-semibold text-rose-200 disabled:opacity-60"
+          [disabled]="aiDraftSaving(draft.id)"
+          (click)="rejectAIDraftRequirement(draft.id)"
+        >
+          Rechazar
+        </button>
+        <button
+          type="button"
+          class="rounded-full border border-slate-700 px-3 py-1.5 text-[11px] font-semibold text-slate-200"
+          (click)="useAIDraftInForm(draft.id)"
+        >
+          Usar en formulario
+        </button>
+      </div>
+    </div>
+
+    <div *ngFor="let draft of reviewedAIDraftRequirements()" class="mt-3 rounded-2xl border border-slate-800/70 bg-slate-950/60 p-3 text-xs">
+      <p class="font-semibold text-slate-200">
+        Borrador #{{ draft.id }} - {{ draft.status === 'accepted' ? 'Aceptado' : 'Rechazado' }}
+      </p>
+      <p class="mt-1 text-slate-400">{{ draft.description }}</p>
+    </div>
+  </section>
+
+  <section class="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+    <article class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+      <h2 class="text-lg font-semibold">Nuevo requisito</h2>
+      <form class="mt-4 space-y-4" [formGroup]="form" (ngSubmit)="createRequirement()">
+        <div class="grid gap-3 sm:grid-cols-2">
+          <select formControlName="type" class="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm">
+            <option value="functional">Funcional</option>
+            <option value="non_functional">No funcional</option>
+          </select>
+          <select formControlName="priority" class="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm">
+            <option value="low">Baja</option>
+            <option value="medium">Media</option>
+            <option value="high">Alta</option>
+            <option value="critical">Crítica</option>
+          </select>
+        </div>
+        <textarea
+          rows="3"
+          formControlName="description"
+          placeholder="Descripcion clara y verificable"
+          class="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm"
+        ></textarea>
+        <p *ngIf="form.get('description')?.touched && form.get('description')?.invalid" class="text-xs text-amber-300">
+          Minimo 12 caracteres.
+        </p>
+        <textarea
+          rows="3"
+          formControlName="acceptance_criteria"
+          placeholder="Criterio de aceptacion"
+          class="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm"
+        ></textarea>
+        <p
+          *ngIf="form.get('acceptance_criteria')?.touched && form.get('acceptance_criteria')?.invalid"
+          class="text-xs text-amber-300"
+        >
+          Minimo 12 caracteres.
+        </p>
+
+        <div class="rounded-2xl border border-slate-800 bg-slate-950 p-3">
+          <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Hallazgos fuente</p>
+          <label
+            *ngFor="let finding of findings()"
+            class="mt-2 flex cursor-pointer items-start gap-2 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs"
+          >
+            <input
+              type="checkbox"
+              class="mt-0.5 h-4 w-4 accent-blue-500"
+              [checked]="findingSelected(finding.id)"
+              (change)="toggleFinding(finding.id)"
+            />
+            <span class="min-w-0">
+              <span class="block font-semibold text-slate-200">#{{ finding.id }} - {{ finding.category }}</span>
+              <span class="block text-slate-400">{{ finding.statement }}</span>
+            </span>
+          </label>
+          <p *ngIf="findings().length === 0" class="mt-2 text-xs text-slate-500">No hay hallazgos disponibles.</p>
+        </div>
+
+        <button
+          type="submit"
+          class="w-full rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          [disabled]="saving() || !canCreateRequirement()"
+        >
+          {{ saving() ? 'Guardando...' : 'CTA principal: guardar requisito' }}
+        </button>
+      </form>
+    </article>
+
+    <article class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Requisitos</h2>
+        <span class="text-xs text-slate-500">{{ requirements().length }}</span>
+      </div>
+      <div *ngIf="requirements().length === 0" class="mt-4 rounded-2xl border border-dashed border-slate-700 px-4 py-6 text-sm text-slate-400">
+        Sin requisitos.
+      </div>
+      <div *ngFor="let requirement of requirements()" class="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+        <div class="flex items-center justify-between gap-2">
+          <p class="text-sm font-semibold">{{ requirement.code }}</p>
+          <span class="rounded-full border border-slate-700 px-2 py-1 text-[10px] uppercase text-blue-300">
+            {{ requirement.priority }}
+          </span>
+        </div>
+        <p class="mt-2 text-sm text-slate-300">{{ requirement.description }}</p>
+        <p class="mt-2 text-xs text-slate-400">Aceptacion: {{ requirement.acceptance_criteria }}</p>
+        <p class="mt-2 text-xs text-slate-500">Fuentes: {{ requirement.finding_count }}</p>
+      </div>
+    </article>
+  </section>
+</main>

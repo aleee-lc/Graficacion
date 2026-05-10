@@ -3,12 +3,13 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model UserType {
-  id    Int    @id
+  id    Int    @id @default(autoincrement())
   code  String @unique
   users User[]
 
@@ -16,22 +17,26 @@ model UserType {
 }
 
 model User {
-  id                 Int                 @id @default(autoincrement())
-  name               String?
-  email              String?             @unique
-  password           String?
-  createdAt          DateTime?           @default(now()) @map("created_at") @db.Timestamptz(6)
-  userTypeId         Int?                @map("user_type")
-  userType           UserType?           @relation(fields: [userTypeId], references: [id], map: "fk_user_type")
-  stakeholderProfile StakeholderProfile?
-  techUserRoles      TechUserRole[]
-  projectUsers       ProjectUser[]
+  id                     Int                      @id @default(autoincrement())
+  name                   String?
+  email                  String?                  @unique
+  password               String?
+  createdAt              DateTime?                @default(now()) @map("created_at") @db.Timestamptz(6)
+  userTypeId             Int?                     @map("user_type")
+  projectUsers           ProjectUser[]
+  requirement_reviews    requirement_reviews[]
+  stakeholderProfile     StakeholderProfile?
+  subprocess_techniques  subprocess_techniques[]
+  techUserRoles          TechUserRole[]
+  technique_evidences    technique_evidences[]
+  technique_stakeholders technique_stakeholders[]
+  userType               UserType?                @relation(fields: [userTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_type")
 
   @@map("users")
 }
 
 model TechRole {
-  id            Int           @id @default(autoincrement())
+  id            Int            @id @default(autoincrement())
   name          String?
   techUserRoles TechUserRole[]
 
@@ -41,15 +46,15 @@ model TechRole {
 model TechUserRole {
   userId Int      @map("user_id")
   roleId Int      @map("role_id")
-  user   User     @relation(fields: [userId], references: [id], map: "tech_user_roles_user_id_fkey")
-  role   TechRole @relation(fields: [roleId], references: [id], map: "tech_user_roles_role_id_fkey")
+  role   TechRole @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tech_user_roles_role_id_fkey")
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tech_user_roles_user_id_fkey")
 
-  @@id([userId, roleId], map: "tech_user_roles_pkey")
+  @@id([userId, roleId])
   @@map("tech_user_roles")
 }
 
 model StakeholderRole {
-  id                 Int                 @id @default(autoincrement())
+  id                 Int                  @id @default(autoincrement())
   name               String?
   stakeholderProfile StakeholderProfile[]
 
@@ -60,19 +65,23 @@ model StakeholderProfile {
   userId            Int              @id @map("user_id")
   stakeholderRoleId Int?             @map("stakeholder_role_id")
   companyName       String?          @map("company_name")
-  user              User             @relation(fields: [userId], references: [id], map: "stakeholder_profile_user_id_fkey")
-  stakeholderRole   StakeholderRole? @relation(fields: [stakeholderRoleId], references: [id], map: "stakeholder_profile_stakeholder_role_id_fkey")
+  stakeholderRole   StakeholderRole? @relation(fields: [stakeholderRoleId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "stakeholder_profile_stakeholder_role_id_fkey")
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "stakeholder_profile_user_id_fkey")
 
   @@map("stakeholder_profile")
 }
 
 model Project {
-  id          Int          @id @default(autoincrement())
-  name        String?
-  description String?
-  startDate   DateTime?    @map("start_date") @db.Date
-  endDate     DateTime?    @map("end_date") @db.Date
-  projectUsers ProjectUser[]
+  id                  Int                   @id @default(autoincrement())
+  name                String?
+  description         String?
+  startDate           DateTime?             @map("start_date") @db.Date
+  endDate             DateTime?             @map("end_date") @db.Date
+  classes             classes[]
+  processes           processes[]
+  projectUsers        ProjectUser[]
+  requirements        requirements[]
+  technique_evidences technique_evidences[]
 
   @@map("projects")
 }
@@ -80,9 +89,217 @@ model Project {
 model ProjectUser {
   projectId Int     @map("project_id")
   userId    Int     @map("user_id")
-  project   Project @relation(fields: [projectId], references: [id], map: "project_users_project_id_fkey")
-  user      User    @relation(fields: [userId], references: [id], map: "project_users_user_id_fkey")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "project_users_project_id_fkey")
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "project_users_user_id_fkey")
 
-  @@id([projectId, userId], map: "project_users_pkey")
+  @@id([projectId, userId])
   @@map("project_users")
+}
+
+model class_attributes {
+  id        Int      @id @default(autoincrement())
+  class_id  Int?
+  name      String?
+  data_type String?
+  classes   classes? @relation(fields: [class_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model class_inheritance {
+  parent_class_id                                    Int
+  child_class_id                                     Int
+  classes_class_inheritance_child_class_idToclasses  classes @relation("class_inheritance_child_class_idToclasses", fields: [child_class_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  classes_class_inheritance_parent_class_idToclasses classes @relation("class_inheritance_parent_class_idToclasses", fields: [parent_class_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([parent_class_id, child_class_id])
+}
+
+model class_methods {
+  id          Int      @id @default(autoincrement())
+  class_id    Int?
+  name        String?
+  return_type String?
+  classes     classes? @relation(fields: [class_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model class_relationships {
+  id                                                   Int                 @id @default(autoincrement())
+  source_class_id                                      Int?
+  target_class_id                                      Int?
+  relationship_type                                    Int?
+  classes_class_relationships_source_class_idToclasses classes?            @relation("class_relationships_source_class_idToclasses", fields: [source_class_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  classes_class_relationships_target_class_idToclasses classes?            @relation("class_relationships_target_class_idToclasses", fields: [target_class_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  relationship_types                                   relationship_types? @relation(fields: [relationship_type], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_relationship_type")
+}
+
+model classes {
+  id                                                               Int                   @id @default(autoincrement())
+  project_id                                                       Int?
+  name                                                             String?
+  description                                                      String?
+  class_attributes                                                 class_attributes[]
+  class_inheritance_class_inheritance_child_class_idToclasses      class_inheritance[]   @relation("class_inheritance_child_class_idToclasses")
+  class_inheritance_class_inheritance_parent_class_idToclasses     class_inheritance[]   @relation("class_inheritance_parent_class_idToclasses")
+  class_methods                                                    class_methods[]
+  class_relationships_class_relationships_source_class_idToclasses class_relationships[] @relation("class_relationships_source_class_idToclasses")
+  class_relationships_class_relationships_target_class_idToclasses class_relationships[] @relation("class_relationships_target_class_idToclasses")
+  projects                                                         Project?              @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model interview_results {
+  id                Int               @id
+  audio_url         String?
+  transcript        String?
+  technique_results technique_results @relation(fields: [id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model processes {
+  id           Int            @id @default(autoincrement())
+  project_id   Int?
+  name         String?
+  description  String?
+  projects     Project?       @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  subprocesses subprocesses[]
+}
+
+model relationship_types {
+  id                  Int                   @id @default(autoincrement())
+  code                String                @unique
+  class_relationships class_relationships[]
+}
+
+model requirement_reviews {
+  requirement_id   Int
+  product_owner_id Int
+  approved         Boolean?
+  comments         String?
+  reviewed_at      DateTime?    @db.Timestamptz(6)
+  users            User         @relation(fields: [product_owner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  requirements     requirements @relation(fields: [requirement_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([requirement_id, product_owner_id])
+}
+
+model requirement_sources {
+  requirement_id      Int
+  technique_result_id Int
+  requirements        requirements      @relation(fields: [requirement_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  technique_results   technique_results @relation(fields: [technique_result_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([requirement_id, technique_result_id])
+}
+
+model requirement_sources_catalog {
+  id           Int            @id @default(autoincrement())
+  code         String         @unique
+  requirements requirements[]
+}
+
+model requirement_statuses {
+  id           Int            @id @default(autoincrement())
+  code         String         @unique
+  requirements requirements[]
+}
+
+model requirements {
+  id                          Int                          @id @default(autoincrement())
+  project_id                  Int?
+  title                       String?
+  description                 String?
+  source                      Int?
+  status                      Int?
+  requirement_reviews         requirement_reviews[]
+  requirement_sources         requirement_sources[]
+  requirement_sources_catalog requirement_sources_catalog? @relation(fields: [source], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_requirement_source")
+  requirement_statuses        requirement_statuses?        @relation(fields: [status], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_requirement_status")
+  projects                    Project?                     @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model subprocess_techniques {
+  id                     Int                      @id @default(autoincrement())
+  subprocess_id          Int?
+  technique_id           Int?
+  tech_user_id           Int?
+  scheduled_date         DateTime?                @db.Timestamptz(6)
+  duration_minutes       Int?
+  status                 Int?
+  technique_statuses     technique_statuses?      @relation(fields: [status], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_technique_status")
+  subprocesses           subprocesses?            @relation(fields: [subprocess_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                  User?                    @relation(fields: [tech_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  techniques             techniques?              @relation(fields: [technique_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  technique_evidences    technique_evidences[]
+  technique_results      technique_results?
+  technique_stakeholders technique_stakeholders[]
+}
+
+model subprocesses {
+  id                    Int                     @id @default(autoincrement())
+  process_id            Int?
+  name                  String?
+  description           String?
+  subprocess_techniques subprocess_techniques[]
+  processes             processes?              @relation(fields: [process_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model survey_results {
+  id                Int               @id
+  responses         Json?
+  technique_results technique_results @relation(fields: [id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model technique_evidences {
+  id                      Int                   @id @default(autoincrement())
+  subprocess_technique_id Int
+  project_id              Int
+  uploaded_by_user_id     Int
+  original_name           String
+  mime_type               String
+  size_bytes              Int
+  bucket                  String
+  object_path             String                @unique
+  notes                   String?
+  created_at              DateTime              @default(now()) @db.Timestamptz(6)
+  deleted_at              DateTime?             @db.Timestamptz(6)
+  projects                Project               @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  subprocess_techniques   subprocess_techniques @relation(fields: [subprocess_technique_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                   User                  @relation(fields: [uploaded_by_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model technique_results {
+  id                      Int                    @id @default(autoincrement())
+  subprocess_technique_id Int?                   @unique
+  created_at              DateTime?              @default(now()) @db.Timestamptz(6)
+  interview_results       interview_results?
+  requirement_sources     requirement_sources[]
+  survey_results          survey_results?
+  subprocess_techniques   subprocess_techniques? @relation(fields: [subprocess_technique_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workshop_observations   workshop_observations?
+}
+
+model technique_stakeholders {
+  subprocess_technique_id Int
+  stakeholder_user_id     Int
+  users                   User                  @relation(fields: [stakeholder_user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  subprocess_techniques   subprocess_techniques @relation(fields: [subprocess_technique_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([subprocess_technique_id, stakeholder_user_id])
+}
+
+model technique_statuses {
+  id                    Int                     @id @default(autoincrement())
+  code                  String                  @unique
+  subprocess_techniques subprocess_techniques[]
+}
+
+model techniques {
+  id                    Int                     @id @default(autoincrement())
+  name                  String?
+  description           String?
+  subprocess_techniques subprocess_techniques[]
+}
+
+model workshop_observations {
+  id                Int               @id
+  notes             String?
+  technique_results technique_results @relation(fields: [id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
