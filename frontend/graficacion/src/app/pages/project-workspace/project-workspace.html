@@ -3,25 +3,33 @@
     <div class="brand-lockup">
       <span class="brand-icon">G</span>
       <div>
-        <p class="brand-title">Graficacion</p>
-        <p class="brand-subtitle">Requirements traceability workspace</p>
+        <p class="brand-title">{{ project()?.name || 'Graficacion' }}</p>
+        <p class="brand-subtitle">Requirements Discovery & Traceability</p>
       </div>
     </div>
-    <button class="theme-button" type="button" (click)="toggleTheme()" aria-label="Cambiar tema">
-      <span class="material-icons">{{ darkMode() ? 'contrast' : 'contrast' }}</span>
-    </button>
+    <div class="topbar-actions">
+      <button class="next-action" type="button" (click)="setActiveModule(recommendedAction().module)">
+        {{ recommendedAction().label }}
+      </button>
+      <a routerLink="/home" class="back-link">
+        <span class="material-icons">arrow_back</span>
+        Dashboard
+      </a>
+    </div>
   </header>
 
   <main class="workspace-main">
-    <a routerLink="/home" class="back-link">
-      <span class="material-icons">arrow_back</span>
-      Volver al dashboard
-    </a>
-
-    <section class="project-hero">
-      <p class="hero-kicker">Project workspace</p>
-      <h1>{{ project()?.name || 'Proyecto' }}</h1>
-      <p>{{ project()?.description || project()?.objective || 'Centraliza tecnicas, evidencias, hallazgos, requisitos y trazabilidad.' }}</p>
+    <section class="project-command">
+      <div>
+        <p class="hero-kicker">Project workspace</p>
+        <h1>{{ project()?.name || 'Proyecto' }}</h1>
+        <p>{{ project()?.description || project()?.objective || 'Centraliza tecnicas, evidencias, hallazgos, requisitos y trazabilidad.' }}</p>
+      </div>
+      <div class="health-card">
+        <span>{{ traceabilityHealth() }}%</span>
+        <p>Salud de trazabilidad</p>
+        <small>{{ flowStatus()?.completed_steps ?? 0 }}/5 pasos completos</small>
+      </div>
     </section>
 
     <div *ngIf="error()" class="alert alert-error">{{ error() }}</div>
@@ -29,17 +37,19 @@
 
     <section class="workspace-grid">
       <aside class="module-sidebar">
-        <button
-          *ngFor="let module of modules"
-          type="button"
-          class="module-link"
-          [class.active]="activeModule() === module.key"
-          [attr.data-tone]="module.tone"
-          (click)="setActiveModule(module.key)"
-        >
-          <span class="material-icons">{{ module.icon }}</span>
-          <span>{{ module.label }}</span>
-        </button>
+        <div *ngFor="let group of navigationGroups" class="nav-group">
+          <p>{{ group.label }}</p>
+          <button
+            *ngFor="let module of group.items"
+            type="button"
+            class="module-link"
+            [class.active]="activeModule() === module.key"
+            (click)="setActiveModule(module.key)"
+          >
+            <span class="material-icons">{{ module.icon }}</span>
+            <span>{{ module.label }}</span>
+          </button>
+        </div>
       </aside>
 
       <section class="module-content">
@@ -54,6 +64,31 @@
         </div>
 
         <ng-container *ngIf="activeModule() === 'summary'">
+          <div class="overview-grid">
+            <article class="overview-main">
+              <div>
+                <p class="eyebrow">Siguiente accion</p>
+                <h3>{{ recommendedAction().label }}</h3>
+                <p>La ruta de trabajo recomendada se calcula desde contexto, tecnicas, evidencias, hallazgos y cobertura de requisitos.</p>
+              </div>
+              <button class="primary-action" type="button" (click)="setActiveModule(recommendedAction().module)">
+                Ir al modulo
+              </button>
+            </article>
+            <article class="risk-card" [class.warning]="techniquesWithoutEvidenceCount() > 0">
+              <strong>{{ techniquesWithoutEvidenceCount() }}</strong>
+              <span>Tecnicas sin evidencia</span>
+            </article>
+            <article class="risk-card" [class.warning]="orphanFindingsCount() > 0">
+              <strong>{{ orphanFindingsCount() }}</strong>
+              <span>Hallazgos sin requisito</span>
+            </article>
+            <article class="risk-card" [class.warning]="incompleteRequirementsCount() > 0">
+              <strong>{{ incompleteRequirementsCount() }}</strong>
+              <span>Requisitos sin cadena completa</span>
+            </article>
+          </div>
+
           <div class="stats-grid">
             <article class="stat-card">
               <span class="material-icons">group</span>
@@ -64,6 +99,11 @@
               <span class="material-icons">account_tree</span>
               <p>Procesos</p>
               <strong>{{ processes().length }}</strong>
+            </article>
+            <article class="stat-card">
+              <span class="material-icons">psychology_alt</span>
+              <p>Tecnicas</p>
+              <strong>{{ sessions().length }}</strong>
             </article>
             <article class="stat-card">
               <span class="material-icons">folder_open</span>
@@ -81,6 +121,16 @@
               <strong>{{ requirements().length }}</strong>
             </article>
             <article class="stat-card">
+              <span class="material-icons">description</span>
+              <p>Specs</p>
+              <strong>{{ specArtifacts().length }}</strong>
+            </article>
+            <article class="stat-card">
+              <span class="material-icons">terminal</span>
+              <p>Tareas agente</p>
+              <strong>{{ agentTasks().length }}</strong>
+            </article>
+            <article class="stat-card">
               <span class="material-icons">hub</span>
               <p>Cadena completa</p>
               <strong>{{ traceabilityHealth() }}%</strong>
@@ -89,15 +139,19 @@
 
           <div class="summary-band">
             <div>
-              <h3>Flujo inteligente</h3>
-              <p>Captura informacion por tecnica, conviertela en hallazgos, genera requisitos y valida la cadena completa.</p>
+              <h3>Pipeline de requisitos a implementacion</h3>
+              <p>Captura informacion por tecnica, conviertela en hallazgos, genera requisitos, specs y tareas accionables.</p>
             </div>
-            <div class="flow-strip">
-              <span>Stakeholder</span>
-              <span>Tecnica</span>
-              <span>Evidencia</span>
-              <span>Hallazgo</span>
-              <span>Requisito</span>
+            <div class="pipeline-strip">
+              <button
+                *ngFor="let step of pipelineSteps()"
+                type="button"
+                [class.complete]="step.complete"
+                (click)="setActiveModule(step.module)"
+              >
+                <span class="material-icons">{{ step.complete ? 'task_alt' : 'radio_button_unchecked' }}</span>
+                {{ step.label }}
+              </button>
             </div>
           </div>
 
@@ -108,9 +162,25 @@
                 <h3>{{ module.label }}</h3>
                 <p>{{ moduleSessions(module.key).length }} registros</p>
               </div>
-              <button type="button" (click)="setActiveModule(module.key)">Abrir</button>
+              <button type="button" (click)="setActiveModule('techniques'); setActiveTechnique(module.key)">Abrir</button>
             </article>
           </div>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'context'">
+          <form class="workspace-form" [formGroup]="projectForm" (ngSubmit)="saveProjectContext()">
+            <h3>Contexto del Proyecto</h3>
+            <p class="form-helper">Este bloque reemplaza el paso formal de contexto: objetivo, alcance y fechas viven aqui como fuente principal.</p>
+            <label>Nombre *<input formControlName="name" /></label>
+            <label>Objetivo *<textarea formControlName="objective" rows="3"></textarea></label>
+            <label>Alcance<textarea formControlName="scope" rows="3"></textarea></label>
+            <label>Descripcion<textarea formControlName="description" rows="3"></textarea></label>
+            <div class="form-grid two">
+              <label>Inicio<input type="date" formControlName="start_date" /></label>
+              <label>Fin<input type="date" formControlName="end_date" /></label>
+            </div>
+            <button class="primary-action" type="submit" [disabled]="saving()">Guardar Contexto</button>
+          </form>
         </ng-container>
 
         <ng-container *ngIf="activeModule() === 'stakeholders'">
@@ -167,23 +237,83 @@
           </article>
         </ng-container>
 
-        <ng-container *ngIf="activeModule() === 'interviews'">
+        <ng-container *ngIf="activeModule() === 'techniques'">
+          <div class="technique-tabs">
+            <button
+              *ngFor="let module of captureModules()"
+              type="button"
+              [class.active]="activeTechnique() === module.key"
+              (click)="setActiveTechnique(module.key)"
+            >
+              <span class="material-icons">{{ module.icon }}</span>
+              {{ module.label }}
+            </button>
+          </div>
+          <div class="module-action-bar">
+            <div>
+              <strong>Discovery con IA</strong>
+              <span>Usa tecnicas con evidencia para proponer hallazgos revisables.</span>
+            </div>
+            <button class="primary-action" type="button" [disabled]="saving() || sessionsForFindings().length === 0" (click)="generateAIFindings()">
+              Generar hallazgos con IA
+            </button>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'techniques' && activeTechnique() === 'interviews'">
           <form class="workspace-form" [formGroup]="interviewForm" (ngSubmit)="saveCapture('interviews')">
             <h3>Crear Nueva Entrevista</h3>
-            <div class="form-grid three">
+            <p class="form-helper">
+              La entrevista es una sesion de discovery: selecciona un stakeholder, registra multiples preguntas y adjunta transcript/audio como evidencia para IA.
+            </p>
+            <div class="form-grid two">
               <label>Titulo *<input formControlName="title" placeholder="Ej: Entrevista con usuario final" /></label>
-              <label>Entrevistador *<input formControlName="interviewer" placeholder="Tu nombre" /></label>
-              <label>Entrevistado *<input formControlName="interviewed" /></label>
+              <label>Entrevistador tecnico *
+                <select formControlName="interviewer_user_id">
+                  <option [ngValue]="null">Selecciona un tecnico</option>
+                  <option *ngFor="let user of techUsers()" [ngValue]="user.id">
+                    {{ user.name }} - {{ user.email }}
+                  </option>
+                </select>
+              </label>
             </div>
-            <label>Pregunta *<input formControlName="question" /></label>
-            <label>Respuesta / notas *<textarea formControlName="answer" rows="4"></textarea></label>
-            <label>Contexto<input formControlName="notes" /></label>
+
+            <label>Stakeholder entrevistado *
+              <select formControlName="interviewed_stakeholder_id">
+                <option [ngValue]="null">Selecciona un stakeholder</option>
+                <option *ngFor="let stakeholder of stakeholders()" [ngValue]="stakeholder.id">
+                  {{ stakeholder.name }} - {{ stakeholder.role }}
+                </option>
+              </select>
+            </label>
+
+            <div *ngIf="techUsers().length === 0 || stakeholders().length === 0" class="inline-warning">
+              Necesitas un usuario tecnico asignado y al menos un stakeholder para registrar entrevistas completas.
+            </div>
+
+            <label>Preguntas y respuestas *
+              <textarea
+                formControlName="questions"
+                rows="8"
+                placeholder="P1: ¿Como realizan el proceso actual?&#10;R1: ...&#10;&#10;P2: ¿Que problemas encuentran?&#10;R2: ..."
+              ></textarea>
+            </label>
+            <label>Transcript para IA
+              <textarea formControlName="transcript" rows="5" placeholder="Pega aqui una transcripcion completa si ya la tienes."></textarea>
+            </label>
+            <label>Archivo o audio de entrevista
+              <input type="file" multiple accept=".txt,.md,.pdf,.doc,.docx,.mp3,.wav,.m4a,.ogg,audio/*" (change)="onInterviewFilesSelected($event)" />
+            </label>
+            <div *ngIf="selectedInterviewFiles().length > 0" class="file-chip-list">
+              <span *ngFor="let file of selectedInterviewFiles()">{{ file.name }}</span>
+            </div>
+            <label>Contexto adicional<input formControlName="notes" /></label>
             <button class="primary-action" type="submit" [disabled]="saving()">Nueva Entrevista</button>
           </form>
           <ng-container *ngTemplateOutlet="captureList; context: { module: 'interviews', empty: 'No hay entrevistas registradas' }"></ng-container>
         </ng-container>
 
-        <ng-container *ngIf="activeModule() === 'surveys'">
+        <ng-container *ngIf="activeModule() === 'techniques' && activeTechnique() === 'surveys'">
           <form class="workspace-form" [formGroup]="surveyForm" (ngSubmit)="saveCapture('surveys')">
             <h3>Crear Nueva Encuesta</h3>
             <label>Titulo *<input formControlName="title" /></label>
@@ -204,7 +334,7 @@
           <ng-container *ngTemplateOutlet="captureList; context: { module: 'surveys', empty: 'No hay encuestas registradas' }"></ng-container>
         </ng-container>
 
-        <ng-container *ngIf="activeModule() === 'observations'">
+        <ng-container *ngIf="activeModule() === 'techniques' && activeTechnique() === 'observations'">
           <form class="workspace-form" [formGroup]="observationForm" (ngSubmit)="saveCapture('observations')">
             <h3>Nota Rapida</h3>
             <label>Titulo *<input formControlName="title" /></label>
@@ -215,7 +345,7 @@
           <ng-container *ngTemplateOutlet="captureList; context: { module: 'observations', empty: 'No hay observaciones registradas' }"></ng-container>
         </ng-container>
 
-        <ng-container *ngIf="activeModule() === 'focus'">
+        <ng-container *ngIf="activeModule() === 'techniques' && activeTechnique() === 'focus'">
           <form class="workspace-form" [formGroup]="focusForm" (ngSubmit)="saveCapture('focus')">
             <h3>Registrar Nuevo Focus Group</h3>
             <label>Titulo *<input formControlName="title" /></label>
@@ -230,30 +360,7 @@
           <ng-container *ngTemplateOutlet="captureList; context: { module: 'focus', empty: 'No hay focus groups registrados' }"></ng-container>
         </ng-container>
 
-        <ng-container *ngIf="activeModule() === 'stories'">
-          <form class="workspace-form" [formGroup]="storyForm" (ngSubmit)="saveCapture('stories')">
-            <h3>Historia de Usuario</h3>
-            <label>Titulo *<input formControlName="title" /></label>
-            <div class="story-box">
-              <label>Como... *<input formControlName="role" /></label>
-              <label>Quiero... *<input formControlName="action" /></label>
-              <label>Para que... *<input formControlName="benefit" /></label>
-            </div>
-            <label>Criterios de aceptacion *<textarea formControlName="criteria" rows="4"></textarea></label>
-            <label>Prioridad
-              <select formControlName="priority">
-                <option value="low">Baja</option>
-                <option value="medium">Media</option>
-                <option value="high">Alta</option>
-                <option value="critical">Critica</option>
-              </select>
-            </label>
-            <button class="primary-action violet" type="submit" [disabled]="saving()">Nueva Historia</button>
-          </form>
-          <ng-container *ngTemplateOutlet="captureList; context: { module: 'stories', empty: 'No hay historias registradas' }"></ng-container>
-        </ng-container>
-
-        <ng-container *ngIf="activeModule() === 'documents'">
+        <ng-container *ngIf="activeModule() === 'techniques' && activeTechnique() === 'documents'">
           <form class="workspace-form" [formGroup]="documentForm" (ngSubmit)="saveCapture('documents')">
             <h3>Analisis de Documentos</h3>
             <label>Titulo del analisis *<input formControlName="title" /></label>
@@ -268,7 +375,7 @@
           <ng-container *ngTemplateOutlet="captureList; context: { module: 'documents', empty: 'No hay documentos analizados' }"></ng-container>
         </ng-container>
 
-        <ng-container *ngIf="activeModule() === 'tracking'">
+        <ng-container *ngIf="activeModule() === 'techniques' && activeTechnique() === 'tracking'">
           <form class="workspace-form" [formGroup]="trackingForm" (ngSubmit)="saveCapture('tracking')">
             <h3>Seguimiento Transaccional</h3>
             <label>Titulo *<input formControlName="title" /></label>
@@ -284,7 +391,46 @@
           <ng-container *ngTemplateOutlet="captureList; context: { module: 'tracking', empty: 'No hay seguimientos registrados' }"></ng-container>
         </ng-container>
 
+        <ng-container *ngIf="activeModule() === 'evidences'">
+          <div class="module-action-bar">
+            <div>
+              <strong>Evidencias auditables</strong>
+              <span>{{ sessionsForFindings().length }} tecnica(s) listas para extraer hallazgos con IA.</span>
+            </div>
+            <button class="primary-action" type="button" [disabled]="saving() || sessionsForFindings().length === 0" (click)="generateAIFindings()">
+              Generar hallazgos con IA
+            </button>
+          </div>
+          <div *ngIf="sessions().length === 0" class="empty-state">
+            <span class="material-icons">folder_open</span>
+            <p>No hay tecnicas con evidencias</p>
+            <small>Registra una tecnica para crear evidencia tipo nota automaticamente.</small>
+          </div>
+          <article *ngFor="let session of sessions()" class="data-card evidence-card">
+            <div class="card-topline">
+              <span>{{ session.technique }}</span>
+              <small>{{ session.evidence_count }} evidencia(s)</small>
+            </div>
+            <h3>{{ session.title }}</h3>
+            <p>{{ session.notes || 'Sin notas generales.' }}</p>
+            <div class="evidence-list">
+              <span *ngFor="let evidence of sessionEvidences(session.id)">
+                {{ evidence.kind }} · {{ evidence.file_name || (evidence.notes || 'Evidencia registrada') }}
+              </span>
+            </div>
+          </article>
+        </ng-container>
+
         <ng-container *ngIf="activeModule() === 'findings'">
+          <div class="module-action-bar">
+            <div>
+              <strong>Hallazgos a requisitos</strong>
+              <span>La IA genera borradores, no requisitos finales; deben revisarse antes de aceptar.</span>
+            </div>
+            <button class="primary-action violet" type="button" [disabled]="saving() || findings().length === 0" (click)="generateAIRequirements()">
+              Generar requisitos con IA
+            </button>
+          </div>
           <form class="workspace-form" [formGroup]="findingForm" (ngSubmit)="saveFinding()">
             <h3>Crear Hallazgo desde Evidencia</h3>
             <label>Sesion con evidencia *
@@ -318,6 +464,15 @@
         </ng-container>
 
         <ng-container *ngIf="activeModule() === 'requirements'">
+          <div class="module-action-bar">
+            <div>
+              <strong>Requisitos a especificacion</strong>
+              <span>Historias, specs, diagramas y tareas se derivan en frontend hasta tener persistencia dedicada.</span>
+            </div>
+            <button class="primary-action violet" type="button" [disabled]="requirements().length === 0" (click)="openDerivedSpecs()">
+              Generar casos/specs derivados
+            </button>
+          </div>
           <form class="workspace-form" [formGroup]="requirementForm" (ngSubmit)="saveRequirement()">
             <h3>Crear Requisito</h3>
             <div class="form-grid two">
@@ -362,13 +517,177 @@
           </article>
         </ng-container>
 
+        <ng-container *ngIf="activeModule() === 'useCases'">
+          <div *ngIf="useCaseArtifacts().length === 0" class="empty-state">
+            <span class="material-icons">menu_book</span>
+            <p>No hay historias o casos de uso derivados</p>
+            <small>Crea requisitos desde hallazgos para derivar historias y casos de uso trazables.</small>
+          </div>
+          <div class="card-grid">
+            <article *ngFor="let useCase of useCaseArtifacts()" class="data-card spec-card">
+              <div class="card-topline">
+                <span>{{ useCase.requirement.code }}</span>
+                <small>{{ useCase.requirement.priority }}</small>
+              </div>
+              <h3>{{ useCase.title }}</h3>
+              <div class="story-box compact">
+                <p><strong>Como</strong> {{ useCase.actor }}</p>
+                <p><strong>quiero</strong> {{ useCase.action }}</p>
+                <p><strong>para</strong> {{ useCase.benefit }}.</p>
+              </div>
+              <p><strong>Criterios:</strong> {{ useCase.acceptanceCriteria }}</p>
+              <small>{{ useCase.sourceFindings.length }} hallazgo(s) fuente. Artefacto derivado, listo para persistencia posterior.</small>
+            </article>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'specs'">
+          <div class="module-action-bar">
+            <div>
+              <strong>Specs listas para agente</strong>
+              <span>Convierte cada spec derivada en una tarea/prompt accionable.</span>
+            </div>
+            <button class="primary-action green" type="button" [disabled]="specArtifacts().length === 0" (click)="openDerivedAgentTasks()">
+              Generar tareas de agente
+            </button>
+          </div>
+          <div *ngIf="specArtifacts().length === 0" class="empty-state">
+            <span class="material-icons">description</span>
+            <p>No hay specs generadas</p>
+            <small>Las specs se derivan de requisitos para que un agente pueda implementar sin perder contexto.</small>
+          </div>
+          <article *ngFor="let spec of specArtifacts()" class="data-card spec-card">
+            <div class="card-topline">
+              <span>{{ spec.title }}</span>
+              <small>{{ spec.useCase.requirement.code }}</small>
+            </div>
+            <h3>{{ spec.useCase.requirement.description }}</h3>
+            <div class="spec-section">
+              <strong>Endpoints sugeridos</strong>
+              <span *ngFor="let endpoint of spec.endpoints">{{ endpoint }}</span>
+            </div>
+            <div class="spec-section">
+              <strong>Pruebas esperadas</strong>
+              <span *ngFor="let test of spec.tests">{{ test }}</span>
+            </div>
+            <pre class="spec-preview">{{ spec.markdown }}</pre>
+          </article>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'modeling'">
+          <div *ngIf="diagramArtifacts().length === 0" class="empty-state">
+            <span class="material-icons">schema</span>
+            <p>No hay diagramas derivados</p>
+            <small>Cuando existan requisitos, este modulo genera diagramas Mermaid preparados para un editor visual futuro.</small>
+          </div>
+          <div class="card-grid">
+            <article *ngFor="let diagram of diagramArtifacts()" class="data-card spec-card">
+              <div class="card-topline">
+                <span>{{ diagram.kind }}</span>
+                <small>{{ diagram.source }}</small>
+              </div>
+              <h3>{{ diagram.title }}</h3>
+              <pre class="spec-preview diagram-code">{{ diagram.mermaid }}</pre>
+              <small>Fase 1: Mermaid trazable. Fase 2: canvas tipo draw.io con nodos editables.</small>
+            </article>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'agent'">
+          <div *ngIf="agentTasks().length === 0" class="empty-state">
+            <span class="material-icons">terminal</span>
+            <p>No hay tareas para agente</p>
+            <small>Genera requisitos para producir specs y prompts accionables de implementacion.</small>
+          </div>
+          <article *ngFor="let task of agentTasks()" class="data-card spec-card">
+            <div class="card-topline">
+              <span>{{ task.title }}</span>
+              <small>{{ task.spec.title }}</small>
+            </div>
+            <h3>{{ task.spec.useCase.requirement.description }}</h3>
+            <div class="spec-section">
+              <strong>Archivos sugeridos</strong>
+              <span *ngFor="let file of task.files">{{ file }}</span>
+            </div>
+            <pre class="spec-preview">{{ task.prompt }}</pre>
+          </article>
+        </ng-container>
+
         <ng-container *ngIf="activeModule() === 'traceability'">
-          <div *ngIf="traceability().length === 0" class="empty-state">
+          <div class="trace-toolbar">
+            <div>
+              <strong>Auditoria de trazabilidad</strong>
+              <span>Real hasta requisito; derivado desde historia/caso hasta tarea.</span>
+            </div>
+            <div class="trace-tabs">
+              <button type="button" [class.active]="activeTraceView() === 'chain'" (click)="setTraceView('chain')">Cadena</button>
+              <button type="button" [class.active]="activeTraceView() === 'matrix'" (click)="setTraceView('matrix')">Matriz</button>
+              <button type="button" [class.active]="activeTraceView() === 'risks'" (click)="setTraceView('risks')">Riesgos</button>
+            </div>
+          </div>
+
+          <div *ngIf="traceAuditRows().length === 0" class="empty-state">
             <span class="material-icons">hub</span>
             <p>No hay matriz de trazabilidad completa</p>
             <small>Necesitas requisitos conectados con hallazgos y evidencias.</small>
           </div>
-          <article *ngFor="let item of traceability()" class="trace-card">
+          <ng-container *ngIf="activeTraceView() === 'chain'">
+          <article *ngFor="let row of traceAuditRows()" class="trace-card">
+            <div class="card-topline">
+              <span>{{ row.requirement.code }}</span>
+              <small class="health-chip" [attr.data-status]="row.status">{{ row.statusLabel }}</small>
+            </div>
+            <h3>{{ row.requirement.description }}</h3>
+            <div class="trace-chain audit">
+              <span><b>Stakeholder</b>{{ row.stakeholder }}</span>
+              <span><b>Tecnica</b>{{ row.technique }}</span>
+              <span><b>Evidencia</b>{{ row.evidence }}</span>
+              <span><b>Hallazgo</b>{{ row.finding }}</span>
+              <strong><b>Requisito</b>{{ row.requirement.code }}</strong>
+              <span><b>Historia/Caso</b>{{ row.useCase ? row.useCase.title : 'Derivado pendiente' }}</span>
+              <span><b>Spec</b>{{ row.spec ? row.spec.title : 'Derivado pendiente' }}</span>
+              <span><b>Diagrama</b>{{ row.diagram ? row.diagram.title : 'Derivado pendiente' }}</span>
+              <span><b>Tarea</b>{{ row.task ? row.task.title : 'Derivado pendiente' }}</span>
+            </div>
+            <small>{{ row.source === 'backend' ? 'Cadena real desde backend hasta requisito.' : 'Cadena incompleta calculada en workspace.' }} Artefactos posteriores marcados como derivados.</small>
+          </article>
+          </ng-container>
+
+          <ng-container *ngIf="activeTraceView() === 'matrix'">
+            <div class="trace-matrix">
+              <div class="matrix-head">
+                <span>Stakeholder</span>
+                <span>Tecnica</span>
+                <span>Evidencia</span>
+                <span>Hallazgo</span>
+                <span>Requisito</span>
+                <span>Spec</span>
+                <span>Estado</span>
+              </div>
+              <div *ngFor="let row of traceAuditRows()" class="matrix-row">
+                <span>{{ row.stakeholder }}</span>
+                <span>{{ row.technique }}</span>
+                <span>{{ row.evidence }}</span>
+                <span>{{ row.finding }}</span>
+                <strong>{{ row.requirement.code }}</strong>
+                <span>{{ row.spec?.title || 'Derivado pendiente' }}</span>
+                <small class="health-chip" [attr.data-status]="row.status">{{ row.statusLabel }}</small>
+              </div>
+            </div>
+          </ng-container>
+
+          <ng-container *ngIf="activeTraceView() === 'risks'">
+            <div class="risk-list">
+              <article *ngFor="let risk of traceRiskItems()" class="risk-item" [class.warning]="risk.count > 0">
+                <div>
+                  <strong>{{ risk.count }}</strong>
+                  <span>{{ risk.label }}</span>
+                </div>
+                <button type="button" (click)="setActiveModule(risk.module)">{{ risk.action }}</button>
+              </article>
+            </div>
+          </ng-container>
+          <article *ngIf="false as item" class="trace-card">
             <h3>{{ item.code }} · {{ item.description }}</h3>
             <div *ngFor="let link of item.links" class="trace-chain">
               <span>{{ link.stakeholders[0]?.name || 'Stakeholder pendiente' }}</span>
@@ -376,8 +695,44 @@
               <span>{{ link.evidences.length }} evidencia(s)</span>
               <span>{{ link.finding.statement }}</span>
               <strong>{{ item.code }}</strong>
+              <span>Historia / Spec derivada</span>
+              <span>Tarea agente lista</span>
             </div>
           </article>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'ai'">
+          <div class="ai-grid">
+            <article class="workspace-form">
+              <h3>Hallazgos con IA</h3>
+              <p class="form-helper">Usa tecnicas con evidencia como contexto. Los resultados quedan como borradores revisables.</p>
+              <button class="primary-action" type="button" [disabled]="saving()" (click)="generateAIFindings()">
+                Generar hallazgos con IA
+              </button>
+              <small>{{ aiDraftFindings().length }} borrador(es), {{ pendingAIDraftCount() }} pendiente(s) en total</small>
+            </article>
+            <article class="workspace-form">
+              <h3>Requisitos con IA</h3>
+              <p class="form-helper">Genera requisitos desde hallazgos existentes. Nada se guarda como requisito final sin revision humana.</p>
+              <button class="primary-action violet" type="button" [disabled]="saving()" (click)="generateAIRequirements()">
+                Generar requisitos con IA
+              </button>
+              <small>{{ aiDraftRequirements().length }} borrador(es) de requisito</small>
+            </article>
+          </div>
+
+          <div class="card-grid">
+            <article *ngFor="let draft of aiDraftFindings()" class="data-card">
+              <div class="card-topline"><span>Hallazgo IA</span><small>{{ draft.status }}</small></div>
+              <h3>{{ draft.statement }}</h3>
+              <p>{{ draft.category }} · confianza {{ draft.confidence ?? 0 }}</p>
+            </article>
+            <article *ngFor="let draft of aiDraftRequirements()" class="data-card">
+              <div class="card-topline"><span>Requisito IA</span><small>{{ draft.status }}</small></div>
+              <h3>{{ draft.description }}</h3>
+              <p>{{ draft.type }} · {{ draft.priority }}</p>
+            </article>
+          </div>
         </ng-container>
       </section>
     </section>

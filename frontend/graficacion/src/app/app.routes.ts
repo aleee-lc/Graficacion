@@ -27,7 +27,8 @@ export const routes: Routes = [
     children: [
       { path: 'home', component: Home },
       { path: 'projects/:id/workspace', component: ProjectWorkspace },
-      { path: 'projects/:id', component: FlowProjectPage },
+      { path: 'projects/:id', redirectTo: 'projects/:id/workspace', pathMatch: 'full' },
+      { path: 'projects/:id/context-legacy', component: FlowProjectPage },
       { path: 'projects/:id/sessions', component: FlowSessionsPage },
       { path: 'projects/:id/findings', component: FlowFindingsPage },
       { path: 'projects/:id/requirements', component: FlowRequirementsPage },

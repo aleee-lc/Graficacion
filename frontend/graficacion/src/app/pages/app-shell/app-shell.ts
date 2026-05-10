@@ -49,8 +49,8 @@ export class AppShell {
       },
       {
         key: 'step1' as const,
-        label: '1. Project',
-        route: `/projects/${projectId}`,
+        label: 'Context legacy',
+        route: `/projects/${projectId}/context-legacy`,
         complete: status?.steps.step1.complete ?? false,
         locked: status?.steps.step1.locked ?? false
       },

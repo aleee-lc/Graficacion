@@ -19,6 +19,27 @@ const normalizeText = (value: string) => value.trim().replace(/\s+/g, ' ');
 
 const wordsCount = (value: string) => normalizeText(value).split(/\s+/).filter(Boolean).length;
 
+const buildRequirementCode = async (projectId: number, db: Pick<typeof pool, 'query'> = pool) => {
+  const rows = await db.query<{ next_number: number }>(
+    `SELECT COALESCE(MAX(CAST(SUBSTRING(code FROM '[0-9]+$') AS INTEGER)), 0) + 1 AS next_number
+     FROM trace_requirements
+     WHERE project_id = $1
+       AND code ~ '^REQ-[0-9]+$'`,
+    [projectId]
+  );
+  const nextNumber = rows.rows[0]?.next_number ?? 1;
+  return `REQ-${String(nextNumber).padStart(3, '0')}`;
+};
+
+const buildDedupeKey = (statement: string) => {
+  const normalized = normalizeText(statement).toLowerCase();
+  let hash = 0;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash = (hash * 31 + normalized.charCodeAt(index)) >>> 0;
+  }
+  return `ai:${hash.toString(16).padStart(8, '0')}`;
+};
+
 const hasProjectAccess = async (projectId: number, userId: number) => {
   const rows = await pool.query(
     'SELECT 1 FROM project_users WHERE project_id = $1 AND user_id = $2 LIMIT 1',
@@ -443,20 +464,20 @@ router.post('/:id/ai/draft-findings', async (req: AuthRequest, res) => {
         {
           role: 'system',
           content:
-            'You are a requirements analyst. Return JSON only. Generate high-quality finding drafts strictly from the provided sessions and evidences.'
+            'Eres analista senior de requisitos. Responde UNICAMENTE JSON valido. Genera hallazgos en ESPANOL, claros, accionables y basados estrictamente en las sesiones y evidencias proporcionadas. No escribas en ingles.'
         },
         {
           role: 'user',
           content: [
             `Project ID: ${projectId}`,
             `Prompt version: ${parsed.data.prompt_version}`,
-            `Generate up to ${requestedDrafts} finding drafts.`,
-            'Allowed categories: problem, need, constraint.',
-            'Each statement must be clear, testable, and at least 20 characters and 4 words.',
-            'Output JSON shape:',
+            `Genera hasta ${requestedDrafts} borradores de hallazgo.`,
+            'Categorias permitidas: problem, need, constraint.',
+            'Cada statement debe estar en ESPANOL, ser claro, verificable y tener minimo 20 caracteres y 4 palabras.',
+            'Formato JSON obligatorio:',
             '{"drafts":[{"session_id":number,"source_evidence_ids":[number],"category":"problem|need|constraint","statement":"string","confidence":0..1}]}',
-            'Use only evidence ids that exist in the supplied context.',
-            'Context:',
+            'Usa solamente session_id y evidence ids que existan en el contexto.',
+            'Contexto:',
             promptContext
           ].join('\n\n')
         }
@@ -469,18 +490,19 @@ router.post('/:id/ai/draft-findings', async (req: AuthRequest, res) => {
       .map((draft) => ({
         ...draft,
         statement: normalizeText(draft.statement),
-        source_evidence_ids: Array.from(new Set(draft.source_evidence_ids))
+        source_evidence_ids: Array.from(new Set(draft.source_evidence_ids)).filter((evidenceId) =>
+          evidenceIdsBySession.get(draft.session_id)?.has(evidenceId)
+        )
       }))
-      .filter((draft) => {
+      .map((draft) => {
         const allowedEvidenceIds = evidenceIdsBySession.get(draft.session_id);
-        if (!allowedEvidenceIds) {
-          return false;
-        }
-        return (
-          draft.source_evidence_ids.length > 0 &&
-          draft.source_evidence_ids.every((evidenceId) => allowedEvidenceIds.has(evidenceId))
-        );
+        return {
+          ...draft,
+          source_evidence_ids:
+            draft.source_evidence_ids.length > 0 ? draft.source_evidence_ids : Array.from(allowedEvidenceIds ?? [])
+        };
       })
+      .filter((draft) => draft.source_evidence_ids.length > 0)
       .slice(0, requestedDrafts);
 
     if (acceptedDrafts.length === 0) {
@@ -627,20 +649,20 @@ router.post('/:id/ai/draft-requirements', async (req: AuthRequest, res) => {
         {
           role: 'system',
           content:
-            'You are a senior systems analyst. Return JSON only. Generate requirement drafts from the provided findings.'
+            'Eres analista senior de sistemas. Responde UNICAMENTE JSON valido. Genera requisitos en ESPANOL a partir de los hallazgos proporcionados. No escribas en ingles.'
         },
         {
           role: 'user',
           content: [
             `Project ID: ${projectId}`,
             `Prompt version: ${parsed.data.prompt_version}`,
-            `Generate up to ${requestedDrafts} requirement drafts.`,
-            'Every draft must map to one or more finding_ids from the allowed list.',
+            `Genera hasta ${requestedDrafts} borradores de requisito.`,
+            'Cada borrador debe mapearse a uno o mas finding_ids permitidos.',
             `Allowed finding_ids: [${requestedFindingIds.join(', ')}]`,
-            'Output JSON shape:',
+            'Formato JSON obligatorio:',
             '{"drafts":[{"type":"functional|non_functional","priority":"low|medium|high|critical","description":"string","acceptance_criteria":"string","finding_ids":[number],"confidence":0..1}]}',
-            'Description and acceptance_criteria must be clear and testable.',
-            'Context:',
+            'description y acceptance_criteria deben estar en ESPANOL, ser claros y verificables.',
+            'Contexto:',
             promptContext
           ].join('\n\n')
         }
@@ -832,6 +854,28 @@ router.patch('/:id/ai/draft-findings/:draftId', async (req: AuthRequest, res) =>
     return;
   }
 
+  if (parsed.data.status === 'accepted') {
+    const draft = result.rows[0];
+    const dedupeKey = buildDedupeKey(draft.statement);
+    const existing = await pool.query<{ id: number }>(
+      `SELECT f.id
+       FROM trace_findings f
+       INNER JOIN trace_sessions s ON s.id = f.session_id
+       WHERE s.project_id = $1
+         AND f.dedupe_key = $2
+       LIMIT 1`,
+      [projectId, dedupeKey]
+    );
+
+    if (existing.rows.length === 0) {
+      await pool.query(
+        `INSERT INTO trace_findings (session_id, category, statement, dedupe_key)
+         VALUES ($1, $2, $3, $4)`,
+        [draft.source_session_id, draft.category, draft.statement, dedupeKey]
+      );
+    }
+  }
+
   res.json({ draft: mapDraftFindingRow(result.rows[0]) });
 });
 
@@ -953,4 +997,3 @@ router.patch('/:id/ai/draft-requirements/:draftId', async (req: AuthRequest, res
 });
 
 export default router;
-
