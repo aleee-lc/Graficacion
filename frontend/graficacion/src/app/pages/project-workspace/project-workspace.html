@@ -575,21 +575,171 @@
         </ng-container>
 
         <ng-container *ngIf="activeModule() === 'modeling'">
-          <div *ngIf="diagramArtifacts().length === 0" class="empty-state">
-            <span class="material-icons">schema</span>
-            <p>No hay diagramas derivados</p>
-            <small>Cuando existan requisitos, este modulo genera diagramas Mermaid preparados para un editor visual futuro.</small>
+          <div class="module-action-bar">
+            <div>
+              <strong>Editor visual tipo draw.io lite</strong>
+              <span>Canvas SVG editable. Los diagramas son locales/derivados hasta agregar persistencia.</span>
+            </div>
+            <div class="generate-diagram-actions">
+              <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('use_case')">Casos de uso</button>
+              <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('class')">Clases</button>
+              <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('sequence')">Secuencia</button>
+              <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('package')">Paquetes</button>
+              <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('component')">Componentes</button>
+            </div>
           </div>
-          <div class="card-grid">
-            <article *ngFor="let diagram of diagramArtifacts()" class="data-card spec-card">
-              <div class="card-topline">
-                <span>{{ diagram.kind }}</span>
-                <small>{{ diagram.source }}</small>
+
+          <div *ngIf="!diagram()" class="empty-state">
+            <span class="material-icons">schema</span>
+            <p>No hay diagrama editable activo</p>
+            <small>Genera un diagrama desde requisitos o agrega nodos manualmente para iniciar un canvas libre.</small>
+            <button class="primary-action" type="button" (click)="addDiagramNode('actor')">Crear canvas libre</button>
+          </div>
+
+          <div *ngIf="diagram() as model" class="modeling-shell">
+            <div class="diagram-toolbar">
+              <button type="button" [class.active]="diagramMode() === 'select'" (click)="setDiagramMode('select')">
+                <span class="material-icons">near_me</span> Seleccionar
+              </button>
+              <button type="button" [class.active]="diagramMode() === 'connect'" (click)="startDiagramConnection()">
+                <span class="material-icons">timeline</span> Conectar
+              </button>
+              <button type="button" (click)="addDiagramNode('actor')">Actor</button>
+              <button type="button" (click)="addDiagramNode('use_case')">Caso de uso</button>
+              <button type="button" (click)="addDiagramNode('class')">Clase</button>
+              <button type="button" (click)="addDiagramNode('package')">Paquete</button>
+              <button type="button" (click)="addDiagramNode('component')">Componente</button>
+              <button type="button" (click)="addDiagramNode('lifeline')">Lifeline</button>
+              <button type="button" (click)="addDiagramNode('note')">Nota</button>
+              <button type="button" (click)="autoLayoutDiagram()">Auto-layout</button>
+              <button type="button" (click)="deleteSelectedDiagramElement()">Eliminar</button>
+              <button type="button" (click)="exportDiagramJson()">Exportar JSON</button>
+            </div>
+
+            <div class="diagram-workbench">
+              <div class="diagram-canvas">
+                <svg
+                  viewBox="0 0 960 560"
+                  (pointermove)="onDiagramPointerMove($event)"
+                  (pointerup)="stopDiagramDrag()"
+                  (pointerleave)="stopDiagramDrag()"
+                >
+                  <defs>
+                    <marker id="diagram-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+                      <path d="M0,0 L0,6 L9,3 z"></path>
+                    </marker>
+                  </defs>
+
+                  <g *ngFor="let edge of model.edges" class="diagram-edge" [class.selected]="selectedDiagramEdgeId() === edge.id">
+                    <line
+                      [attr.x1]="diagramNodeCenter(edge.sourceNodeId).x"
+                      [attr.y1]="diagramNodeCenter(edge.sourceNodeId).y"
+                      [attr.x2]="diagramNodeCenter(edge.targetNodeId).x"
+                      [attr.y2]="diagramNodeCenter(edge.targetNodeId).y"
+                      marker-end="url(#diagram-arrow)"
+                      (click)="selectDiagramEdge(edge.id, $event)"
+                    ></line>
+                    <text
+                      *ngIf="edge.label"
+                      [attr.x]="(diagramNodeCenter(edge.sourceNodeId).x + diagramNodeCenter(edge.targetNodeId).x) / 2"
+                      [attr.y]="(diagramNodeCenter(edge.sourceNodeId).y + diagramNodeCenter(edge.targetNodeId).y) / 2 - 8"
+                    >
+                      {{ edge.label }}
+                    </text>
+                  </g>
+
+                  <g
+                    *ngFor="let node of model.nodes"
+                    [attr.class]="diagramNodeClass(node)"
+                    [attr.transform]="'translate(' + node.x + ',' + node.y + ')'"
+                    (pointerdown)="onDiagramNodePointerDown($event, node.id)"
+                  >
+                    <ellipse
+                      *ngIf="node.type === 'use_case'"
+                      [attr.cx]="node.width / 2"
+                      [attr.cy]="node.height / 2"
+                      [attr.rx]="node.width / 2"
+                      [attr.ry]="node.height / 2"
+                    ></ellipse>
+                    <line
+                      *ngIf="node.type === 'lifeline'"
+                      [attr.x1]="node.width / 2"
+                      y1="56"
+                      [attr.x2]="node.width / 2"
+                      [attr.y2]="node.height"
+                      class="lifeline-stem"
+                    ></line>
+                    <rect
+                      *ngIf="node.type === 'package'"
+                      x="0"
+                      y="0"
+                      width="68"
+                      height="18"
+                      rx="4"
+                      class="package-tab"
+                    ></rect>
+                    <rect
+                      *ngIf="node.type !== 'use_case'"
+                      [attr.width]="node.width"
+                      [attr.height]="node.height"
+                      rx="12"
+                    ></rect>
+                    <text [attr.x]="node.width / 2" [attr.y]="node.type === 'lifeline' ? 28 : 24" text-anchor="middle">
+                      <tspan
+                        *ngFor="let line of diagramNodeLines(node); let lineIndex = index"
+                        [attr.x]="node.width / 2"
+                        [attr.dy]="lineIndex === 0 ? 0 : 15"
+                      >
+                        {{ line }}
+                      </tspan>
+                    </text>
+                    <text class="node-type" [attr.x]="node.width / 2" [attr.y]="node.height - 12" text-anchor="middle">
+                      {{ node.type }}
+                    </text>
+                  </g>
+                </svg>
               </div>
-              <h3>{{ diagram.title }}</h3>
-              <pre class="spec-preview diagram-code">{{ diagram.mermaid }}</pre>
-              <small>Fase 1: Mermaid trazable. Fase 2: canvas tipo draw.io con nodos editables.</small>
-            </article>
+
+              <aside class="diagram-properties">
+                <div class="card-topline">
+                  <span>{{ model.title }}</span>
+                  <small>{{ model.derived ? 'Derivado local' : 'Local' }}</small>
+                </div>
+                <ng-container *ngIf="selectedDiagramNode() as node">
+                  <h3>Propiedades del nodo</h3>
+                  <label>Etiqueta
+                    <input [value]="node.label" (input)="updateSelectedDiagramNodeLabel($any($event.target).value)" />
+                  </label>
+                  <p>Tipo: {{ node.type }}</p>
+                  <p *ngIf="node.requirementId">Requisito vinculado: {{ node.requirementId }}</p>
+                </ng-container>
+                <ng-container *ngIf="selectedDiagramEdge() as edge">
+                  <h3>Propiedades de conexion</h3>
+                  <label>Etiqueta
+                    <input [value]="edge.label || ''" (input)="updateSelectedDiagramEdgeLabel($any($event.target).value)" />
+                  </label>
+                  <p>{{ edge.sourceNodeId }} -> {{ edge.targetNodeId }}</p>
+                </ng-container>
+                <div *ngIf="!selectedDiagramNode() && !selectedDiagramEdge()" class="diagram-hint">
+                  Selecciona un nodo o conexion para editar sus propiedades.
+                </div>
+                <div *ngIf="connectSourceNodeId()" class="inline-warning">
+                  Modo conectar activo. Selecciona el nodo destino.
+                </div>
+              </aside>
+            </div>
+
+            <div class="card-grid">
+              <article *ngFor="let diagram of diagramArtifacts()" class="data-card spec-card">
+                <div class="card-topline">
+                  <span>Mermaid secundario</span>
+                  <small>{{ diagram.source }}</small>
+                </div>
+                <pre class="spec-preview diagram-code">{{ diagram.mermaid }}</pre>
+              </article>
+            </div>
+
+            <pre *ngIf="exportedDiagramJson()" class="spec-preview diagram-export">{{ exportedDiagramJson() }}</pre>
           </div>
         </ng-container>
 
@@ -725,11 +875,20 @@
             <article *ngFor="let draft of aiDraftFindings()" class="data-card">
               <div class="card-topline"><span>Hallazgo IA</span><small>{{ draft.status }}</small></div>
               <h3>{{ draft.statement }}</h3>
+              <div class="draft-actions" *ngIf="draft.status === 'pending'">
+                <button type="button" [disabled]="saving()" (click)="acceptAIDraftFinding(draft)">Aceptar y guardar</button>
+                <button type="button" [disabled]="saving()" (click)="rejectAIDraftFinding(draft)">Rechazar</button>
+              </div>
               <p>{{ draft.category }} · confianza {{ draft.confidence ?? 0 }}</p>
             </article>
             <article *ngFor="let draft of aiDraftRequirements()" class="data-card">
               <div class="card-topline"><span>Requisito IA</span><small>{{ draft.status }}</small></div>
               <h3>{{ draft.description }}</h3>
+              <small>Aceptacion: {{ draft.acceptance_criteria }}</small>
+              <div class="draft-actions" *ngIf="draft.status === 'pending'">
+                <button type="button" [disabled]="saving()" (click)="acceptAIDraftRequirement(draft)">Aceptar y guardar</button>
+                <button type="button" [disabled]="saving()" (click)="rejectAIDraftRequirement(draft)">Rechazar</button>
+              </div>
               <p>{{ draft.type }} · {{ draft.priority }}</p>
             </article>
           </div>

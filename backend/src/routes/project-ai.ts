@@ -993,6 +993,48 @@ router.patch('/:id/ai/draft-requirements/:draftId', async (req: AuthRequest, res
     return;
   }
 
+  if (parsed.data.status === 'accepted') {
+    const draft = result.rows[0];
+    const existing = await pool.query<{ id: number }>(
+      `SELECT id
+       FROM trace_requirements
+       WHERE project_id = $1
+         AND description = $2
+       LIMIT 1`,
+      [projectId, draft.description]
+    );
+
+    if (existing.rows.length === 0) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const code = await buildRequirementCode(projectId, client);
+        const requirement = await client.query<{ id: number }>(
+          `INSERT INTO trace_requirements
+           (project_id, code, type, priority, description, acceptance_criteria)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING id`,
+          [projectId, code, draft.type, draft.priority, draft.description, draft.acceptance_criteria]
+        );
+
+        for (const findingId of draft.source_finding_ids) {
+          await client.query(
+            `INSERT INTO trace_requirement_findings (requirement_id, finding_id)
+             VALUES ($1, $2)
+             ON CONFLICT (requirement_id, finding_id) DO NOTHING`,
+            [requirement.rows[0].id, findingId]
+          );
+        }
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+  }
+
   res.json({ draft: mapDraftRequirementRow(result.rows[0]) });
 });
 

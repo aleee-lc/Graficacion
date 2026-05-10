@@ -49,6 +49,20 @@ type CaptureModuleKey =
   | 'tracking';
 
 type TraceViewKey = 'chain' | 'matrix' | 'risks';
+type DiagramKind = 'use_case' | 'class' | 'sequence' | 'package' | 'component' | 'free';
+type DiagramNodeType =
+  | 'actor'
+  | 'use_case'
+  | 'class'
+  | 'package'
+  | 'component'
+  | 'requirement'
+  | 'spec'
+  | 'note'
+  | 'lifeline'
+  | 'boundary';
+type DiagramEdgeType = 'association' | 'include' | 'extend' | 'dependency' | 'inheritance';
+type DiagramEditorMode = 'select' | 'connect';
 
 type WorkspaceModule = {
   key: ModuleKey;
@@ -97,6 +111,44 @@ type DerivedDiagram = {
   kind: string;
   source: string;
   mermaid: string;
+};
+
+type DiagramNode = {
+  id: string;
+  type: DiagramNodeType;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  requirementId?: number;
+  specId?: string;
+};
+
+type DiagramEdge = {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  type: DiagramEdgeType;
+  label?: string;
+};
+
+type DiagramModel = {
+  id: string;
+  projectId: number | null;
+  type: DiagramKind;
+  title: string;
+  sourceRequirementIds: number[];
+  sourceSpecIds: string[];
+  nodes: DiagramNode[];
+  edges: DiagramEdge[];
+  derived: boolean;
+};
+
+type DomainEntity = {
+  name: string;
+  attributes: string[];
+  operations: string[];
 };
 
 type TraceAuditRow = {
@@ -178,6 +230,13 @@ export class ProjectWorkspace {
   readonly activeModule = signal<ModuleKey>('summary');
   readonly activeTechnique = signal<CaptureModuleKey>('interviews');
   readonly activeTraceView = signal<TraceViewKey>('chain');
+  readonly diagram = signal<DiagramModel | null>(null);
+  readonly diagramMode = signal<DiagramEditorMode>('select');
+  readonly selectedDiagramNodeId = signal<string | null>(null);
+  readonly selectedDiagramEdgeId = signal<string | null>(null);
+  readonly connectSourceNodeId = signal<string | null>(null);
+  readonly exportedDiagramJson = signal<string | null>(null);
+  readonly draggingNode = signal<{ nodeId: string; offsetX: number; offsetY: number } | null>(null);
   readonly selectedInterviewFiles = signal<File[]>([]);
   readonly darkMode = signal(false);
   readonly loading = signal(true);
@@ -420,6 +479,16 @@ export class ProjectWorkspace {
     }))
   );
 
+  readonly selectedDiagramNode = computed(() => {
+    const nodeId = this.selectedDiagramNodeId();
+    return this.diagram()?.nodes.find((node) => node.id === nodeId) ?? null;
+  });
+
+  readonly selectedDiagramEdge = computed(() => {
+    const edgeId = this.selectedDiagramEdgeId();
+    return this.diagram()?.edges.find((edge) => edge.id === edgeId) ?? null;
+  });
+
   readonly traceAuditRows = computed<TraceAuditRow[]>(() => {
     const rows: TraceAuditRow[] = [];
     const useCases = this.useCaseArtifacts();
@@ -636,6 +705,196 @@ export class ProjectWorkspace {
       return;
     }
     this.setActiveModule('agent');
+  }
+
+  generateEditableDiagram(kind: DiagramKind = 'use_case') {
+    const projectId = this.projectId();
+    const useCases = this.useCaseArtifacts();
+    if (useCases.length === 0 && kind !== 'free') {
+      this.error.set('Necesitas requisitos para generar un diagrama editable.');
+      return;
+    }
+
+    const builders: Record<DiagramKind, () => DiagramModel> = {
+      use_case: () => this.buildUseCaseDiagram(projectId, useCases),
+      class: () => this.buildClassDiagram(projectId, useCases),
+      sequence: () => this.buildSequenceDiagram(projectId, useCases),
+      package: () => this.buildPackageDiagram(projectId, useCases),
+      component: () => this.buildComponentDiagram(projectId, useCases),
+      free: () => this.ensureDiagram()
+    };
+
+    this.diagram.set(builders[kind]());
+    this.selectedDiagramNodeId.set(null);
+    this.selectedDiagramEdgeId.set(null);
+    this.connectSourceNodeId.set(null);
+    this.exportedDiagramJson.set(null);
+    this.success.set('Diagrama editable generado desde requisitos y specs.');
+  }
+
+  setDiagramMode(mode: DiagramEditorMode) {
+    this.diagramMode.set(mode);
+    this.connectSourceNodeId.set(null);
+  }
+
+  addDiagramNode(type: DiagramNodeType) {
+    const current = this.ensureDiagram();
+    const count = current.nodes.length + 1;
+    const node: DiagramNode = {
+      id: `node-${Date.now()}-${count}`,
+      type,
+      label: this.defaultDiagramNodeLabel(type, count),
+      x: 90 + (count % 4) * 150,
+      y: 80 + Math.floor(count / 4) * 110,
+      width: type === 'actor' ? 96 : type === 'lifeline' ? 130 : 150,
+      height: type === 'actor' ? 64 : type === 'lifeline' ? 360 : 68
+    };
+    this.diagram.set({ ...current, nodes: [...current.nodes, node] });
+    this.selectedDiagramNodeId.set(node.id);
+    this.selectedDiagramEdgeId.set(null);
+  }
+
+  startDiagramConnection() {
+    const node = this.selectedDiagramNode();
+    if (!node) {
+      this.error.set('Selecciona un nodo para iniciar una conexion.');
+      return;
+    }
+    this.diagramMode.set('connect');
+    this.connectSourceNodeId.set(node.id);
+    this.success.set(`Conectando desde ${node.label}. Selecciona el nodo destino.`);
+  }
+
+  selectDiagramNode(nodeId: string) {
+    this.selectedDiagramNodeId.set(nodeId);
+    this.selectedDiagramEdgeId.set(null);
+  }
+
+  selectDiagramEdge(edgeId: string, event?: Event) {
+    event?.stopPropagation();
+    this.selectedDiagramEdgeId.set(edgeId);
+    this.selectedDiagramNodeId.set(null);
+  }
+
+  onDiagramNodePointerDown(event: PointerEvent, nodeId: string) {
+    event.stopPropagation();
+    if (this.diagramMode() === 'connect') {
+      this.completeDiagramConnection(nodeId);
+      return;
+    }
+
+    const node = this.diagram()?.nodes.find((item) => item.id === nodeId);
+    if (!node) {
+      return;
+    }
+    const point = this.diagramPoint(event);
+    this.selectDiagramNode(nodeId);
+    this.draggingNode.set({ nodeId, offsetX: point.x - node.x, offsetY: point.y - node.y });
+  }
+
+  onDiagramPointerMove(event: PointerEvent) {
+    const dragging = this.draggingNode();
+    const current = this.diagram();
+    if (!dragging || !current) {
+      return;
+    }
+    const point = this.diagramPoint(event);
+    const nextNodes = current.nodes.map((node) =>
+      node.id === dragging.nodeId
+        ? { ...node, x: Math.max(16, point.x - dragging.offsetX), y: Math.max(16, point.y - dragging.offsetY) }
+        : node
+    );
+    this.diagram.set({ ...current, nodes: nextNodes });
+  }
+
+  stopDiagramDrag() {
+    this.draggingNode.set(null);
+  }
+
+  updateSelectedDiagramNodeLabel(value: string) {
+    const node = this.selectedDiagramNode();
+    const current = this.diagram();
+    if (!node || !current) {
+      return;
+    }
+    this.diagram.set({
+      ...current,
+      nodes: current.nodes.map((item) => (item.id === node.id ? { ...item, label: value } : item))
+    });
+  }
+
+  updateSelectedDiagramEdgeLabel(value: string) {
+    const edge = this.selectedDiagramEdge();
+    const current = this.diagram();
+    if (!edge || !current) {
+      return;
+    }
+    this.diagram.set({
+      ...current,
+      edges: current.edges.map((item) => (item.id === edge.id ? { ...item, label: value } : item))
+    });
+  }
+
+  deleteSelectedDiagramElement() {
+    const current = this.diagram();
+    if (!current) {
+      return;
+    }
+    const nodeId = this.selectedDiagramNodeId();
+    const edgeId = this.selectedDiagramEdgeId();
+    if (nodeId) {
+      this.diagram.set({
+        ...current,
+        nodes: current.nodes.filter((node) => node.id !== nodeId),
+        edges: current.edges.filter((edge) => edge.sourceNodeId !== nodeId && edge.targetNodeId !== nodeId)
+      });
+      this.selectedDiagramNodeId.set(null);
+      return;
+    }
+    if (edgeId) {
+      this.diagram.set({ ...current, edges: current.edges.filter((edge) => edge.id !== edgeId) });
+      this.selectedDiagramEdgeId.set(null);
+    }
+  }
+
+  autoLayoutDiagram() {
+    const current = this.diagram();
+    if (!current) {
+      return;
+    }
+    const nextNodes = current.nodes.map((node, index) => ({
+      ...node,
+      x: 70 + (index % 4) * 180,
+      y: 70 + Math.floor(index / 4) * 130
+    }));
+    this.diagram.set({ ...current, nodes: nextNodes });
+  }
+
+  exportDiagramJson() {
+    const current = this.diagram();
+    if (!current) {
+      this.error.set('No hay diagrama para exportar.');
+      return;
+    }
+    this.exportedDiagramJson.set(JSON.stringify(current, null, 2));
+    this.success.set('JSON del diagrama generado en el panel inferior.');
+  }
+
+  diagramNodeCenter(nodeId: string) {
+    const node = this.diagram()?.nodes.find((item) => item.id === nodeId);
+    return node ? { x: node.x + node.width / 2, y: node.y + node.height / 2 } : { x: 0, y: 0 };
+  }
+
+  diagramNodeClass(node: DiagramNode) {
+    return `diagram-node node-${node.type}${this.selectedDiagramNodeId() === node.id ? ' selected' : ''}`;
+  }
+
+  diagramNodeLines(node: DiagramNode) {
+    const maxLength = node.type === 'class' ? 34 : 28;
+    return node.label
+      .split('\n')
+      .flatMap((line) => (line.length > maxLength ? [`${line.slice(0, maxLength - 3)}...`] : [line]))
+      .slice(0, node.type === 'class' ? 7 : 3);
   }
 
   moduleSessions(module: CaptureModuleKey) {
@@ -886,6 +1145,81 @@ export class ProjectWorkspace {
         },
         error: (err) => this.fail(err, 'No se pudieron generar requisitos con IA.')
       });
+  }
+
+  acceptAIDraftFinding(draft: AIDraftFinding) {
+    const projectId = this.projectId();
+    if (!projectId) {
+      return;
+    }
+    this.setSavingState();
+    this.traceabilityService
+      .updateAIDraftFinding(projectId, draft.id, {
+        status: 'accepted',
+        category: draft.category,
+        statement: draft.statement
+      })
+      .subscribe({
+        next: () => {
+          this.success.set('Borrador aceptado y guardado como hallazgo real.');
+          this.afterMutation(projectId);
+        },
+        error: (err) => this.fail(err, 'No se pudo aceptar el hallazgo IA.')
+      });
+  }
+
+  rejectAIDraftFinding(draft: AIDraftFinding) {
+    const projectId = this.projectId();
+    if (!projectId) {
+      return;
+    }
+    this.setSavingState();
+    this.traceabilityService.updateAIDraftFinding(projectId, draft.id, { status: 'rejected' }).subscribe({
+      next: () => {
+        this.success.set('Borrador de hallazgo rechazado.');
+        this.afterMutation(projectId);
+      },
+      error: (err) => this.fail(err, 'No se pudo rechazar el hallazgo IA.')
+    });
+  }
+
+  acceptAIDraftRequirement(draft: AIDraftRequirement) {
+    const projectId = this.projectId();
+    if (!projectId) {
+      return;
+    }
+    this.setSavingState();
+    this.traceabilityService
+      .updateAIDraftRequirement(projectId, draft.id, {
+        status: 'accepted',
+        type: draft.type,
+        priority: draft.priority,
+        description: draft.description,
+        acceptance_criteria: draft.acceptance_criteria,
+        source_finding_ids: draft.source_finding_ids
+      })
+      .subscribe({
+        next: () => {
+          this.success.set('Borrador aceptado y guardado como requisito real.');
+          this.afterMutation(projectId);
+        },
+        error: (err) => this.fail(err, 'No se pudo aceptar el requisito IA.')
+      });
+  }
+
+  rejectAIDraftRequirement(draft: AIDraftRequirement) {
+    const projectId = this.projectId();
+    if (!projectId) {
+      return;
+    }
+    this.setSavingState();
+    this.traceabilityService.updateAIDraftRequirement(projectId, draft.id, { status: 'rejected' }).subscribe({
+      next: () => {
+        this.success.set('Borrador de requisito rechazado.');
+        this.afterMutation(projectId);
+      },
+      error: (err) => this.fail(err, 'No se pudo rechazar el requisito IA.')
+    });
   }
 
   private refresh(projectId: number) {
@@ -1212,6 +1546,24 @@ export class ProjectWorkspace {
     return value.replace(/"/g, "'");
   }
 
+  private removeAccents(value: string) {
+    return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  private toPascalCase(value: string) {
+    const cleaned = this.removeAccents(value)
+      .replace(/[^a-zA-Z0-9\s]/g, ' ')
+      .trim();
+    const words = cleaned.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      return 'Entidad';
+    }
+    return words
+      .slice(0, 3)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join('');
+  }
+
   private traceStatus(
     evidenceLabel: string,
     useCase: DerivedUseCase | null,
@@ -1231,6 +1583,325 @@ export class ProjectWorkspace {
       return { status: 'missing-task', label: 'Falta tarea' };
     }
     return { status: 'complete', label: 'Completo con derivados' };
+  }
+
+  private domainText(useCases: DerivedUseCase[]) {
+    return [
+      this.project()?.name,
+      this.project()?.description,
+      this.project()?.objective,
+      ...useCases.flatMap((useCase) => [
+        useCase.requirement.description,
+        useCase.acceptanceCriteria,
+        ...useCase.sourceFindings.map((finding) => finding.statement)
+      ]),
+      ...this.sessions().map((session) => `${session.title} ${session.technique} ${session.notes ?? ''}`),
+      ...Object.values(this.evidencesBySession()).flat().map((evidence) => `${evidence.file_name ?? ''} ${evidence.notes ?? ''}`)
+    ].filter(Boolean).join(' ');
+  }
+
+  private inferDomainEntities(useCases: DerivedUseCase[]): DomainEntity[] {
+    const text = this.removeAccents(this.domainText(useCases)).toLowerCase();
+    const catalog: Array<{ terms: string[]; entity: DomainEntity }> = [
+      { terms: ['paciente', 'pacientes'], entity: { name: 'Paciente', attributes: ['id', 'nombre', 'telefono', 'correo'], operations: ['registrar()', 'actualizarDatos()'] } },
+      { terms: ['cita', 'citas', 'agenda', 'agendar'], entity: { name: 'Cita', attributes: ['id', 'fecha', 'hora', 'estado'], operations: ['agendar()', 'cancelar()', 'reprogramar()'] } },
+      { terms: ['medico', 'doctor', 'doctora', 'medica'], entity: { name: 'Medico', attributes: ['id', 'nombre', 'especialidad'], operations: ['consultarDisponibilidad()'] } },
+      { terms: ['consultorio', 'consultorios'], entity: { name: 'Consultorio', attributes: ['id', 'numero', 'ubicacion'], operations: ['reservar()'] } },
+      { terms: ['recepcionista', 'recepcion'], entity: { name: 'Recepcionista', attributes: ['id', 'nombre', 'turno'], operations: ['gestionarCita()'] } },
+      { terms: ['horario', 'disponibilidad', 'slot'], entity: { name: 'Disponibilidad', attributes: ['id', 'fecha', 'horaInicio', 'horaFin'], operations: ['validar()'] } },
+      { terms: ['usuario', 'usuarios', 'cliente', 'clientes'], entity: { name: 'Usuario', attributes: ['id', 'nombre', 'rol'], operations: ['autenticar()'] } },
+      { terms: ['cotizacion', 'cotizaciones'], entity: { name: 'Cotizacion', attributes: ['id', 'folio', 'total', 'estado'], operations: ['calcular()', 'aprobar()'] } },
+      { terms: ['producto', 'productos'], entity: { name: 'Producto', attributes: ['id', 'nombre', 'precio'], operations: ['actualizarPrecio()'] } },
+      { terms: ['orden', 'pedido'], entity: { name: 'Orden', attributes: ['id', 'fecha', 'estado'], operations: ['crear()', 'cancelar()'] } },
+      { terms: ['pago', 'pagos'], entity: { name: 'Pago', attributes: ['id', 'monto', 'metodo'], operations: ['procesar()'] } }
+    ];
+
+    const entities = catalog
+      .filter((item) => item.terms.some((term) => text.includes(term)))
+      .map((item) => item.entity);
+
+    if (entities.length >= 3) {
+      return entities.slice(0, 8);
+    }
+
+    const fallbackNames = Array.from(
+      new Set(
+        useCases
+          .flatMap((useCase) => useCase.requirement.description.match(/\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{3,}\b/g) ?? [])
+          .map((value) => this.toPascalCase(value))
+          .filter((value) => !['Sistema', 'Usuario', 'Requisito'].includes(value))
+      )
+    );
+
+    return [
+      ...entities,
+      ...fallbackNames.map((name) => ({
+        name,
+        attributes: ['id', 'nombre', 'estado'],
+        operations: ['crear()', 'actualizar()']
+      }))
+    ].slice(0, 6);
+  }
+
+  private domainActors(useCases: DerivedUseCase[]) {
+    const actors = Array.from(
+      new Set([
+        ...this.stakeholders().map((stakeholder) => stakeholder.role || stakeholder.name),
+        ...useCases.map((useCase) => useCase.actor)
+      ].filter(Boolean).map((actor) => this.toPascalCase(actor)))
+    );
+    return actors.length > 0 ? actors.slice(0, 3) : ['Usuario'];
+  }
+
+  private buildUseCaseDiagram(projectId: number | null, useCases: DerivedUseCase[]): DiagramModel {
+    const nodes: DiagramNode[] = [];
+    const edges: DiagramEdge[] = [];
+    const actors = this.domainActors(useCases);
+    const boundaryId = 'system-boundary';
+    nodes.push({
+      id: boundaryId,
+      type: 'boundary',
+      label: this.project()?.name ?? 'Sistema',
+      x: 210,
+      y: 35,
+      width: 520,
+      height: Math.max(320, useCases.length * 105),
+    });
+    actors.forEach((actor, index) => {
+      nodes.push({ id: `actor-${index}`, type: 'actor', label: actor, x: index === 0 ? 45 : 780, y: 95 + index * 130, width: 110, height: 68 });
+    });
+    useCases.forEach((useCase, index) => {
+      const rowY = 85 + index * 100;
+      const actorId = `actor-${index % actors.length}`;
+      const useCaseId = `usecase-${useCase.requirement.id}`;
+      const requirementId = `requirement-${useCase.requirement.id}`;
+      const specId = `spec-${useCase.requirement.id}`;
+      nodes.push(
+        {
+          id: useCaseId,
+          type: 'use_case',
+          label: useCase.action,
+          x: 300,
+          y: rowY - 5,
+          width: 240,
+          height: 78,
+          requirementId: useCase.requirement.id
+        },
+        {
+          id: requirementId,
+          type: 'requirement',
+          label: useCase.requirement.code,
+          x: 520,
+          y: rowY,
+          width: 130,
+          height: 68,
+          requirementId: useCase.requirement.id
+        },
+        {
+          id: specId,
+          type: 'spec',
+          label: `Spec ${useCase.requirement.code}`,
+          x: 720,
+          y: rowY,
+          width: 150,
+          height: 68,
+          requirementId: useCase.requirement.id,
+          specId: `spec-${useCase.requirement.id}`
+        }
+      );
+      edges.push(
+        { id: `edge-a-uc-${useCase.requirement.id}`, sourceNodeId: actorId, targetNodeId: useCaseId, type: 'association' },
+        { id: `edge-uc-r-${useCase.requirement.id}`, sourceNodeId: useCaseId, targetNodeId: requirementId, type: 'dependency', label: 'deriva' },
+        { id: `edge-r-s-${useCase.requirement.id}`, sourceNodeId: requirementId, targetNodeId: specId, type: 'dependency', label: 'especifica' }
+      );
+    });
+
+    return {
+      id: `diagram-${Date.now()}`,
+      projectId,
+      type: 'use_case',
+      title: 'Diagrama editable de casos de uso',
+      sourceRequirementIds: useCases.map((useCase) => useCase.requirement.id),
+      sourceSpecIds: useCases.map((useCase) => `spec-${useCase.requirement.id}`),
+      nodes,
+      edges,
+      derived: true
+    };
+  }
+
+  private buildClassDiagram(projectId: number | null, useCases: DerivedUseCase[]): DiagramModel {
+    const entities = this.inferDomainEntities(useCases);
+    const nodes = entities.map((entity, index) => ({
+      id: `class-${entity.name}`,
+      type: 'class' as const,
+      label: `${entity.name}\n${entity.attributes.map((attr) => `- ${attr}`).join('\n')}\n${entity.operations.map((op) => `+ ${op}`).join('\n')}`,
+      x: 70 + (index % 3) * 280,
+      y: 70 + Math.floor(index / 3) * 180,
+      width: 210,
+      height: 145
+    }));
+    const edges = entities.slice(1).map((entity, index) => ({
+      id: `class-edge-${index}`,
+      sourceNodeId: `class-${entities[0].name}`,
+      targetNodeId: `class-${entity.name}`,
+      type: 'association' as const,
+      label: index === 0 ? 'gestiona' : 'relaciona'
+    }));
+    return this.diagramModel(projectId, 'class', 'Diagrama UML de clases', nodes, edges, useCases);
+  }
+
+  private buildSequenceDiagram(projectId: number | null, useCases: DerivedUseCase[]): DiagramModel {
+    const first = useCases[0];
+    const entities = this.inferDomainEntities(useCases);
+    const mainEntity = entities[0]?.name ?? 'Entidad';
+    const action = first?.action ?? 'ejecutar caso de uso';
+    const nodes: DiagramNode[] = [
+      { id: 'seq-actor', type: 'lifeline', label: first?.actor ?? 'Stakeholder', x: 50, y: 40, width: 130, height: 430 },
+      { id: 'seq-ui', type: 'lifeline', label: `Pantalla ${mainEntity}`, x: 250, y: 40, width: 150, height: 430 },
+      { id: 'seq-service', type: 'lifeline', label: `${mainEntity}Service`, x: 470, y: 40, width: 150, height: 430 },
+      { id: 'seq-repo', type: 'lifeline', label: `${mainEntity}Repository`, x: 700, y: 40, width: 150, height: 430 }
+    ];
+    const edges: DiagramEdge[] = [
+      { id: 'seq-edge-1', sourceNodeId: 'seq-actor', targetNodeId: 'seq-ui', type: 'association', label: `1. ${action}` },
+      { id: 'seq-edge-2', sourceNodeId: 'seq-ui', targetNodeId: 'seq-service', type: 'association', label: `2. validar ${mainEntity}` },
+      { id: 'seq-edge-3', sourceNodeId: 'seq-service', targetNodeId: 'seq-repo', type: 'association', label: `3. guardar/consultar ${mainEntity}` },
+      { id: 'seq-edge-4', sourceNodeId: 'seq-repo', targetNodeId: 'seq-service', type: 'dependency', label: '4. resultado' },
+      { id: 'seq-edge-5', sourceNodeId: 'seq-service', targetNodeId: 'seq-ui', type: 'dependency', label: '5. confirmar operacion' }
+    ];
+    return this.diagramModel(projectId, 'sequence', 'Diagrama de secuencia', nodes, edges, useCases);
+  }
+
+  private buildPackageDiagram(projectId: number | null, useCases: DerivedUseCase[]): DiagramModel {
+    const entities = this.inferDomainEntities(useCases);
+    const domainName = entities[0]?.name ?? this.toPascalCase(this.project()?.name ?? 'Dominio');
+    const nodes: DiagramNode[] = [
+      { id: 'pkg-ui', type: 'package', label: `UI\nPantallas ${domainName}`, x: 80, y: 80, width: 190, height: 110 },
+      { id: 'pkg-app', type: 'package', label: `Aplicacion\nCasos de uso\nServicios`, x: 360, y: 80, width: 210, height: 110 },
+      { id: 'pkg-domain', type: 'package', label: `Dominio ${domainName}\n${entities.slice(0, 3).map((e) => e.name).join('\n')}`, x: 640, y: 80, width: 210, height: 130 },
+      { id: 'pkg-infra', type: 'package', label: 'Infraestructura\nRepositorios\nBase de datos', x: 220, y: 310, width: 220, height: 120 },
+      { id: 'pkg-security', type: 'package', label: 'Seguridad\nRoles\nPermisos', x: 600, y: 310, width: 190, height: 110 }
+    ];
+    const edges: DiagramEdge[] = [
+      { id: 'pkg-edge-1', sourceNodeId: 'pkg-foundation', targetNodeId: 'pkg-discovery', type: 'dependency' },
+      { id: 'pkg-edge-2', sourceNodeId: 'pkg-discovery', targetNodeId: 'pkg-analysis', type: 'dependency' },
+      { id: 'pkg-edge-3', sourceNodeId: 'pkg-analysis', targetNodeId: 'pkg-spec', type: 'dependency' },
+      { id: 'pkg-edge-4', sourceNodeId: 'pkg-spec', targetNodeId: 'pkg-delivery', type: 'dependency' }
+    ];
+    return this.diagramModel(projectId, 'package', 'Diagrama de paquetes', nodes, edges, useCases);
+  }
+
+  private buildComponentDiagram(projectId: number | null, useCases: DerivedUseCase[]): DiagramModel {
+    const entities = this.inferDomainEntities(useCases);
+    const mainEntity = entities[0]?.name ?? 'Dominio';
+    const nodes: DiagramNode[] = [
+      { id: 'cmp-ui', type: 'component', label: `${mainEntity} UI`, x: 90, y: 100, width: 180, height: 80 },
+      { id: 'cmp-api', type: 'component', label: `${mainEntity} API`, x: 370, y: 100, width: 170, height: 80 },
+      { id: 'cmp-service', type: 'component', label: `${mainEntity}Service`, x: 650, y: 100, width: 180, height: 80 },
+      { id: 'cmp-db', type: 'component', label: `${mainEntity} DB`, x: 650, y: 300, width: 170, height: 80 },
+      { id: 'cmp-auth', type: 'component', label: 'Auth/Roles', x: 370, y: 300, width: 160, height: 80 }
+    ];
+    const edges: DiagramEdge[] = [
+      { id: 'cmp-edge-1', sourceNodeId: 'cmp-ui', targetNodeId: 'cmp-api', type: 'dependency', label: 'REST' },
+      { id: 'cmp-edge-2', sourceNodeId: 'cmp-api', targetNodeId: 'cmp-service', type: 'dependency', label: 'orquesta' },
+      { id: 'cmp-edge-3', sourceNodeId: 'cmp-service', targetNodeId: 'cmp-db', type: 'dependency', label: 'persistencia' },
+      { id: 'cmp-edge-4', sourceNodeId: 'cmp-api', targetNodeId: 'cmp-auth', type: 'dependency', label: 'autorizacion' }
+    ];
+    return this.diagramModel(projectId, 'component', 'Diagrama de componentes', nodes, edges, useCases);
+  }
+
+  private diagramModel(
+    projectId: number | null,
+    type: DiagramKind,
+    title: string,
+    nodes: DiagramNode[],
+    edges: DiagramEdge[],
+    useCases: DerivedUseCase[]
+  ): DiagramModel {
+    return {
+      id: `diagram-${type}-${Date.now()}`,
+      projectId,
+      type,
+      title,
+      sourceRequirementIds: useCases.map((useCase) => useCase.requirement.id),
+      sourceSpecIds: useCases.map((useCase) => `spec-${useCase.requirement.id}`),
+      nodes,
+      edges,
+      derived: true
+    };
+  }
+
+  private ensureDiagram(): DiagramModel {
+    const current = this.diagram();
+    if (current) {
+      return current;
+    }
+    const empty: DiagramModel = {
+      id: `diagram-${Date.now()}`,
+      projectId: this.projectId(),
+      type: 'free',
+      title: 'Diagrama libre',
+      sourceRequirementIds: [],
+      sourceSpecIds: [],
+      nodes: [],
+      edges: [],
+      derived: false
+    };
+    this.diagram.set(empty);
+    return empty;
+  }
+
+  private defaultDiagramNodeLabel(type: DiagramNodeType, count: number) {
+    const labels: Record<DiagramNodeType, string> = {
+      actor: `Actor ${count}`,
+      use_case: `Caso de uso ${count}`,
+      class: `Clase ${count}`,
+      package: `Paquete ${count}`,
+      component: `Componente ${count}`,
+      requirement: `REQ-${count}`,
+      spec: `Spec ${count}`,
+      note: `Nota ${count}`,
+      lifeline: `Participante ${count}`,
+      boundary: `Sistema ${count}`
+    };
+    return labels[type];
+  }
+
+  private completeDiagramConnection(targetNodeId: string) {
+    const sourceNodeId = this.connectSourceNodeId();
+    const current = this.diagram();
+    if (!sourceNodeId || !current || sourceNodeId === targetNodeId) {
+      return;
+    }
+    const exists = current.edges.some((edge) => edge.sourceNodeId === sourceNodeId && edge.targetNodeId === targetNodeId);
+    if (!exists) {
+      this.diagram.set({
+        ...current,
+        edges: [
+          ...current.edges,
+          {
+            id: `edge-${Date.now()}`,
+            sourceNodeId,
+            targetNodeId,
+            type: 'association',
+            label: ''
+          }
+        ]
+      });
+    }
+    this.diagramMode.set('select');
+    this.connectSourceNodeId.set(null);
+    this.selectedDiagramNodeId.set(targetNodeId);
+  }
+
+  private diagramPoint(event: PointerEvent) {
+    const svg = event.currentTarget instanceof SVGSVGElement
+      ? event.currentTarget
+      : (event.currentTarget as Element).closest('svg');
+    const rect = svg?.getBoundingClientRect();
+    return {
+      x: event.clientX - (rect?.left ?? 0),
+      y: event.clientY - (rect?.top ?? 0)
+    };
   }
 
   private setSavingState() {

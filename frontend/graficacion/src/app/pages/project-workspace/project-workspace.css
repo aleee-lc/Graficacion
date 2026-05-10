@@ -605,6 +605,29 @@
   padding: 7px 10px;
 }
 
+.generate-diagram-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.generate-diagram-actions button {
+  border: 1px solid rgba(59, 130, 246, 0.32);
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.18);
+  color: #bfdbfe;
+  cursor: pointer;
+  font-weight: 850;
+  min-height: 38px;
+  padding: 0 12px;
+}
+
+.generate-diagram-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .empty-state {
   display: grid;
   justify-items: center;
@@ -728,6 +751,223 @@
 
 .diagram-code {
   color: #a7f3d0;
+}
+
+.modeling-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.diagram-toolbar {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.86);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+}
+
+.diagram-toolbar button {
+  align-items: center;
+  border: 1px solid #1e293b;
+  border-radius: 999px;
+  background: #020617;
+  color: #cbd5e1;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 11px;
+}
+
+.diagram-toolbar button.active {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(37, 99, 235, 0.2);
+  color: #bfdbfe;
+}
+
+.diagram-toolbar .material-icons {
+  font-size: 16px;
+}
+
+.diagram-workbench {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 260px;
+}
+
+.diagram-canvas,
+.diagram-properties {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(15, 23, 42, 0.86);
+}
+
+.diagram-canvas {
+  min-height: 520px;
+  overflow: hidden;
+}
+
+.diagram-canvas svg {
+  background:
+    linear-gradient(rgba(30, 41, 59, 0.32) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 41, 59, 0.32) 1px, transparent 1px),
+    #020617;
+  background-size: 32px 32px;
+  height: 100%;
+  min-height: 520px;
+  width: 100%;
+  touch-action: none;
+}
+
+.diagram-edge line {
+  cursor: pointer;
+  stroke: #64748b;
+  stroke-width: 2;
+}
+
+.diagram-edge.selected line {
+  stroke: #60a5fa;
+  stroke-width: 3;
+}
+
+.diagram-edge path,
+.diagram-canvas marker path {
+  fill: #64748b;
+}
+
+.diagram-edge text {
+  fill: #93c5fd;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.diagram-node {
+  cursor: grab;
+}
+
+.diagram-node rect,
+.diagram-node ellipse {
+  fill: #0f172a;
+  stroke: #334155;
+  stroke-width: 2;
+}
+
+.diagram-node .package-tab {
+  fill: rgba(14, 165, 233, 0.22);
+}
+
+.diagram-node .lifeline-stem {
+  stroke: #60a5fa;
+  stroke-dasharray: 7 6;
+  stroke-width: 2;
+}
+
+.diagram-node.selected rect,
+.diagram-node.selected ellipse {
+  filter: drop-shadow(0 0 16px rgba(59, 130, 246, 0.34));
+  stroke: #60a5fa;
+}
+
+.diagram-node text {
+  fill: #e5e7eb;
+  font-size: 12px;
+  font-weight: 850;
+  pointer-events: none;
+}
+
+.diagram-node .node-type {
+  fill: #64748b;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.node-actor rect {
+  fill: rgba(37, 99, 235, 0.2);
+  stroke: #60a5fa;
+}
+
+.node-use_case ellipse {
+  fill: rgba(124, 58, 237, 0.16);
+  stroke: #a78bfa;
+}
+
+.node-requirement rect {
+  fill: rgba(245, 158, 11, 0.15);
+  stroke: #fbbf24;
+}
+
+.node-spec rect {
+  fill: rgba(16, 185, 129, 0.14);
+  stroke: #34d399;
+}
+
+.node-package rect,
+.node-component rect,
+.node-class rect {
+  fill: rgba(14, 165, 233, 0.14);
+  stroke: #38bdf8;
+}
+
+.node-class rect {
+  fill: rgba(15, 23, 42, 0.96);
+}
+
+.node-lifeline rect {
+  fill: rgba(37, 99, 235, 0.18);
+  stroke: #60a5fa;
+}
+
+.node-boundary rect {
+  fill: rgba(148, 163, 184, 0.12);
+  stroke: #cbd5e1;
+}
+
+.node-note rect {
+  fill: rgba(100, 116, 139, 0.2);
+  stroke: #94a3b8;
+}
+
+.diagram-properties {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 16px;
+}
+
+.diagram-properties h3 {
+  color: #fff;
+  margin: 0;
+}
+
+.diagram-properties label {
+  color: #cbd5e1;
+  display: grid;
+  font-size: 13px;
+  gap: 7px;
+}
+
+.diagram-properties input {
+  border: 1px solid #334155;
+  border-radius: 12px;
+  background: #020617;
+  color: #e5e7eb;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.diagram-properties p,
+.diagram-hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+.diagram-export {
+  max-height: 420px;
 }
 
 .pick-list {
@@ -897,6 +1137,29 @@
   padding: 0 12px;
 }
 
+.draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.draft-actions button {
+  border: 1px solid #1e293b;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.18);
+  color: #bfdbfe;
+  cursor: pointer;
+  font-weight: 800;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.draft-actions button + button {
+  background: rgba(127, 29, 29, 0.2);
+  color: #fecaca;
+}
+
 .alert {
   border-radius: 16px;
   font-weight: 700;
@@ -936,7 +1199,8 @@
   .form-grid.two,
   .module-cards,
   .card-grid,
-  .trace-chain {
+  .trace-chain,
+  .diagram-workbench {
     grid-template-columns: 1fr;
   }
 }
