@@ -22,7 +22,9 @@ const configuredCorsOrigins = env.CORS_ORIGIN.split(',')
   .filter(Boolean);
 
 const isAllowedLocalOrigin = (origin: string) =>
-  /^http:\/\/localhost:\d+$/.test(origin) || /^http:\/\/127\.0\.0\.1:\d+$/.test(origin);
+  /^http:\/\/localhost:\d+$/.test(origin) || 
+  /^http:\/\/127\.0\.0\.1:\d+$/.test(origin) ||
+  /\.vercel\.app$/.test(origin);
 
 app.use(
   cors({
