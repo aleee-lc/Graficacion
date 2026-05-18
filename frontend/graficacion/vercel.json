@@ -1,4 +1,5 @@
 {
+  "buildCommand": "ng build --configuration production",
   "outputDirectory": "dist/graficacion/browser",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
