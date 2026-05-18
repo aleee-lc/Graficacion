@@ -1,0 +1,139 @@
+<main class="survey-response-page">
+  <section class="survey-card" *ngIf="loading()">
+    <p>Cargando encuesta...</p>
+  </section>
+
+  <section class="survey-card" *ngIf="!loading() && error() && !survey()">
+    <span class="material-icons">error</span>
+    <h1>No se pudo abrir la encuesta</h1>
+    <p>{{ error() }}</p>
+    <a routerLink="/landing">Volver</a>
+  </section>
+
+  <section class="survey-card" *ngIf="submitted()">
+    <span class="material-icons success">task_alt</span>
+    <h1>Respuesta enviada</h1>
+    <p>Gracias. Tus respuestas quedaron registradas como evidencia del proyecto.</p>
+  </section>
+
+  <section class="survey-card wide" *ngIf="!loading() && !submitted() && survey() as form">
+    <header>
+      <p>Cuestionario</p>
+      <h1>{{ form.title }}</h1>
+      <span>{{ form.description }}</span>
+      <small *ngIf="form.objective">Objetivo: {{ form.objective }}</small>
+    </header>
+
+    <div *ngIf="error()" class="inline-error">{{ error() }}</div>
+
+    <label *ngIf="recipients().length > 0">Stakeholder
+      <select [ngModel]="selectedStakeholderId()" (ngModelChange)="selectedStakeholderId.set($event ? +$event : null)">
+        <option [ngValue]="null">Responder sin seleccionar stakeholder</option>
+        <option *ngFor="let recipient of recipients()" [ngValue]="recipient.id">
+          {{ recipient.name }} - {{ recipient.role }}
+        </option>
+      </select>
+    </label>
+
+    <div class="two-cols">
+      <label>Nombre
+        <input [ngModel]="respondentName()" (ngModelChange)="respondentName.set($event)" />
+      </label>
+      <label>Contacto
+        <input [ngModel]="respondentContact()" (ngModelChange)="respondentContact.set($event)" />
+      </label>
+    </div>
+
+    <label>Comentario libre
+      <textarea rows="3" [ngModel]="notes()" (ngModelChange)="notes.set($event)"></textarea>
+    </label>
+
+    <label *ngIf="form.allow_audio || form.allow_document">Audio o documento
+      <input
+        type="file"
+        multiple
+        [accept]="form.allow_audio && form.allow_document ? 'audio/*,.pdf,.doc,.docx,.txt,.md' : (form.allow_audio ? 'audio/*' : '.pdf,.doc,.docx,.txt,.md')"
+        (change)="onFilesSelected($event)"
+      />
+    </label>
+    <div *ngIf="selectedFiles().length > 0" class="option-list">
+      <small *ngFor="let file of selectedFiles()">{{ file.name }}</small>
+    </div>
+
+    <article class="question-card" *ngFor="let question of questions(); let index = index">
+      <div>
+        <strong>{{ index + 1 }}. {{ question.question_text }}</strong>
+        <small>{{ question.required ? 'Requerida' : 'Opcional' }}</small>
+        <small *ngIf="question.help_text">{{ question.help_text }}</small>
+      </div>
+
+      <input
+        *ngIf="question.question_type === 'short_text'"
+        [ngModel]="answers()[question.id || 0] || ''"
+        (ngModelChange)="updateAnswer(question.id || 0, $event)"
+      />
+      <textarea
+        *ngIf="question.question_type === 'long_text'"
+        rows="4"
+        [ngModel]="answers()[question.id || 0] || ''"
+        (ngModelChange)="updateAnswer(question.id || 0, $event)"
+      ></textarea>
+      <select
+        *ngIf="question.question_type === 'single_choice'"
+        [ngModel]="answers()[question.id || 0] || ''"
+        (ngModelChange)="updateAnswer(question.id || 0, $event)"
+      >
+        <option value="">Selecciona una opcion</option>
+        <option *ngFor="let option of question.options" [value]="option">{{ option }}</option>
+      </select>
+      <div *ngIf="question.question_type === 'multiple_choice'" class="option-list">
+        <label *ngFor="let option of question.options">
+          <input
+            type="checkbox"
+            [checked]="isMultipleChoiceSelected(question.id || 0, option)"
+            (change)="toggleMultipleChoice(question.id || 0, option, $any($event.target).checked)"
+          />
+          {{ option }}
+        </label>
+      </div>
+      <input
+        *ngIf="question.question_type === 'scale_1_5'"
+        type="range"
+        min="1"
+        max="5"
+        [ngModel]="answers()[question.id || 0] || 3"
+        (ngModelChange)="updateAnswer(question.id || 0, +$event)"
+      />
+      <select
+        *ngIf="question.question_type === 'yes_no'"
+        [ngModel]="answers()[question.id || 0]"
+        (ngModelChange)="updateAnswer(question.id || 0, $event === 'true')"
+      >
+        <option [ngValue]="undefined">Selecciona</option>
+        <option value="true">Si</option>
+        <option value="false">No</option>
+      </select>
+      <input
+        *ngIf="question.question_type === 'date'"
+        type="date"
+        [ngModel]="answers()[question.id || 0] || ''"
+        (ngModelChange)="updateAnswer(question.id || 0, $event)"
+      />
+      <input
+        *ngIf="question.question_type === 'number'"
+        type="number"
+        [ngModel]="answers()[question.id || 0] || ''"
+        (ngModelChange)="updateAnswer(question.id || 0, +$event)"
+      />
+      <input
+        *ngIf="question.question_type === 'file'"
+        type="file"
+        (change)="onFilesSelected($event)"
+      />
+    </article>
+
+    <button type="button" class="submit-button" [disabled]="saving()" (click)="submit()">
+      {{ saving() ? 'Enviando...' : 'Enviar respuesta' }}
+    </button>
+  </section>
+</main>

@@ -1,10 +1,10 @@
 <div class="workspace-page" [class.workspace-dark]="darkMode()">
   <header class="workspace-topbar">
     <div class="brand-lockup">
-      <span class="brand-icon">G</span>
+      <img src="specora-mark.svg" alt="Specora" class="brand-icon" />
       <div>
-        <p class="brand-title">{{ project()?.name || 'Graficacion' }}</p>
-        <p class="brand-subtitle">Requirements Discovery & Traceability</p>
+        <p class="brand-title">Specora</p>
+        <p class="brand-subtitle">De la idea al sistema.</p>
       </div>
     </div>
     <div class="topbar-actions">
@@ -21,14 +21,14 @@
   <main class="workspace-main">
     <section class="project-command">
       <div>
-        <p class="hero-kicker">Project workspace</p>
+        <p class="hero-kicker">Specora workspace</p>
         <h1>{{ project()?.name || 'Proyecto' }}</h1>
         <p>{{ project()?.description || project()?.objective || 'Centraliza tecnicas, evidencias, hallazgos, requisitos y trazabilidad.' }}</p>
       </div>
       <div class="health-card">
-        <span>{{ traceabilityHealth() }}%</span>
-        <p>Salud de trazabilidad</p>
-        <small>{{ flowStatus()?.completed_steps ?? 0 }}/5 pasos completos</small>
+        <span>{{ requirementReadiness().score }}%</span>
+        <p>{{ requirementReadiness().status }}</p>
+        <small>{{ requirementReadiness().errors.length }} error(es), {{ requirementReadiness().warnings.length }} warning(s)</small>
       </div>
     </section>
 
@@ -126,11 +126,6 @@
               <strong>{{ specArtifacts().length }}</strong>
             </article>
             <article class="stat-card">
-              <span class="material-icons">terminal</span>
-              <p>Tareas agente</p>
-              <strong>{{ agentTasks().length }}</strong>
-            </article>
-            <article class="stat-card">
               <span class="material-icons">hub</span>
               <p>Cadena completa</p>
               <strong>{{ traceabilityHealth() }}%</strong>
@@ -140,7 +135,7 @@
           <div class="summary-band">
             <div>
               <h3>Pipeline de requisitos a implementacion</h3>
-              <p>Captura informacion por tecnica, conviertela en hallazgos, genera requisitos, specs y tareas accionables.</p>
+              <p>Captura informacion por tecnica, conviertela en hallazgos, requisitos, casos y specs implementables.</p>
             </div>
             <div class="pipeline-strip">
               <button
@@ -164,6 +159,87 @@
               </div>
               <button type="button" (click)="setActiveModule('techniques'); setActiveTechnique(module.key)">Abrir</button>
             </article>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'projectFiles'">
+          <div class="module-action-bar">
+            <div>
+              <strong>Carpeta del proyecto</strong>
+              <span>Previsualiza, edita, importa y exporta todos los artefactos del proyecto.</span>
+            </div>
+            <div class="generate-diagram-actions">
+              <button type="button" (click)="addProjectTextFile()">Nuevo archivo</button>
+              <button type="button" (click)="projectFolderInput.click()">Importar</button>
+              <button type="button" (click)="downloadProjectBundleJson()">JSON</button>
+              <button type="button" (click)="exportImplementationSpecsZip()">Exportar specs implementables</button>
+              <button type="button" (click)="exportProjectZip()">Descargar ZIP</button>
+              <input #projectFolderInput type="file" multiple accept=".zip,.json,.md,.txt,.mmd,.drawio-lite,.png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" hidden (change)="importProjectFolderFile($event)" />
+            </div>
+          </div>
+
+          <div class="project-files-panel">
+            <div class="card-topline">
+              <span>Archivos disponibles</span>
+              <small>{{ projectArtifactFiles().length }} archivo(s)</small>
+            </div>
+            <div class="project-file-manager">
+              <div class="artifact-file-list">
+                <button
+                  type="button"
+                  *ngFor="let file of projectArtifactFiles()"
+                  [class.active]="selectedProjectFileId() === file.id"
+                  (click)="selectProjectFile(file.id)"
+                >
+                  <span class="material-icons">{{ file.encoding === 'data_url' ? 'image' : (file.name.endsWith('.json') ? 'data_object' : 'description') }}</span>
+                  <span>
+                    <b>{{ file.folder ? file.folder + '/' : '' }}{{ file.name }}</b>
+                    <small>{{ file.kind }} - {{ file.source }}</small>
+                  </span>
+                </button>
+              </div>
+
+              <section class="project-file-preview" *ngIf="selectedProjectFile() as file">
+                <div class="card-topline">
+                  <span>{{ file.name }}</span>
+                  <small>{{ file.folder }}</small>
+                </div>
+                <div class="file-editor-grid" *ngIf="projectFileDraft() as draft">
+                  <label>Carpeta
+                    <input [value]="draft.folder" (input)="updateProjectFileDraft('folder', $any($event.target).value)" />
+                  </label>
+                  <label>Nombre
+                    <input [value]="draft.name" (input)="updateProjectFileDraft('name', $any($event.target).value)" />
+                  </label>
+                  <label>Tipo
+                    <input [value]="draft.kind" (input)="updateProjectFileDraft('kind', $any($event.target).value)" />
+                  </label>
+                </div>
+                <img *ngIf="file.encoding === 'data_url'" class="project-file-image-preview" [src]="file.content" [alt]="file.name" />
+                <ng-container *ngIf="projectFileDraft() as draft">
+                  <textarea
+                    *ngIf="file.encoding === 'text'"
+                    class="project-file-editor"
+                    [value]="draft.content"
+                    (input)="updateProjectFileDraft('content', $any($event.target).value)"
+                  ></textarea>
+                </ng-container>
+                <div class="file-action-row">
+                  <button type="button" (click)="saveProjectFileDraft()">Guardar cambios</button>
+                  <button type="button" (click)="downloadSelectedProjectFile()">Descargar archivo</button>
+                  <button type="button" *ngIf="file.source === 'edited'" (click)="restoreGeneratedProjectFile()">Restaurar generado</button>
+                  <button type="button" (click)="deleteProjectFile()">Eliminar</button>
+                </div>
+              </section>
+
+              <section class="project-file-preview" *ngIf="!selectedProjectFile()">
+                <div class="empty-state">
+                  <span class="material-icons">folder_open</span>
+                  <p>No hay archivo seleccionado</p>
+                  <small>Selecciona un archivo para previsualizarlo o crea uno nuevo.</small>
+                </div>
+              </section>
+            </div>
           </div>
         </ng-container>
 
@@ -209,7 +285,7 @@
               <div class="avatar">{{ stakeholder.name.charAt(0) }}</div>
               <div>
                 <h3>{{ stakeholder.name }}</h3>
-                <p>{{ stakeholder.role }} · {{ stakeholder.type }}</p>
+                <p>{{ stakeholder.role }} - {{ stakeholder.type }}</p>
                 <small>{{ stakeholder.contact || 'Sin contacto' }}</small>
               </div>
             </article>
@@ -218,9 +294,26 @@
 
         <ng-container *ngIf="activeModule() === 'processes'">
           <form class="workspace-form" [formGroup]="processForm" (ngSubmit)="saveProcess()">
+            <h3>Gestionar Procesos</h3>
+            <p class="form-helper">Define el flujo esperado del negocio. Despues usa Seguimiento para documentar una transaccion real dentro de este proceso.</p>
             <label>Nombre del Proceso *<input formControlName="name" /></label>
             <label>Descripcion *<textarea formControlName="description" rows="3"></textarea></label>
             <button class="primary-action green" type="submit" [disabled]="saving()">Agregar Proceso</button>
+          </form>
+
+          <form class="workspace-form" [formGroup]="subprocessForm" (ngSubmit)="saveSubprocess()">
+            <h3>Agregar Subproceso</h3>
+            <div class="form-grid two">
+              <label>Proceso padre *
+                <select formControlName="process_id">
+                  <option [ngValue]="null">Selecciona un proceso</option>
+                  <option *ngFor="let process of processes()" [ngValue]="process.id">{{ process.name }}</option>
+                </select>
+              </label>
+              <label>Nombre del subproceso *<input formControlName="name" placeholder="Ej: Validacion de informacion" /></label>
+            </div>
+            <label>Descripcion<textarea formControlName="description" rows="2"></textarea></label>
+            <button class="primary-action green" type="submit" [disabled]="saving() || processes().length === 0">Agregar Subproceso</button>
           </form>
 
           <div *ngIf="processes().length === 0" class="empty-state">
@@ -228,12 +321,32 @@
             <p>No hay procesos registrados</p>
             <small>Modela los procesos base antes de levantar tecnicas de analisis.</small>
           </div>
-          <article *ngFor="let process of processes()" class="data-card process-card">
-            <div>
-              <h3>{{ process.name }}</h3>
-              <p>{{ process.description || 'Sin descripcion.' }}</p>
+          <article *ngFor="let process of processes()" class="data-card spec-card">
+            <div class="card-topline">
+              <span>{{ process.name }}</span>
+              <small>{{ processSubprocesses(process.id).length }} subproceso(s) - {{ processTrackingCount(process.id) }} seguimiento(s)</small>
             </div>
-            <span class="material-icons">visibility</span>
+            <p>{{ process.description || 'Sin descripcion.' }}</p>
+            <div class="spec-section">
+              <strong>Subprocesos</strong>
+              <span *ngFor="let subprocess of processSubprocesses(process.id)">
+                {{ subprocess.name }}<ng-container *ngIf="subprocess.description"> - {{ subprocess.description }}</ng-container>
+              </span>
+              <span *ngIf="processSubprocesses(process.id).length === 0">Sin subprocesos registrados.</span>
+            </div>
+            <div class="inline-actions">
+              <button type="button" class="secondary-action" (click)="startTrackingForProcess(process)">
+                Iniciar seguimiento
+              </button>
+              <button
+                *ngFor="let subprocess of processSubprocesses(process.id)"
+                type="button"
+                class="secondary-action"
+                (click)="startTrackingForProcess(process, subprocess)"
+              >
+                Seguir {{ subprocess.name }}
+              </button>
+            </div>
           </article>
         </ng-container>
 
@@ -251,11 +364,11 @@
           </div>
           <div class="module-action-bar">
             <div>
-              <strong>Discovery con IA</strong>
-              <span>Usa tecnicas con evidencia para proponer hallazgos revisables.</span>
+              <strong>Discovery documentado</strong>
+              <span>Registra tecnicas, evidencia y notas para que el equipo derive hallazgos verificables.</span>
             </div>
-            <button class="primary-action" type="button" [disabled]="saving() || sessionsForFindings().length === 0" (click)="generateAIFindings()">
-              Generar hallazgos con IA
+            <button class="primary-action" type="button" (click)="setActiveModule('evidences')">
+              Revisar evidencias
             </button>
           </div>
         </ng-container>
@@ -264,10 +377,13 @@
           <form class="workspace-form" [formGroup]="interviewForm" (ngSubmit)="saveCapture('interviews')">
             <h3>Crear Nueva Entrevista</h3>
             <p class="form-helper">
-              La entrevista es una sesion de discovery: selecciona un stakeholder, registra multiples preguntas y adjunta transcript/audio como evidencia para IA.
+              La entrevista es una sesion de discovery: selecciona un stakeholder, registra preguntas, acuerdos, dolores, necesidades y adjunta transcript/audio como evidencia.
             </p>
             <div class="form-grid two">
               <label>Titulo *<input formControlName="title" placeholder="Ej: Entrevista con usuario final" /></label>
+              <label>Objetivo<input formControlName="objective" /></label>
+              <label>Fecha/hora<input type="datetime-local" formControlName="scheduled_at" /></label>
+              <label>Duracion<input formControlName="duration" placeholder="Ej: 45 min" /></label>
               <label>Entrevistador tecnico *
                 <select formControlName="interviewer_user_id">
                   <option [ngValue]="null">Selecciona un tecnico</option>
@@ -298,9 +414,14 @@
                 placeholder="P1: ¿Como realizan el proceso actual?&#10;R1: ...&#10;&#10;P2: ¿Que problemas encuentran?&#10;R2: ..."
               ></textarea>
             </label>
-            <label>Transcript para IA
-              <textarea formControlName="transcript" rows="5" placeholder="Pega aqui una transcripcion completa si ya la tienes."></textarea>
+            <label>Transcripcion o minuta
+              <textarea formControlName="transcript" rows="5" placeholder="Pega aqui una transcripcion completa o minuta si ya la tienes."></textarea>
             </label>
+            <div class="form-grid three">
+              <label>Acuerdos<textarea formControlName="agreements" rows="3"></textarea></label>
+              <label>Dolores detectados<textarea formControlName="pains" rows="3"></textarea></label>
+              <label>Necesidades<textarea formControlName="needs" rows="3"></textarea></label>
+            </div>
             <label>Archivo o audio de entrevista
               <input type="file" multiple accept=".txt,.md,.pdf,.doc,.docx,.mp3,.wav,.m4a,.ogg,audio/*" (change)="onInterviewFilesSelected($event)" />
             </label>
@@ -314,12 +435,24 @@
         </ng-container>
 
         <ng-container *ngIf="activeModule() === 'techniques' && activeTechnique() === 'surveys'">
-          <form class="workspace-form" [formGroup]="surveyForm" (ngSubmit)="saveCapture('surveys')">
-            <h3>Crear Nueva Encuesta</h3>
+          <form class="workspace-form" [formGroup]="surveyForm" (ngSubmit)="saveSurvey()">
+            <h3>Crear Cuestionario / Instrumento</h3>
             <label>Titulo *<input formControlName="title" /></label>
             <label>Descripcion *<textarea formControlName="description" rows="3"></textarea></label>
-            <div class="form-grid three">
-              <label>Participantes esperados<input type="number" formControlName="participants" /></label>
+            <label>Objetivo<textarea formControlName="objective" rows="2"></textarea></label>
+            <div class="form-grid two">
+              <label>Categoria
+                <select formControlName="category">
+                  <option value="survey">Encuesta</option>
+                  <option value="interview">Entrevista</option>
+                  <option value="observation">Observacion</option>
+                  <option value="focus_group">Focus group</option>
+                  <option value="document">Documento</option>
+                  <option value="transaction">Seguimiento transaccional</option>
+                  <option value="general">General</option>
+                </select>
+              </label>
+              <label>Fecha limite<input type="datetime-local" formControlName="due_at" /></label>
               <label>Estado
                 <select formControlName="status">
                   <option value="draft">Borrador</option>
@@ -327,17 +460,150 @@
                   <option value="closed">Cerrada</option>
                 </select>
               </label>
-              <label>Pregunta *<input formControlName="question" /></label>
             </div>
-            <button class="primary-action green" type="submit" [disabled]="saving()">Nueva Encuesta</button>
+            <div class="form-grid three">
+              <label>Permitir audio
+                <select formControlName="allow_audio">
+                  <option [ngValue]="true">Si</option>
+                  <option [ngValue]="false">No</option>
+                </select>
+              </label>
+              <label>Permitir documento
+                <select formControlName="allow_document">
+                  <option [ngValue]="true">Si</option>
+                  <option [ngValue]="false">No</option>
+                </select>
+              </label>
+              <label>Respuesta anonima
+                <select formControlName="allow_anonymous_response">
+                  <option [ngValue]="true">Si</option>
+                  <option [ngValue]="false">No</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="ai-question-box">
+              <div>
+                <strong>Plantilla rapida de cuestionario</strong>
+                <span>Genera preguntas base locales desde el titulo, descripcion, objetivo y enfoque. El equipo debe revisarlas.</span>
+              </div>
+              <label>Enfoque opcional
+                <input
+                  [value]="surveyAIPrompt()"
+                  (input)="surveyAIPrompt.set($any($event.target).value)"
+                  placeholder="Ej: Preguntas al mesero, al cajero, sobre pedidos y tiempos"
+                />
+              </label>
+              <button type="button" class="secondary-action" [disabled]="saving()" (click)="generateSurveyQuestionsWithAI()">
+                Sugerir preguntas base
+              </button>
+            </div>
+
+            <div class="pick-list">
+              <strong>Stakeholders destinatarios</strong>
+              <button
+                type="button"
+                *ngFor="let stakeholder of stakeholders()"
+                [class.selected]="isSurveyStakeholderSelected(stakeholder.id)"
+                (click)="toggleSurveyStakeholder(stakeholder.id)"
+              >
+                {{ stakeholder.name }} - {{ stakeholder.role }}
+              </button>
+            </div>
+
+            <div class="survey-builder">
+              <article *ngFor="let question of surveyQuestionsDraft(); let index = index" class="question-builder">
+                <div class="card-topline">
+                  <span>Pregunta {{ index + 1 }}</span>
+                  <button type="button" (click)="removeSurveyQuestion(index)">Eliminar</button>
+                </div>
+                <label>Texto *
+                  <input [value]="question.question_text" (input)="updateSurveyQuestion(index, 'question_text', $any($event.target).value)" />
+                </label>
+                <div class="form-grid three">
+                  <label>Tipo
+                    <select [value]="question.question_type" (change)="updateSurveyQuestion(index, 'question_type', $any($event.target).value)">
+                      <option value="short_text">Respuesta corta</option>
+                      <option value="long_text">Respuesta larga</option>
+                      <option value="single_choice">Opcion unica</option>
+                      <option value="multiple_choice">Opcion multiple</option>
+                      <option value="scale_1_5">Escala 1-5</option>
+                      <option value="yes_no">Si/No</option>
+                      <option value="date">Fecha</option>
+                      <option value="number">Numero</option>
+                      <option value="file">Archivo/evidencia</option>
+                    </select>
+                  </label>
+                  <label>Requerida
+                    <select [value]="question.required ? 'true' : 'false'" (change)="updateSurveyQuestion(index, 'required', $any($event.target).value === 'true')">
+                      <option value="true">Si</option>
+                      <option value="false">No</option>
+                    </select>
+                  </label>
+                </div>
+                <label *ngIf="question.question_type === 'single_choice' || question.question_type === 'multiple_choice'">
+                  Opciones, una por linea
+                  <textarea [value]="question.optionsText" rows="3" (input)="updateSurveyQuestion(index, 'optionsText', $any($event.target).value)"></textarea>
+                </label>
+                <label>Ayuda/contexto
+                  <input [value]="question.help_text" (input)="updateSurveyQuestion(index, 'help_text', $any($event.target).value)" />
+                </label>
+              </article>
+              <button type="button" class="secondary-action" (click)="addSurveyQuestion()">Agregar pregunta</button>
+            </div>
+
+            <button class="primary-action green" type="submit" [disabled]="saving()">Guardar Cuestionario</button>
           </form>
-          <ng-container *ngTemplateOutlet="captureList; context: { module: 'surveys', empty: 'No hay encuestas registradas' }"></ng-container>
+
+          <div class="card-grid">
+            <article *ngFor="let survey of surveys()" class="data-card spec-card">
+              <div class="card-topline">
+                <span>{{ survey.title }}</span>
+                <small>{{ survey.category }} - {{ survey.status }} - sesion {{ survey.trace_session_id || 'pendiente' }} - {{ survey.response_count }} respuesta(s)</small>
+              </div>
+              <p>{{ survey.description }}</p>
+              <div class="file-action-row">
+                <button type="button" (click)="openSurvey(survey.id)">Ver resultados</button>
+                <button type="button" (click)="copySurveyLink(survey)">Copiar link</button>
+                <button type="button" *ngIf="survey.status !== 'active'" (click)="setSurveyStatus(survey.id, 'active')">Activar</button>
+                <button type="button" *ngIf="survey.status !== 'closed'" (click)="setSurveyStatus(survey.id, 'closed')">Cerrar</button>
+              </div>
+              <input readonly [value]="surveyShareLink(survey)" />
+            </article>
+          </div>
+
+          <article *ngIf="selectedSurvey() as survey" class="workspace-form">
+            <h3>Resultados: {{ survey.title }}</h3>
+            <p class="form-helper">{{ selectedSurveyQuestions().length }} pregunta(s), {{ surveyResponses().length }} respuesta(s).</p>
+            <div class="card-grid">
+              <article *ngFor="let metric of surveyMetrics()" class="data-card">
+                <div class="card-topline">
+                  <span>{{ metric.question_text }}</span>
+                  <small>{{ metric.question_type }}</small>
+                </div>
+                <p *ngFor="let item of metric.counts | keyvalue">{{ item.key }}: {{ item.value }}</p>
+              </article>
+            </div>
+            <pre class="spec-preview">{{ surveyResponses() | json }}</pre>
+          </article>
         </ng-container>
 
         <ng-container *ngIf="activeModule() === 'techniques' && activeTechnique() === 'observations'">
           <form class="workspace-form" [formGroup]="observationForm" (ngSubmit)="saveCapture('observations')">
             <h3>Nota Rapida</h3>
             <label>Titulo *<input formControlName="title" /></label>
+            <div class="form-grid two">
+              <label>Proceso observado<input formControlName="processName" /></label>
+              <label>Lugar/canal<input formControlName="place" /></label>
+              <label>Actor observado<input formControlName="observedActor" /></label>
+              <label>Fecha/hora<input type="datetime-local" formControlName="observedAt" /></label>
+            </div>
+            <label>Condiciones/contexto<textarea formControlName="context" rows="3"></textarea></label>
+            <div class="form-grid two">
+              <label>Comportamiento observado<textarea formControlName="behavior" rows="3"></textarea></label>
+              <label>Problema detectado<textarea formControlName="problem" rows="3"></textarea></label>
+            </div>
+            <label>Impacto<input formControlName="impact" /></label>
             <label>Observaciones *<textarea formControlName="note" rows="6"></textarea></label>
             <label>Hallazgos o puntos clave<input formControlName="keyPoint" /></label>
             <button class="primary-action orange" type="submit" [disabled]="saving()">Nueva Nota</button>
@@ -354,6 +620,13 @@
               <label>Tipo de media<input formControlName="mediaType" /></label>
             </div>
             <label>Objetivo *<textarea formControlName="objective" rows="3"></textarea></label>
+            <label>Participantes / stakeholders<textarea formControlName="participants" rows="3"></textarea></label>
+            <label>Preguntas guia<textarea formControlName="guideQuestions" rows="3"></textarea></label>
+            <div class="form-grid two">
+              <label>Acuerdos<textarea formControlName="agreements" rows="3"></textarea></label>
+              <label>Desacuerdos<textarea formControlName="disagreements" rows="3"></textarea></label>
+            </div>
+            <label>Necesidades detectadas<textarea formControlName="detectedNeeds" rows="3"></textarea></label>
             <label>Conclusiones<textarea formControlName="conclusions" rows="3"></textarea></label>
             <button class="primary-action pink" type="submit" [disabled]="saving()">Nuevo Focus Group</button>
           </form>
@@ -362,13 +635,31 @@
 
         <ng-container *ngIf="activeModule() === 'techniques' && activeTechnique() === 'documents'">
           <form class="workspace-form" [formGroup]="documentForm" (ngSubmit)="saveCapture('documents')">
-            <h3>Analisis de Documentos</h3>
+            <div class="card-topline">
+              <h3>Analisis de Documentos</h3>
+            </div>
             <label>Titulo del analisis *<input formControlName="title" /></label>
             <div class="form-grid two">
               <label>Tipo de documento *<input formControlName="documentType" /></label>
               <label>Fuente *<input formControlName="source" /></label>
+              <label>Version<input formControlName="version" /></label>
+              <label>Fecha del documento<input type="date" formControlName="documentDate" /></label>
             </div>
+            <label>Autor / responsable<input formControlName="author" /></label>
             <label>Documento analizado *<input formControlName="documentName" /></label>
+            <label>Archivo de documento
+              <input type="file" multiple accept=".txt,.md,.pdf,.doc,.docx,.csv,.xls,.xlsx" (change)="onDocumentFilesSelected($event)" />
+            </label>
+            <div *ngIf="selectedDocumentFiles().length > 0" class="file-chip-list">
+              <span *ngFor="let file of selectedDocumentFiles()">{{ file.name }}</span>
+            </div>
+            <label>Resumen<textarea formControlName="summary" rows="3"></textarea></label>
+            <label>Contenido o extracto relevante<textarea formControlName="documentContent" rows="6" placeholder="Pega texto del documento para que el equipo lo analice y derive hallazgos."></textarea></label>
+            <div class="form-grid two">
+              <label>Reglas de negocio<textarea formControlName="businessRules" rows="3"></textarea></label>
+              <label>Requisitos explicitos<textarea formControlName="explicitRequirements" rows="3"></textarea></label>
+            </div>
+            <label>Inconsistencias o riesgos<textarea formControlName="risks" rows="3"></textarea></label>
             <label>Hallazgos<textarea formControlName="findings" rows="4"></textarea></label>
             <button class="primary-action amber" type="submit" [disabled]="saving()">Nuevo Analisis</button>
           </form>
@@ -378,27 +669,149 @@
         <ng-container *ngIf="activeModule() === 'techniques' && activeTechnique() === 'tracking'">
           <form class="workspace-form" [formGroup]="trackingForm" (ngSubmit)="saveCapture('tracking')">
             <h3>Seguimiento Transaccional</h3>
-            <label>Titulo *<input formControlName="title" /></label>
+            <p class="form-helper">Usa esta tecnica para seguir una operacion real de inicio a fin y descubrir como ocurre el proceso en la practica.</p>
+            <label>Titulo *<input formControlName="title" placeholder="Ej: Pedido #483 de WhatsApp a entrega" /></label>
             <div class="form-grid two">
-              <label>ID de Transaccion *<input formControlName="transactionId" /></label>
-              <label>Nombre del Proceso *<input formControlName="processName" /></label>
-              <label>Paso observado *<input formControlName="stepName" /></label>
-              <label>Duracion<input formControlName="duration" /></label>
+              <label>Proceso *
+                <select formControlName="process_id" (change)="onTrackingProcessChange()">
+                  <option [ngValue]="null">Selecciona un proceso</option>
+                  <option *ngFor="let process of processes()" [ngValue]="process.id">{{ process.name }}</option>
+                </select>
+              </label>
+              <label>Subproceso
+                <select formControlName="subprocess_id">
+                  <option [ngValue]="null">Sin subproceso</option>
+                  <option *ngFor="let subprocess of trackingSubprocessOptions()" [ngValue]="subprocess.id">{{ subprocess.name }}</option>
+                </select>
+              </label>
+              <label>ID de transaccion real *<input formControlName="transactionId" placeholder="Ej: Pedido #483, Ticket INC-22" /></label>
+              <label>Tipo de transaccion<input formControlName="transactionType" placeholder="Pedido, compra, solicitud, ticket" /></label>
+              <label>Inicio<input type="datetime-local" formControlName="startedAt" /></label>
+              <label>Cierre<input type="datetime-local" formControlName="completedAt" /></label>
+              <label>Estado final<input formControlName="finalStatus" placeholder="Completado, cancelado, detenido" /></label>
+              <label>Actor principal
+                <select formControlName="primaryActorId">
+                  <option [ngValue]="null">Sin actor principal</option>
+                  <option *ngFor="let stakeholder of stakeholders()" [ngValue]="stakeholder.id">{{ stakeholder.name }} - {{ stakeholder.role }}</option>
+                </select>
+              </label>
+            </div>
+            <label>Sistemas o canales involucrados<input formControlName="systemsInvolved" placeholder="POS, Excel, WhatsApp, ERP" /></label>
+            <label>Objetivo del seguimiento<textarea formControlName="objective" rows="2"></textarea></label>
+            <label>Resumen del flujo real<textarea formControlName="realFlowSummary" rows="3"></textarea></label>
+
+            <div class="card-topline">
+              <h3>Pasos observados</h3>
+              <button type="button" class="secondary-action" (click)="addTransactionStep()">Agregar paso</button>
+            </div>
+            <article *ngFor="let step of transactionSteps(); let index = index" class="data-card">
+              <div class="card-topline">
+                <span>Paso {{ index + 1 }}</span>
+                <button type="button" class="secondary-action" (click)="removeTransactionStep(index)">Eliminar</button>
+              </div>
+              <label>Nombre del paso
+                <input [value]="step.name" (input)="updateTransactionStep(index, 'name', $any($event.target).value)" placeholder="Ej: Vendedor registra orden" />
+              </label>
+              <div class="form-grid two">
+                <label>Actor responsable
+                  <select [ngModel]="step.actorStakeholderId" [ngModelOptions]="{standalone: true}" (ngModelChange)="updateTransactionStep(index, 'actorStakeholderId', $event)">
+                    <option [ngValue]="null">Selecciona actor si existe</option>
+                    <option *ngFor="let stakeholder of stakeholders()" [ngValue]="stakeholder.id">{{ stakeholder.name }} - {{ stakeholder.role }}</option>
+                  </select>
+                </label>
+                <label>Rol si no esta en catalogo
+                  <input [value]="step.actorRole" (input)="updateTransactionStep(index, 'actorRole', $any($event.target).value)" />
+                </label>
+                <label>Sistema
+                  <input [value]="step.system" (input)="updateTransactionStep(index, 'system', $any($event.target).value)" placeholder="Ej: Excel, POS, ERP" />
+                </label>
+                <label>Canal
+                  <input [value]="step.channel" (input)="updateTransactionStep(index, 'channel', $any($event.target).value)" placeholder="Ej: WhatsApp, llamada, mostrador" />
+                </label>
+              </div>
+              <div class="form-grid three">
+                <label>Entrada<textarea [value]="step.input" rows="2" (input)="updateTransactionStep(index, 'input', $any($event.target).value)"></textarea></label>
+                <label>Accion realizada<textarea [value]="step.action" rows="2" (input)="updateTransactionStep(index, 'action', $any($event.target).value)"></textarea></label>
+                <label>Salida<textarea [value]="step.output" rows="2" (input)="updateTransactionStep(index, 'output', $any($event.target).value)"></textarea></label>
+              </div>
+              <div class="form-grid two">
+                <label>Duracion<input [value]="step.duration" (input)="updateTransactionStep(index, 'duration', $any($event.target).value)" placeholder="Ej: 5 min" /></label>
+                <label>Espera/bloqueo<input [value]="step.waitTime" (input)="updateTransactionStep(index, 'waitTime', $any($event.target).value)" placeholder="Ej: 2 horas esperando aprobacion" /></label>
+              </div>
+              <label>Problema detectado<textarea [value]="step.issue" rows="2" (input)="updateTransactionStep(index, 'issue', $any($event.target).value)"></textarea></label>
+              <div class="form-grid two">
+                <label>Evidencia/ref<input [value]="step.evidenceRef" (input)="updateTransactionStep(index, 'evidenceRef', $any($event.target).value)" /></label>
+                <label>Notas<input [value]="step.notes" (input)="updateTransactionStep(index, 'notes', $any($event.target).value)" /></label>
+              </div>
+            </article>
+
+            <div class="form-grid three">
+              <label>Tiempo total<input formControlName="totalTime" /></label>
+              <label>Tiempo objetivo<input formControlName="targetTime" /></label>
+              <label>Desviacion<input formControlName="deviation" /></label>
+              <label>Retrabajos<input type="number" formControlName="reworkCount" /></label>
+              <label>Pasos manuales<input type="number" formControlName="manualStepCount" /></label>
+              <label>Aprobaciones informales<input type="number" formControlName="informalApprovalCount" /></label>
             </div>
             <label>Metricas<textarea formControlName="metrics" rows="3"></textarea></label>
             <button class="primary-action red" type="submit" [disabled]="saving()">Nuevo Seguimiento</button>
           </form>
-          <ng-container *ngTemplateOutlet="captureList; context: { module: 'tracking', empty: 'No hay seguimientos registrados' }"></ng-container>
+
+          <div *ngIf="trackingSessions().length === 0" class="empty-state">
+            <span class="material-icons">trending_up</span>
+            <p>No hay seguimientos registrados</p>
+            <small>Registra una transaccion real para comparar el proceso esperado contra lo que ocurre en la practica.</small>
+          </div>
+          <div class="card-grid">
+            <article *ngFor="let session of trackingSessions()" class="data-card spec-card">
+              <div class="card-topline">
+                <span>Seguimiento: {{ session.title }}</span>
+                <small>{{ session.occurred_at | date:'shortDate' }} - {{ trackingTransactionId(session) }}</small>
+              </div>
+              <div class="spec-section">
+                <strong>{{ trackingTransactionType(session) }}</strong>
+                <span>Proceso: {{ trackingProcessName(session) }}</span>
+                <span *ngIf="trackingSubprocessName(session)">Subproceso: {{ trackingSubprocessName(session) }}</span>
+                <span>Actor principal: {{ trackingPrimaryActor(session) }}</span>
+                <span>Sistemas/canales: {{ trackingSystems(session) }}</span>
+              </div>
+              <div class="spec-section">
+                <strong>Pasos observados ({{ trackingSteps(session).length }})</strong>
+                <span *ngFor="let step of visibleTrackingSteps(session); let stepIndex = index">
+                  {{ trackingStepLabel(step, stepIndex) }}
+                  <ng-container *ngIf="trackingStepActor(step) !== 'No especificado'"> - {{ trackingStepActor(step) }}</ng-container>
+                  <ng-container *ngIf="step.system || step.channel"> - {{ step.system || step.channel }}</ng-container>
+                  <ng-container *ngIf="step.duration"> - {{ step.duration }}</ng-container>
+                  <ng-container *ngIf="step.issue"> - problema: {{ step.issue }}</ng-container>
+                </span>
+                <span *ngIf="trackingRemainingStepCount(session) > 0">+{{ trackingRemainingStepCount(session) }} pasos mas...</span>
+                <span *ngIf="trackingSteps(session).length === 0">Sin pasos capturados.</span>
+              </div>
+              <div class="spec-section">
+                <strong>Metricas</strong>
+                <span>Tiempo total: {{ trackingMetrics(session).totalTime || 'No definido' }}</span>
+                <span>Tiempo objetivo: {{ trackingMetrics(session).targetTime || 'No definido' }}</span>
+                <span>Desviacion: {{ trackingMetrics(session).deviation || 'No definida' }}</span>
+                <span>Retrabajos: {{ trackingMetrics(session).reworkCount ?? 0 }} - Pasos manuales: {{ trackingMetrics(session).manualStepCount ?? 0 }}</span>
+              </div>
+              <small>{{ session.evidence_count }} evidencia(s) - {{ session.finding_count }} hallazgo(s) - {{ trackingProblems(session).length }} problema(s) en pasos</small>
+              <div class="inline-actions">
+                <button type="button" class="secondary-action" (click)="createFindingFromTracking(session)">
+                  Crear hallazgo desde seguimiento
+                </button>
+              </div>
+            </article>
+          </div>
         </ng-container>
 
         <ng-container *ngIf="activeModule() === 'evidences'">
           <div class="module-action-bar">
             <div>
               <strong>Evidencias auditables</strong>
-              <span>{{ sessionsForFindings().length }} tecnica(s) listas para extraer hallazgos con IA.</span>
+              <span>{{ sessionsForFindings().length }} tecnica(s) con evidencia listas para documentar hallazgos.</span>
             </div>
-            <button class="primary-action" type="button" [disabled]="saving() || sessionsForFindings().length === 0" (click)="generateAIFindings()">
-              Generar hallazgos con IA
+            <button class="primary-action" type="button" (click)="setActiveModule('findings')">
+              Documentar hallazgos
             </button>
           </div>
           <div *ngIf="sessions().length === 0" class="empty-state">
@@ -406,29 +819,61 @@
             <p>No hay tecnicas con evidencias</p>
             <small>Registra una tecnica para crear evidencia tipo nota automaticamente.</small>
           </div>
-          <article *ngFor="let session of sessions()" class="data-card evidence-card">
-            <div class="card-topline">
-              <span>{{ session.technique }}</span>
-              <small>{{ session.evidence_count }} evidencia(s)</small>
+          <section *ngFor="let group of discoveryGroups" class="session-section">
+            <div class="session-section-header">
+              <div>
+                <h3>{{ group.label }}</h3>
+                <small>{{ group.description }}</small>
+              </div>
+              <span>{{ sessionsByDiscoveryType(group.type).length }} sesion(es)</span>
             </div>
-            <h3>{{ session.title }}</h3>
-            <p>{{ session.notes || 'Sin notas generales.' }}</p>
-            <div class="evidence-list">
-              <span *ngFor="let evidence of sessionEvidences(session.id)">
-                {{ evidence.kind }} · {{ evidence.file_name || (evidence.notes || 'Evidencia registrada') }}
-              </span>
+            <div *ngIf="sessionsByDiscoveryType(group.type).length === 0" class="empty-inline">
+              Sin sesiones en esta clasificacion.
             </div>
-          </article>
+            <article *ngFor="let session of sessionsByDiscoveryType(group.type)" class="data-card evidence-card">
+              <div class="card-topline">
+                <span>{{ session.technique }}</span>
+                <small>{{ session.evidence_count }} evidencia(s)</small>
+              </div>
+              <div class="session-controls">
+                <label>Tipo
+                  <select
+                    [value]="session.discovery_type"
+                    [disabled]="saving()"
+                    (change)="updateSessionDiscoveryType(session, $any($event.target).value)"
+                  >
+                    <option *ngFor="let option of discoveryGroups" [value]="option.type">{{ option.label }}</option>
+                  </select>
+                </label>
+                <label>Estado
+                  <select
+                    [value]="session.status"
+                    [disabled]="saving()"
+                    (change)="updateSessionStatus(session, $any($event.target).value)"
+                  >
+                    <option *ngFor="let option of sessionStatuses" [value]="option.value">{{ option.label }}</option>
+                  </select>
+                </label>
+              </div>
+              <h3>{{ session.title }}</h3>
+              <p>{{ session.notes || 'Sin notas generales.' }}</p>
+              <div class="evidence-list">
+                <span *ngFor="let evidence of sessionEvidences(session.id)">
+                  {{ evidence.kind }} - {{ evidence.file_name || (evidence.notes || 'Evidencia registrada') }}
+                </span>
+              </div>
+            </article>
+          </section>
         </ng-container>
 
         <ng-container *ngIf="activeModule() === 'findings'">
           <div class="module-action-bar">
             <div>
               <strong>Hallazgos a requisitos</strong>
-              <span>La IA genera borradores, no requisitos finales; deben revisarse antes de aceptar.</span>
+              <span>El equipo convierte evidencia en hallazgos y requisitos verificables.</span>
             </div>
-            <button class="primary-action violet" type="button" [disabled]="saving() || findings().length === 0" (click)="generateAIRequirements()">
-              Generar requisitos con IA
+            <button class="primary-action violet" type="button" [disabled]="findings().length === 0" (click)="setActiveModule('requirements')">
+              Crear requisitos
             </button>
           </div>
           <form class="workspace-form" [formGroup]="findingForm" (ngSubmit)="saveFinding()">
@@ -457,9 +902,12 @@
             <p>No hay hallazgos registrados</p>
             <small>Primero crea tecnicas con evidencia para derivar hallazgos.</small>
           </div>
-          <article *ngFor="let finding of findings()" class="data-card">
+          <article *ngFor="let finding of findings()" class="data-card document-card">
             <h3>{{ finding.statement }}</h3>
-            <p>{{ finding.category }} · {{ finding.session_technique || 'Tecnica' }}</p>
+            <div class="inline-actions">
+              <button type="button" class="secondary-action" (click)="beginEditFinding(finding)">Editar hallazgo</button>
+            </div>
+            <p>{{ finding.category }} - {{ finding.session_technique || 'Tecnica' }}</p>
           </article>
         </ng-container>
 
@@ -467,7 +915,7 @@
           <div class="module-action-bar">
             <div>
               <strong>Requisitos a especificacion</strong>
-              <span>Historias, specs, diagramas y tareas se derivan en frontend hasta tener persistencia dedicada.</span>
+              <span>Historias, specs, diagramas y tareas usan requisitos y casos de uso editados.</span>
             </div>
             <button class="primary-action violet" type="button" [disabled]="requirements().length === 0" (click)="openDerivedSpecs()">
               Generar casos/specs derivados
@@ -511,9 +959,12 @@
             <p>No hay requisitos registrados</p>
             <small>Convierte hallazgos en requisitos verificables.</small>
           </div>
-          <article *ngFor="let requirement of requirements()" class="data-card">
-            <h3>{{ requirement.code }} · {{ requirement.description }}</h3>
-            <p>{{ requirement.type }} · {{ requirement.priority }} · {{ requirement.finding_count }} hallazgos fuente</p>
+          <article *ngFor="let requirement of requirements()" class="data-card document-card">
+            <h3>{{ requirement.code }} - {{ requirement.description }}</h3>
+            <p>{{ requirement.type }} - {{ requirement.priority }} - {{ requirement.finding_count }} hallazgos fuente</p>
+            <div class="inline-actions">
+              <button type="button" class="secondary-action" (click)="beginEditRequirement(requirement)">Editar requisito</button>
+            </div>
           </article>
         </ng-container>
 
@@ -524,10 +975,10 @@
             <small>Crea requisitos desde hallazgos para derivar historias y casos de uso trazables.</small>
           </div>
           <div class="card-grid">
-            <article *ngFor="let useCase of useCaseArtifacts()" class="data-card spec-card">
+            <article *ngFor="let useCase of useCaseArtifacts()" class="data-card spec-card document-card">
               <div class="card-topline">
                 <span>{{ useCase.requirement.code }}</span>
-                <small>{{ useCase.requirement.priority }}</small>
+                <small>{{ useCase.persistedId ? 'Persistido' : 'Derivado' }} - {{ useCase.requirement.priority }}</small>
               </div>
               <h3>{{ useCase.title }}</h3>
               <div class="story-box compact">
@@ -536,7 +987,12 @@
                 <p><strong>para</strong> {{ useCase.benefit }}.</p>
               </div>
               <p><strong>Criterios:</strong> {{ useCase.acceptanceCriteria }}</p>
-              <small>{{ useCase.sourceFindings.length }} hallazgo(s) fuente. Artefacto derivado, listo para persistencia posterior.</small>
+              <small>{{ useCase.sourceFindings.length }} hallazgo(s) fuente. {{ useCase.persistedId ? 'Persistido para specs.' : 'Derivado hasta que lo guardes.' }}</small>
+              <div class="inline-actions">
+                <button type="button" class="secondary-action" (click)="beginEditUseCase(useCase)">
+                  {{ useCase.persistedId ? 'Editar caso' : 'Persistir caso' }}
+                </button>
+              </div>
             </article>
           </div>
         </ng-container>
@@ -544,17 +1000,42 @@
         <ng-container *ngIf="activeModule() === 'specs'">
           <div class="module-action-bar">
             <div>
-              <strong>Specs listas para agente</strong>
-              <span>Convierte cada spec derivada en una tarea/prompt accionable.</span>
+              <strong>Specs implementables</strong>
+              <span>Las specs se empaquetan como expediente tecnico para devs e ingenieros.</span>
             </div>
-            <button class="primary-action green" type="button" [disabled]="specArtifacts().length === 0" (click)="openDerivedAgentTasks()">
-              Generar tareas de agente
-            </button>
+            <div class="generate-diagram-actions">
+              <button type="button" [disabled]="specArtifacts().length === 0" (click)="exportImplementationSpecsZip()">Exportar specs implementables</button>
+            </div>
           </div>
+
+          <div class="handoff-panel">
+            <article>
+              <span class="material-icons">engineering</span>
+              <div>
+                <strong>Audiencia</strong>
+                <p>Devs, ingenieros y equipo tecnico.</p>
+              </div>
+            </article>
+            <article>
+              <span class="material-icons">data_object</span>
+              <div>
+                <strong>Archivo de entrega</strong>
+                <p>specs_proyecto_{{ projectId() || 'workspace' }}.zip</p>
+              </div>
+            </article>
+            <article>
+              <span class="material-icons">rule</span>
+              <div>
+                <strong>Contenido</strong>
+                <p>Contexto, requisito, historia, criterios, pruebas, hallazgos y diagramas.</p>
+              </div>
+            </article>
+          </div>
+
           <div *ngIf="specArtifacts().length === 0" class="empty-state">
             <span class="material-icons">description</span>
             <p>No hay specs generadas</p>
-            <small>Las specs se derivan de requisitos para que un agente pueda implementar sin perder contexto.</small>
+            <small>Las specs se derivan de requisitos para que el equipo pueda implementar sin perder contexto.</small>
           </div>
           <article *ngFor="let spec of specArtifacts()" class="data-card spec-card">
             <div class="card-topline">
@@ -577,8 +1058,8 @@
         <ng-container *ngIf="activeModule() === 'modeling'">
           <div class="module-action-bar">
             <div>
-              <strong>Editor visual tipo draw.io lite</strong>
-              <span>Canvas SVG editable. Los diagramas son locales/derivados hasta agregar persistencia.</span>
+              <strong>Diseno de diagramas</strong>
+              <span>Primero genera una base desde requisitos, despues ajusta el canvas y guarda el editable.</span>
             </div>
             <div class="generate-diagram-actions">
               <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('use_case')">Casos de uso</button>
@@ -586,7 +1067,26 @@
               <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('sequence')">Secuencia</button>
               <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('package')">Paquetes</button>
               <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('component')">Componentes</button>
+              <button type="button" (click)="exportProjectBundle()">Paquete proyecto</button>
             </div>
+          </div>
+
+          <div class="diagram-design-board">
+            <article>
+              <span class="material-icons">auto_awesome_motion</span>
+              <strong>1. Generar</strong>
+              <p>Usa requisitos y specs para crear casos de uso, clases, secuencia, paquetes o componentes.</p>
+            </article>
+            <article>
+              <span class="material-icons">edit_note</span>
+              <strong>2. Ajustar</strong>
+              <p>Mueve nodos, conecta elementos y edita etiquetas para reflejar el dominio real.</p>
+            </article>
+            <article>
+              <span class="material-icons">inventory_2</span>
+              <strong>3. Entregar</strong>
+              <p>Guarda el .drawio-lite y exporta el paquete del proyecto para incluirlo en el handoff.</p>
+            </article>
           </div>
 
           <div *ngIf="!diagram()" class="empty-state">
@@ -598,22 +1098,36 @@
 
           <div *ngIf="diagram() as model" class="modeling-shell">
             <div class="diagram-toolbar">
-              <button type="button" [class.active]="diagramMode() === 'select'" (click)="setDiagramMode('select')">
-                <span class="material-icons">near_me</span> Seleccionar
-              </button>
-              <button type="button" [class.active]="diagramMode() === 'connect'" (click)="startDiagramConnection()">
-                <span class="material-icons">timeline</span> Conectar
-              </button>
-              <button type="button" (click)="addDiagramNode('actor')">Actor</button>
-              <button type="button" (click)="addDiagramNode('use_case')">Caso de uso</button>
-              <button type="button" (click)="addDiagramNode('class')">Clase</button>
-              <button type="button" (click)="addDiagramNode('package')">Paquete</button>
-              <button type="button" (click)="addDiagramNode('component')">Componente</button>
-              <button type="button" (click)="addDiagramNode('lifeline')">Lifeline</button>
-              <button type="button" (click)="addDiagramNode('note')">Nota</button>
-              <button type="button" (click)="autoLayoutDiagram()">Auto-layout</button>
-              <button type="button" (click)="deleteSelectedDiagramElement()">Eliminar</button>
-              <button type="button" (click)="exportDiagramJson()">Exportar JSON</button>
+              <div class="toolbar-group">
+                <button type="button" title="Seleccionar y mover" [class.active]="diagramMode() === 'select'" (click)="setDiagramMode('select')">
+                  <span class="material-icons">near_me</span>
+                  <span>Seleccionar</span>
+                </button>
+                <button type="button" title="Conectar desde el nodo seleccionado" [class.active]="diagramMode() === 'connect'" (click)="startDiagramConnection()">
+                  <span class="material-icons">timeline</span>
+                  <span>Conectar</span>
+                </button>
+              </div>
+              <div class="toolbar-group shape-palette">
+                <button type="button" title="Actor" (click)="addDiagramNode('actor')"><span class="material-icons">person</span></button>
+                <button type="button" title="Caso de uso" (click)="addDiagramNode('use_case')"><span class="material-icons">radio_button_unchecked</span></button>
+                <button type="button" title="Clase" (click)="addDiagramNode('class')"><span class="material-icons">table_rows</span></button>
+                <button type="button" title="Paquete" (click)="addDiagramNode('package')"><span class="material-icons">inventory_2</span></button>
+                <button type="button" title="Componente" (click)="addDiagramNode('component')"><span class="material-icons">deployed_code</span></button>
+                <button type="button" title="Lifeline" (click)="addDiagramNode('lifeline')"><span class="material-icons">view_timeline</span></button>
+                <button type="button" title="Nota" (click)="addDiagramNode('note')"><span class="material-icons">sticky_note_2</span></button>
+              </div>
+              <div class="toolbar-group">
+                <button type="button" title="Ordenar automaticamente" (click)="autoLayoutDiagram()"><span class="material-icons">auto_fix_high</span><span>Layout</span></button>
+                <button type="button" title="Eliminar seleccionado" (click)="deleteSelectedDiagramElement()"><span class="material-icons">delete</span><span>Eliminar</span></button>
+              </div>
+              <div class="toolbar-group">
+                <button type="button" title="Guardar diagrama" (click)="saveCurrentDiagram()"><span class="material-icons">save</span><span>Guardar</span></button>
+                <button type="button" title="Descargar JSON editable" (click)="downloadCurrentDiagramJson()"><span class="material-icons">download</span></button>
+                <button type="button" title="Importar JSON editable" (click)="diagramFileInput.click()"><span class="material-icons">upload_file</span></button>
+                <button type="button" title="Ver JSON" (click)="exportDiagramJson()"><span class="material-icons">data_object</span></button>
+              </div>
+              <input #diagramFileInput type="file" accept="application/json,.json,.drawio-lite" hidden (change)="importDiagramFile($event)" />
             </div>
 
             <div class="diagram-workbench">
@@ -630,7 +1144,10 @@
                     </marker>
                   </defs>
 
-                  <g *ngFor="let edge of model.edges" class="diagram-edge" [class.selected]="selectedDiagramEdgeId() === edge.id">
+                  <g
+                    *ngFor="let edge of model.edges"
+                    [attr.class]="'diagram-edge edge-' + edge.type + (selectedDiagramEdgeId() === edge.id ? ' selected' : '')"
+                  >
                     <line
                       [attr.x1]="diagramNodeCenter(edge.sourceNodeId).x"
                       [attr.y1]="diagramNodeCenter(edge.sourceNodeId).y"
@@ -696,6 +1213,27 @@
                     <text class="node-type" [attr.x]="node.width / 2" [attr.y]="node.height - 12" text-anchor="middle">
                       {{ node.type }}
                     </text>
+                    <g *ngIf="selectedDiagramNodeId() === node.id" class="diagram-node-controls">
+                      <circle
+                        *ngFor="let port of diagramNodeConnectionPorts(node)"
+                        class="connection-port"
+                        [attr.cx]="port.x"
+                        [attr.cy]="port.y"
+                        r="6"
+                        (pointerdown)="startDiagramPortConnection($event, node.id)"
+                      ></circle>
+                      <rect
+                        *ngFor="let item of diagramNodeResizeHandles(node)"
+                        class="resize-handle"
+                        [attr.data-handle]="item.handle"
+                        [attr.x]="item.x - 5"
+                        [attr.y]="item.y - 5"
+                        width="10"
+                        height="10"
+                        rx="2"
+                        (pointerdown)="startDiagramNodeResize($event, node.id, item.handle)"
+                      ></rect>
+                    </g>
                   </g>
                 </svg>
               </div>
@@ -703,20 +1241,40 @@
               <aside class="diagram-properties">
                 <div class="card-topline">
                   <span>{{ model.title }}</span>
-                  <small>{{ model.derived ? 'Derivado local' : 'Local' }}</small>
+                  <small>{{ selectedSavedDiagramId() ? 'Guardado' : (model.derived ? 'Derivado local' : 'Local') }}</small>
                 </div>
+                <label>Titulo
+                  <input [value]="model.title" (input)="updateDiagramTitle($any($event.target).value)" />
+                </label>
                 <ng-container *ngIf="selectedDiagramNode() as node">
                   <h3>Propiedades del nodo</h3>
                   <label>Etiqueta
                     <input [value]="node.label" (input)="updateSelectedDiagramNodeLabel($any($event.target).value)" />
                   </label>
-                  <p>Tipo: {{ node.type }}</p>
+                  <div class="property-grid" *ngIf="selectedDiagramNodePosition() as box">
+                    <label>Ancho
+                      <input type="number" min="56" [value]="box.width" (input)="updateSelectedDiagramNodeSize('width', $any($event.target).value)" />
+                    </label>
+                    <label>Alto
+                      <input type="number" min="56" [value]="box.height" (input)="updateSelectedDiagramNodeSize('height', $any($event.target).value)" />
+                    </label>
+                  </div>
+                  <p>Tipo: {{ node.type }} - Posicion {{ selectedDiagramNodePosition()?.x }}, {{ selectedDiagramNodePosition()?.y }}</p>
                   <p *ngIf="node.requirementId">Requisito vinculado: {{ node.requirementId }}</p>
                 </ng-container>
                 <ng-container *ngIf="selectedDiagramEdge() as edge">
                   <h3>Propiedades de conexion</h3>
                   <label>Etiqueta
                     <input [value]="edge.label || ''" (input)="updateSelectedDiagramEdgeLabel($any($event.target).value)" />
+                  </label>
+                  <label>Tipo
+                    <select [value]="edge.type" (change)="updateSelectedDiagramEdgeType($any($event.target).value)">
+                      <option value="association">Asociacion</option>
+                      <option value="include">Include</option>
+                      <option value="extend">Extend</option>
+                      <option value="dependency">Dependencia</option>
+                      <option value="inheritance">Herencia</option>
+                    </select>
                   </label>
                   <p>{{ edge.sourceNodeId }} -> {{ edge.targetNodeId }}</p>
                 </ng-container>
@@ -727,6 +1285,28 @@
                   Modo conectar activo. Selecciona el nodo destino.
                 </div>
               </aside>
+            </div>
+
+            <div class="saved-diagram-panel">
+              <div class="card-topline">
+                <span>Diagramas guardados</span>
+                <small>{{ savedDiagrams().length }} en este proyecto</small>
+              </div>
+              <div *ngIf="savedDiagrams().length === 0" class="diagram-hint">
+                Guarda el diagrama activo para poder abrirlo despues desde aqui.
+              </div>
+              <div class="saved-diagram-list">
+                <article *ngFor="let item of savedDiagrams()" [class.active]="selectedSavedDiagramId() === item.id">
+                  <div>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.type }} - {{ item.updatedAt | date:'short' }}</small>
+                  </div>
+                  <div>
+                    <button type="button" (click)="openSavedDiagram(item.id)">Abrir</button>
+                    <button type="button" (click)="deleteSavedDiagram(item.id)">Eliminar</button>
+                  </div>
+                </article>
+              </div>
             </div>
 
             <div class="card-grid">
@@ -744,10 +1324,20 @@
         </ng-container>
 
         <ng-container *ngIf="activeModule() === 'agent'">
+          <div class="module-action-bar">
+            <div>
+              <strong>Paquete para implementacion</strong>
+              <span>Entrega documentacion tecnica, tareas sugeridas y ZIP de specs implementables para el equipo.</span>
+            </div>
+            <div class="generate-diagram-actions">
+              <button type="button" [disabled]="specArtifacts().length === 0" (click)="exportImplementationSpecsZip()">Specs implementables</button>
+              <button type="button" [disabled]="projectArtifactFiles().length === 0" (click)="exportProjectZip()">ZIP proyecto</button>
+            </div>
+          </div>
           <div *ngIf="agentTasks().length === 0" class="empty-state">
             <span class="material-icons">terminal</span>
-            <p>No hay tareas para agente</p>
-            <small>Genera requisitos para producir specs y prompts accionables de implementacion.</small>
+            <p>No hay tareas tecnicas</p>
+            <small>Genera requisitos para producir specs y tareas accionables de implementacion.</small>
           </div>
           <article *ngFor="let task of agentTasks()" class="data-card spec-card">
             <div class="card-topline">
@@ -761,6 +1351,65 @@
             </div>
             <pre class="spec-preview">{{ task.prompt }}</pre>
           </article>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'validation'">
+          <div class="module-action-bar">
+            <div>
+              <strong>Calidad del paquete</strong>
+              <span>Valida si la documentacion manual ya puede convertirse en specs implementables confiables.</span>
+            </div>
+            <div class="generate-diagram-actions">
+              <button type="button" [disabled]="requirementReadiness().errors.length > 0" (click)="exportImplementationSpecsZip()">
+                Exportar specs implementables
+              </button>
+              <button type="button" (click)="setActiveModule(recommendedAction().module)">Siguiente accion</button>
+            </div>
+          </div>
+
+          <div class="stats-grid">
+            <article class="stat-card">
+              <span class="material-icons">rule</span>
+              <p>Readiness</p>
+              <strong>{{ requirementReadiness().score }}%</strong>
+            </article>
+            <article class="stat-card">
+              <span class="material-icons">error</span>
+              <p>Errores</p>
+              <strong>{{ requirementReadiness().errors.length }}</strong>
+            </article>
+            <article class="stat-card">
+              <span class="material-icons">warning</span>
+              <p>Warnings</p>
+              <strong>{{ requirementReadiness().warnings.length }}</strong>
+            </article>
+            <article class="stat-card">
+              <span class="material-icons">tips_and_updates</span>
+              <p>Sugerencias</p>
+              <strong>{{ requirementReadiness().suggestions.length }}</strong>
+            </article>
+          </div>
+
+          <div class="risk-list">
+            <article
+              *ngFor="let issue of readinessIssues()"
+              class="risk-item"
+              [class.warning]="issue.severity !== 'suggestion'"
+            >
+              <div>
+                <strong>{{ issue.severity }}</strong>
+                <span>{{ issue.title }}</span>
+                <small>{{ issue.description }}</small>
+              </div>
+              <button type="button" (click)="goToReadinessIssue(issue)">{{ issue.actionLabel }}</button>
+            </article>
+          </div>
+
+          <div *ngIf="readinessIssues().length === 0" class="empty-state">
+            <span class="material-icons">task_alt</span>
+            <p>Paquete listo para entrega</p>
+            <small>No se detectaron errores ni warnings de completitud.</small>
+          </div>
         </ng-container>
 
         <ng-container *ngIf="activeModule() === 'traceability'">
@@ -838,7 +1487,7 @@
             </div>
           </ng-container>
           <article *ngIf="false as item" class="trace-card">
-            <h3>{{ item.code }} · {{ item.description }}</h3>
+            <h3>{{ item.code }} - {{ item.description }}</h3>
             <div *ngFor="let link of item.links" class="trace-chain">
               <span>{{ link.stakeholders[0]?.name || 'Stakeholder pendiente' }}</span>
               <span>{{ link.session.technique }}</span>
@@ -846,56 +1495,163 @@
               <span>{{ link.finding.statement }}</span>
               <strong>{{ item.code }}</strong>
               <span>Historia / Spec derivada</span>
-              <span>Tarea agente lista</span>
+              <span>Tarea tecnica lista</span>
             </div>
           </article>
-        </ng-container>
-
-        <ng-container *ngIf="activeModule() === 'ai'">
-          <div class="ai-grid">
-            <article class="workspace-form">
-              <h3>Hallazgos con IA</h3>
-              <p class="form-helper">Usa tecnicas con evidencia como contexto. Los resultados quedan como borradores revisables.</p>
-              <button class="primary-action" type="button" [disabled]="saving()" (click)="generateAIFindings()">
-                Generar hallazgos con IA
-              </button>
-              <small>{{ aiDraftFindings().length }} borrador(es), {{ pendingAIDraftCount() }} pendiente(s) en total</small>
-            </article>
-            <article class="workspace-form">
-              <h3>Requisitos con IA</h3>
-              <p class="form-helper">Genera requisitos desde hallazgos existentes. Nada se guarda como requisito final sin revision humana.</p>
-              <button class="primary-action violet" type="button" [disabled]="saving()" (click)="generateAIRequirements()">
-                Generar requisitos con IA
-              </button>
-              <small>{{ aiDraftRequirements().length }} borrador(es) de requisito</small>
-            </article>
-          </div>
-
-          <div class="card-grid">
-            <article *ngFor="let draft of aiDraftFindings()" class="data-card">
-              <div class="card-topline"><span>Hallazgo IA</span><small>{{ draft.status }}</small></div>
-              <h3>{{ draft.statement }}</h3>
-              <div class="draft-actions" *ngIf="draft.status === 'pending'">
-                <button type="button" [disabled]="saving()" (click)="acceptAIDraftFinding(draft)">Aceptar y guardar</button>
-                <button type="button" [disabled]="saving()" (click)="rejectAIDraftFinding(draft)">Rechazar</button>
-              </div>
-              <p>{{ draft.category }} · confianza {{ draft.confidence ?? 0 }}</p>
-            </article>
-            <article *ngFor="let draft of aiDraftRequirements()" class="data-card">
-              <div class="card-topline"><span>Requisito IA</span><small>{{ draft.status }}</small></div>
-              <h3>{{ draft.description }}</h3>
-              <small>Aceptacion: {{ draft.acceptance_criteria }}</small>
-              <div class="draft-actions" *ngIf="draft.status === 'pending'">
-                <button type="button" [disabled]="saving()" (click)="acceptAIDraftRequirement(draft)">Aceptar y guardar</button>
-                <button type="button" [disabled]="saving()" (click)="rejectAIDraftRequirement(draft)">Rechazar</button>
-              </div>
-              <p>{{ draft.type }} · {{ draft.priority }}</p>
-            </article>
-          </div>
         </ng-container>
       </section>
     </section>
   </main>
+
+  <button
+    *ngIf="activeDocumentEditor()"
+    class="documentation-drawer-backdrop"
+    type="button"
+    aria-label="Cerrar editor"
+    (click)="closeDocumentationDrawer()"
+  ></button>
+
+  <aside *ngIf="activeDocumentEditor()" class="documentation-drawer" role="dialog" aria-modal="true">
+    <header class="drawer-header">
+      <div>
+        <p class="eyebrow">Editor documental</p>
+        <h2 *ngIf="activeDocumentEditor() === 'finding'">Editar hallazgo</h2>
+        <h2 *ngIf="activeDocumentEditor() === 'requirement'">Editar requisito</h2>
+        <h2 *ngIf="activeDocumentEditor() === 'use_case'">Editar caso de uso</h2>
+      </div>
+      <button type="button" class="drawer-close" aria-label="Cerrar" (click)="closeDocumentationDrawer()">
+        <span class="material-icons">close</span>
+      </button>
+    </header>
+
+    <section *ngIf="activeEditingFinding() as finding" class="drawer-body">
+      <div class="inline-editor">
+        <label>Categoria
+          <select
+            [value]="findingEditDraft()?.category ?? finding.category"
+            (change)="updateFindingDraft('category', $any($event.target).value)"
+          >
+            <option value="problem">Problema</option>
+            <option value="need">Necesidad</option>
+            <option value="constraint">Restriccion</option>
+          </select>
+        </label>
+        <label>Hallazgo
+          <textarea
+            rows="8"
+            [value]="findingEditDraft()?.statement ?? finding.statement"
+            (input)="updateFindingDraft('statement', $any($event.target).value)"
+          ></textarea>
+        </label>
+        <small>Fuente: {{ finding.session_technique || 'Tecnica' }} - {{ finding.session_title || 'Sesion' }}</small>
+        <div class="drawer-actions">
+          <button type="button" class="secondary-action" (click)="closeDocumentationDrawer()">Cancelar</button>
+          <button type="button" class="primary-action slate" [disabled]="saving()" (click)="saveFindingEdit(finding.id)">Guardar</button>
+        </div>
+      </div>
+    </section>
+
+    <section *ngIf="activeEditingRequirement() as requirement" class="drawer-body">
+      <div class="inline-editor">
+        <div class="form-grid two">
+          <label>Tipo
+            <select
+              [value]="requirementEditDraft()?.type ?? requirement.type"
+              (change)="updateRequirementDraft('type', $any($event.target).value)"
+            >
+              <option value="functional">Funcional</option>
+              <option value="non_functional">No funcional</option>
+            </select>
+          </label>
+          <label>Prioridad
+            <select
+              [value]="requirementEditDraft()?.priority ?? requirement.priority"
+              (change)="updateRequirementDraft('priority', $any($event.target).value)"
+            >
+              <option value="low">Baja</option>
+              <option value="medium">Media</option>
+              <option value="high">Alta</option>
+              <option value="critical">Critica</option>
+            </select>
+          </label>
+        </div>
+        <label>Descripcion
+          <textarea
+            rows="5"
+            [value]="requirementEditDraft()?.description ?? requirement.description"
+            (input)="updateRequirementDraft('description', $any($event.target).value)"
+          ></textarea>
+        </label>
+        <label>Criterios de aceptacion
+          <textarea
+            rows="5"
+            [value]="requirementEditDraft()?.acceptance_criteria ?? requirement.acceptance_criteria"
+            (input)="updateRequirementDraft('acceptance_criteria', $any($event.target).value)"
+          ></textarea>
+        </label>
+        <div>
+          <strong class="drawer-section-title">Hallazgos fuente</strong>
+          <div class="pick-list compact">
+            <button
+              *ngFor="let finding of findings()"
+              type="button"
+              [class.selected]="requirementDraftFindingSelected(finding.id)"
+              (click)="toggleRequirementDraftFinding(finding.id)"
+            >
+              {{ finding.statement }}
+            </button>
+          </div>
+        </div>
+        <div class="drawer-actions">
+          <button type="button" class="secondary-action" (click)="closeDocumentationDrawer()">Cancelar</button>
+          <button type="button" class="primary-action violet" [disabled]="saving()" (click)="saveRequirementEdit(requirement.id)">Guardar</button>
+        </div>
+      </div>
+    </section>
+
+    <section *ngIf="activeEditingUseCase() as useCase" class="drawer-body">
+      <div class="inline-editor">
+        <label>Titulo
+          <input
+            [value]="useCaseEditDraft()?.title ?? useCase.title"
+            (input)="updateUseCaseDraft('title', $any($event.target).value)"
+          />
+        </label>
+        <div class="form-grid two">
+          <label>Actor
+            <input
+              [value]="useCaseEditDraft()?.actor ?? useCase.actor"
+              (input)="updateUseCaseDraft('actor', $any($event.target).value)"
+            />
+          </label>
+          <label>Accion
+            <input
+              [value]="useCaseEditDraft()?.action ?? useCase.action"
+              (input)="updateUseCaseDraft('action', $any($event.target).value)"
+            />
+          </label>
+        </div>
+        <label>Beneficio
+          <input
+            [value]="useCaseEditDraft()?.benefit ?? useCase.benefit"
+            (input)="updateUseCaseDraft('benefit', $any($event.target).value)"
+          />
+        </label>
+        <label>Criterios
+          <textarea
+            rows="5"
+            [value]="useCaseEditDraft()?.acceptance_criteria ?? useCase.acceptanceCriteria"
+            (input)="updateUseCaseDraft('acceptance_criteria', $any($event.target).value)"
+          ></textarea>
+        </label>
+        <small>Requisito fuente: {{ useCase.requirement.code }}</small>
+        <div class="drawer-actions">
+          <button type="button" class="secondary-action" (click)="closeDocumentationDrawer()">Cancelar</button>
+          <button type="button" class="primary-action violet" [disabled]="saving()" (click)="saveUseCaseEdit()">Guardar caso</button>
+        </div>
+      </div>
+    </section>
+  </aside>
 </div>
 
 <ng-template #captureList let-module="module" let-empty="empty">
@@ -912,7 +1668,7 @@
       </div>
       <h3>{{ session.title }}</h3>
       <p>{{ session.notes || 'Sin notas adicionales.' }}</p>
-      <small>{{ session.finding_count }} hallazgo(s) · {{ session.stakeholder_count }} stakeholder(s)</small>
+      <small>{{ session.finding_count }} hallazgo(s) - {{ session.stakeholder_count }} stakeholder(s)</small>
     </article>
   </div>
 </ng-template>

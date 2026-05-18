@@ -1,9 +1,9 @@
-import { CommonModule } from '@angular/common';
+﻿import { CommonModule } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { ProcessesService, type Process } from '../../services/processes.service';
+import { ProcessesService, type Process, type Subprocess } from '../../services/processes.service';
 import { ProjectsService, type Project, type ProjectUser } from '../../services/projects.service';
 import {
   TraceabilityService,
@@ -15,216 +15,158 @@ import {
   type Requirement,
   type Session,
   type Stakeholder,
-  type TraceabilityItem
+  type SurveyForm,
+  type SurveyMetric,
+  type SurveyQuestion,
+  type SurveyResponse,
+  type QuestionnaireCategory,
+  type TraceabilityItem,
+  type UseCase
 } from '../../services/traceability.service';
+import {
+  cleanProjectFilePart,
+  createZipBlob,
+  dataUrlToBytes,
+  projectFileFromPath,
+  readZipEntries,
+  removeAccents,
+  slugify,
+  tryReadBundleFiles
+} from './project-file-utils';
+import { buildImplementationSpecFiles } from './implementation-spec-export';
+import { TECHNIQUE_MODULES, WORKSPACE_MODULES, WORKSPACE_NAVIGATION_GROUPS } from './project-workspace-navigation';
+import { buildLocalQuestionnaireSuggestions } from './questionnaire-suggestions';
+import { buildRequirementReadiness } from './requirement-readiness';
+import type { ReadinessIssue } from './requirement-readiness';
+import type {
+  CaptureModuleKey,
+  AgentProfile,
+  AgentProfileKey,
+  DerivedAgentTask,
+  DerivedDiagram,
+  DerivedSpec,
+  DerivedUseCase,
+  DiagramEdge,
+  DiagramEdgeType,
+  DiagramEditorMode,
+  DiagramKind,
+  DiagramModel,
+  DiagramNode,
+  DiagramNodeType,
+  DiagramResizeHandle,
+  DomainEntity,
+  ModuleKey,
+  NavigationGroup,
+  ProjectArtifactFile,
+  ProjectFileDraft,
+  SavedDiagramEntry,
+  SurveyQuestionDraft,
+  TraceAuditRow,
+  TraceViewKey,
+  WorkspaceModule
+} from './project-workspace.models';
 
-type ModuleKey =
-  | 'summary'
-  | 'context'
-  | 'stakeholders'
-  | 'processes'
-  | 'techniques'
-  | 'evidences'
-  | 'interviews'
-  | 'surveys'
-  | 'observations'
-  | 'focus'
-  | 'documents'
-  | 'tracking'
-  | 'findings'
-  | 'requirements'
-  | 'useCases'
-  | 'specs'
-  | 'modeling'
-  | 'agent'
-  | 'traceability'
-  | 'ai';
-
-type CaptureModuleKey =
-  | 'interviews'
-  | 'surveys'
-  | 'observations'
-  | 'focus'
-  | 'documents'
-  | 'tracking';
-
-type TraceViewKey = 'chain' | 'matrix' | 'risks';
-type DiagramKind = 'use_case' | 'class' | 'sequence' | 'package' | 'component' | 'free';
-type DiagramNodeType =
-  | 'actor'
-  | 'use_case'
-  | 'class'
-  | 'package'
-  | 'component'
-  | 'requirement'
-  | 'spec'
-  | 'note'
-  | 'lifeline'
-  | 'boundary';
-type DiagramEdgeType = 'association' | 'include' | 'extend' | 'dependency' | 'inheritance';
-type DiagramEditorMode = 'select' | 'connect';
-
-type WorkspaceModule = {
-  key: ModuleKey;
-  label: string;
-  icon: string;
-  tone: string;
-  technique?: string;
+type DiscoveryType = Session['discovery_type'];
+type SessionStatus = Session['status'];
+type FindingEditDraft = Pick<Finding, 'category' | 'statement'>;
+type RequirementEditDraft = Pick<Requirement, 'type' | 'priority' | 'description' | 'acceptance_criteria'> & {
+  finding_ids: number[];
 };
-
-type NavigationGroup = {
-  label: string;
-  items: WorkspaceModule[];
-};
-
-type DerivedUseCase = {
-  id: string;
+type UseCaseEditDraft = {
+  requirement_id: number;
+  persistedId: number | null;
   title: string;
-  requirement: Requirement;
   actor: string;
   action: string;
   benefit: string;
-  acceptanceCriteria: string;
-  sourceFindings: Finding[];
+  acceptance_criteria: string;
 };
-
-type DerivedSpec = {
-  id: string;
-  title: string;
-  useCase: DerivedUseCase;
-  markdown: string;
-  endpoints: string[];
-  tests: string[];
-};
-
-type DerivedAgentTask = {
-  id: string;
-  title: string;
-  spec: DerivedSpec;
-  files: string[];
-  prompt: string;
-};
-
-type DerivedDiagram = {
-  id: string;
-  title: string;
-  kind: string;
-  source: string;
-  mermaid: string;
-};
-
-type DiagramNode = {
-  id: string;
-  type: DiagramNodeType;
-  label: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  requirementId?: number;
-  specId?: string;
-};
-
-type DiagramEdge = {
-  id: string;
-  sourceNodeId: string;
-  targetNodeId: string;
-  type: DiagramEdgeType;
-  label?: string;
-};
-
-type DiagramModel = {
-  id: string;
-  projectId: number | null;
-  type: DiagramKind;
-  title: string;
-  sourceRequirementIds: number[];
-  sourceSpecIds: string[];
-  nodes: DiagramNode[];
-  edges: DiagramEdge[];
-  derived: boolean;
-};
-
-type DomainEntity = {
+type DocumentEditorKind = 'finding' | 'requirement' | 'use_case';
+type TransactionTrackingStepDraft = {
   name: string;
-  attributes: string[];
-  operations: string[];
+  actorStakeholderId: number | null;
+  actorRole: string;
+  system: string;
+  channel: string;
+  input: string;
+  action: string;
+  output: string;
+  duration: string;
+  waitTime: string;
+  issue: string;
+  evidenceRef: string;
+  notes: string;
+};
+type TransactionTrackingStep = Partial<TransactionTrackingStepDraft> & {
+  order?: number;
+  actorStakeholderId?: number | null;
+};
+type TransactionTrackingProblem = {
+  stepOrder?: number;
+  description?: string;
+  severity?: string;
+  impact?: string | null;
+  evidenceRef?: string | null;
+};
+type TransactionTrackingMetrics = {
+  totalTime?: string | null;
+  targetTime?: string | null;
+  deviation?: string | null;
+  reworkCount?: number | null;
+  manualStepCount?: number | null;
+  informalApprovalCount?: number | null;
+  notes?: string | null;
 };
 
-type TraceAuditRow = {
-  id: string;
-  stakeholder: string;
-  technique: string;
-  evidence: string;
-  finding: string;
-  requirement: Requirement | TraceabilityItem;
-  useCase: DerivedUseCase | null;
-  spec: DerivedSpec | null;
-  diagram: DerivedDiagram | null;
-  task: DerivedAgentTask | null;
-  status: 'complete' | 'missing-evidence' | 'missing-finding' | 'missing-requirement' | 'missing-spec' | 'missing-task';
-  statusLabel: string;
-  source: 'backend' | 'derived';
-};
+const AGENT_PROFILES: AgentProfile[] = [
+  {
+    key: 'gemini',
+    label: 'Equipo frontend/backend',
+    provider: 'Equipo interno',
+    model: 'revision-manual',
+    description: 'Perfil manual para devs que implementan desde documentacion trazable.'
+  },
+  {
+    key: 'codex',
+    label: 'Equipo fullstack',
+    provider: 'Equipo interno',
+    model: 'fullstack-manual',
+    description: 'Perfil para ingenieros que toman tareas incrementales, pruebas y resumen de cambios.'
+  },
+  {
+    key: 'generic',
+    label: 'Equipo tecnico externo',
+    provider: 'Proveedor externo',
+    model: 'handoff-manual',
+    description: 'Perfil neutral para cualquier equipo que reciba archivos locales como contexto.'
+  }
+];
 
 @Component({
   selector: 'app-project-workspace',
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterLink],
   templateUrl: './project-workspace.html',
   styleUrl: './project-workspace.css'
 })
 export class ProjectWorkspace {
   private readonly fb = inject(FormBuilder);
 
-  readonly modules: WorkspaceModule[] = [
-    { key: 'summary', label: 'Resumen', icon: 'dashboard', tone: 'blue' },
-    { key: 'context', label: 'Contexto del Proyecto', icon: 'article', tone: 'blue' },
-    { key: 'stakeholders', label: 'Stakeholders', icon: 'group', tone: 'cyan' },
-    { key: 'processes', label: 'Procesos', icon: 'account_tree', tone: 'emerald' },
-    { key: 'techniques', label: 'Tecnicas', icon: 'psychology_alt', tone: 'blue' },
-    { key: 'evidences', label: 'Evidencias', icon: 'folder_open', tone: 'amber' },
-    { key: 'findings', label: 'Hallazgos', icon: 'search', tone: 'slate' },
-    { key: 'requirements', label: 'Requisitos', icon: 'fact_check', tone: 'violet' },
-    { key: 'useCases', label: 'Historias / Casos', icon: 'menu_book', tone: 'indigo' },
-    { key: 'specs', label: 'Specs', icon: 'description', tone: 'blue' },
-    { key: 'modeling', label: 'Modelado', icon: 'schema', tone: 'cyan' },
-    { key: 'agent', label: 'Agente / Implementacion', icon: 'terminal', tone: 'emerald' },
-    { key: 'traceability', label: 'Trazabilidad', icon: 'hub', tone: 'purple' },
-    { key: 'ai', label: 'IA', icon: 'auto_awesome', tone: 'indigo' }
+  readonly modules: WorkspaceModule[] = WORKSPACE_MODULES;
+  readonly techniqueModules: Array<WorkspaceModule & { key: CaptureModuleKey; technique: string }> = TECHNIQUE_MODULES;
+  readonly navigationGroups: NavigationGroup[] = WORKSPACE_NAVIGATION_GROUPS;
+  readonly discoveryGroups: Array<{ type: DiscoveryType; label: string; description: string }> = [
+    { type: 'direct', label: 'Directas', description: 'Entrevistas, observacion, focus group y seguimiento transaccional.' },
+    { type: 'indirect', label: 'Indirectas', description: 'Revision documental y analisis de fuentes existentes.' },
+    { type: 'self_managed', label: 'Autogestionadas', description: 'Cuestionarios y formularios respondidos por stakeholders.' },
+    { type: 'synthesis', label: 'Sintesis', description: 'Historias de usuario, story mapping, prototipos y refinamiento tecnico.' }
+  ];
+  readonly sessionStatuses: Array<{ value: SessionStatus; label: string }> = [
+    { value: 'planned', label: 'Planeada' },
+    { value: 'in_analysis', label: 'En analisis' },
+    { value: 'completed', label: 'Completada' }
   ];
 
-  readonly techniqueModules: Array<WorkspaceModule & { key: CaptureModuleKey; technique: string }> = [
-    { key: 'interviews', label: 'Entrevistas', icon: 'chat_bubble', tone: 'blue', technique: 'Entrevista' },
-    { key: 'surveys', label: 'Encuestas', icon: 'assignment', tone: 'green', technique: 'Encuesta' },
-    { key: 'observations', label: 'Observaciones', icon: 'visibility', tone: 'orange', technique: 'Observacion' },
-    { key: 'focus', label: 'Focus Groups', icon: 'groups', tone: 'pink', technique: 'Focus Group' },
-    { key: 'documents', label: 'Documentos', icon: 'folder_open', tone: 'amber', technique: 'Documento' },
-    { key: 'tracking', label: 'Seguimiento', icon: 'trending_up', tone: 'red', technique: 'Seguimiento Transaccional' }
-  ];
-
-  readonly navigationGroups: NavigationGroup[] = [
-    {
-      label: 'Foundation',
-      items: this.modules.filter((module) => ['summary', 'context', 'stakeholders', 'processes'].includes(module.key))
-    },
-    {
-      label: 'Discovery',
-      items: this.modules.filter((module) => ['techniques', 'evidences'].includes(module.key))
-    },
-    {
-      label: 'Analysis',
-      items: this.modules.filter((module) => ['findings', 'requirements'].includes(module.key))
-    },
-    {
-      label: 'Specification',
-      items: this.modules.filter((module) => ['useCases', 'specs', 'modeling', 'agent'].includes(module.key))
-    },
-    {
-      label: 'Assurance',
-      items: this.modules.filter((module) => ['traceability', 'ai'].includes(module.key))
-    }
-  ];
-
+  // I keep UI state separate from loaded data so the template stays predictable.
   readonly projectId = signal<number | null>(null);
   readonly project = signal<Project | null>(null);
   readonly activeModule = signal<ModuleKey>('summary');
@@ -236,27 +178,88 @@ export class ProjectWorkspace {
   readonly selectedDiagramEdgeId = signal<string | null>(null);
   readonly connectSourceNodeId = signal<string | null>(null);
   readonly exportedDiagramJson = signal<string | null>(null);
+  readonly savedDiagrams = signal<SavedDiagramEntry[]>([]);
+  readonly selectedSavedDiagramId = signal<string | null>(null);
+  readonly managedProjectFiles = signal<ProjectArtifactFile[]>([]);
+  readonly deletedGeneratedProjectFileIds = signal<string[]>([]);
+  readonly selectedProjectFileId = signal<string | null>(null);
+  readonly projectFileDraft = signal<ProjectFileDraft | null>(null);
   readonly draggingNode = signal<{ nodeId: string; offsetX: number; offsetY: number } | null>(null);
+  readonly resizingNode = signal<{
+    nodeId: string;
+    handle: DiagramResizeHandle;
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+    startNodeX: number;
+    startNodeY: number;
+  } | null>(null);
   readonly selectedInterviewFiles = signal<File[]>([]);
+  readonly selectedDocumentFiles = signal<File[]>([]);
   readonly darkMode = signal(false);
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly error = signal<string | null>(null);
   readonly success = signal<string | null>(null);
 
+  // Backend state. Most of the workspace is derived from these collections.
   readonly stakeholders = signal<Stakeholder[]>([]);
   readonly techUsers = signal<ProjectUser[]>([]);
   readonly clientUsers = signal<ProjectUser[]>([]);
   readonly processes = signal<Process[]>([]);
+  readonly subprocesses = signal<Subprocess[]>([]);
   readonly sessions = signal<Session[]>([]);
   readonly evidencesBySession = signal<Record<number, Evidence[]>>({});
   readonly findings = signal<Finding[]>([]);
   readonly requirements = signal<Requirement[]>([]);
+  readonly useCases = signal<UseCase[]>([]);
   readonly traceability = signal<TraceabilityItem[]>([]);
   readonly flowStatus = signal<FlowStatus | null>(null);
   readonly aiDraftFindings = signal<AIDraftFinding[]>([]);
   readonly aiDraftRequirements = signal<AIDraftRequirement[]>([]);
+  readonly surveys = signal<SurveyForm[]>([]);
+  readonly selectedSurveyId = signal<number | null>(null);
+  readonly selectedSurveyQuestions = signal<SurveyQuestion[]>([]);
+  readonly selectedSurveyRecipients = signal<Array<{ id: number; name: string; role: string }>>([]);
+  readonly surveyResponses = signal<SurveyResponse[]>([]);
+  readonly surveyMetrics = signal<SurveyMetric[]>([]);
+  readonly selectedSurveyStakeholderIds = signal<number[]>([]);
+  readonly surveyAIPrompt = signal('');
+  readonly transactionSteps = signal<TransactionTrackingStepDraft[]>([
+    {
+      name: '',
+      actorStakeholderId: null,
+      actorRole: '',
+      system: '',
+      channel: '',
+      input: '',
+      action: '',
+      output: '',
+      duration: '',
+      waitTime: '',
+      issue: '',
+      evidenceRef: '',
+      notes: ''
+    }
+  ]);
+  readonly surveyQuestionsDraft = signal<SurveyQuestionDraft[]>([
+    { question_text: '', question_type: 'long_text', required: true, optionsText: '', help_text: '' }
+  ]);
+  readonly editingFindingId = signal<number | null>(null);
+  readonly findingEditDraft = signal<FindingEditDraft | null>(null);
+  readonly editingRequirementId = signal<number | null>(null);
+  readonly requirementEditDraft = signal<RequirementEditDraft | null>(null);
+  readonly editingUseCaseId = signal<string | null>(null);
+  readonly useCaseEditDraft = signal<UseCaseEditDraft | null>(null);
+  readonly agentProfiles = AGENT_PROFILES;
+  readonly selectedAgentProfile = signal<AgentProfileKey>('gemini');
+  readonly aiHandoffPromptVersion = 'agent-handoff-v2';
+  readonly activeAgentProfile = computed(
+    () => this.agentProfiles.find((profile) => profile.key === this.selectedAgentProfile()) ?? this.agentProfiles[0]
+  );
 
+  // Forms are intentionally close to the page because each one maps to a visible workspace panel.
   readonly stakeholderForm = this.fb.group({
     name: ['', [Validators.required, Validators.minLength(2)]],
     role: ['', [Validators.required, Validators.minLength(2)]],
@@ -278,25 +281,51 @@ export class ProjectWorkspace {
     description: ['', [Validators.required, Validators.minLength(8)]]
   });
 
+  readonly subprocessForm = this.fb.group({
+    process_id: [null as number | null, [Validators.required]],
+    name: ['', [Validators.required, Validators.minLength(2)]],
+    description: ['']
+  });
+
   readonly interviewForm = this.fb.group({
     title: ['', [Validators.required, Validators.minLength(3)]],
+    objective: [''],
+    scheduled_at: [''],
+    duration: [''],
     interviewer_user_id: [null as number | null, [Validators.required]],
     interviewed_stakeholder_id: [null as number | null],
     questions: ['', [Validators.required, Validators.minLength(12)]],
     transcript: [''],
+    agreements: [''],
+    pains: [''],
+    needs: [''],
     notes: ['']
   });
 
   readonly surveyForm = this.fb.group({
     title: ['', [Validators.required, Validators.minLength(3)]],
     description: ['', [Validators.required, Validators.minLength(8)]],
+    objective: [''],
+    category: ['survey' as QuestionnaireCategory],
+    allow_audio: [false],
+    allow_document: [false],
+    allow_anonymous_response: [true],
+    due_at: [''],
     participants: [0, [Validators.min(0)]],
     status: ['draft' as 'draft' | 'active' | 'closed'],
-    question: ['', [Validators.required, Validators.minLength(4)]]
+    question: ['']
   });
 
   readonly observationForm = this.fb.group({
     title: ['', [Validators.required, Validators.minLength(3)]],
+    processName: [''],
+    place: [''],
+    observedActor: [''],
+    observedAt: [''],
+    context: [''],
+    behavior: [''],
+    problem: [''],
+    impact: [''],
     note: ['', [Validators.required, Validators.minLength(20)]],
     keyPoint: ['']
   });
@@ -306,6 +335,11 @@ export class ProjectWorkspace {
     moderator: ['', [Validators.required, Validators.minLength(2)]],
     mediaType: [''],
     objective: ['', [Validators.required, Validators.minLength(12)]],
+    participants: [''],
+    guideQuestions: [''],
+    agreements: [''],
+    disagreements: [''],
+    detectedNeeds: [''],
     conclusions: ['']
   });
 
@@ -314,15 +348,37 @@ export class ProjectWorkspace {
     documentType: ['', [Validators.required, Validators.minLength(2)]],
     source: ['', [Validators.required, Validators.minLength(2)]],
     documentName: ['', [Validators.required, Validators.minLength(3)]],
+    version: [''],
+    documentDate: [''],
+    author: [''],
+    summary: [''],
+    businessRules: [''],
+    explicitRequirements: [''],
+    risks: [''],
+    documentContent: [''],
     findings: ['']
   });
 
   readonly trackingForm = this.fb.group({
     title: ['', [Validators.required, Validators.minLength(3)]],
+    process_id: [null as number | null, [Validators.required]],
+    subprocess_id: [null as number | null],
     transactionId: ['', [Validators.required, Validators.minLength(3)]],
-    processName: ['', [Validators.required, Validators.minLength(3)]],
-    stepName: ['', [Validators.required, Validators.minLength(3)]],
-    duration: [''],
+    transactionType: [''],
+    startedAt: [''],
+    completedAt: [''],
+    finalStatus: [''],
+    primaryActorId: [null as number | null],
+    systemsInvolved: [''],
+    objective: [''],
+    realFlowSummary: [''],
+    totalTime: [''],
+    targetTime: [''],
+    deviation: [''],
+    reworkCount: [0],
+    manualStepCount: [0],
+    informalApprovalCount: [0],
+    status: [''],
     metrics: ['']
   });
 
@@ -342,6 +398,7 @@ export class ProjectWorkspace {
 
   readonly captureModules = computed(() => this.techniqueModules);
 
+  // Derived dashboard state. This is where I turn traceability data into things the UI can scan quickly.
   readonly activeModuleInfo = computed(
     () => this.modules.find((item) => item.key === this.activeModule()) ?? this.modules[0]
   );
@@ -357,6 +414,31 @@ export class ProjectWorkspace {
     }
     const linked = this.traceability().filter((item) => item.links.length > 0).length;
     return Math.round((linked / total) * 100);
+  });
+
+  readonly requirementReadiness = computed(() =>
+    buildRequirementReadiness({
+      project: this.project(),
+      stakeholders: this.stakeholders(),
+      processes: this.processes(),
+      sessions: this.sessions(),
+      findings: this.findings(),
+      requirements: this.requirements(),
+      useCases: this.useCaseArtifacts(),
+      specs: this.specArtifacts(),
+      diagrams: this.diagramArtifacts(),
+      savedDiagrams: this.savedDiagrams()
+    })
+  );
+
+  readonly readinessIssues = computed(() => {
+    const readiness = this.requirementReadiness();
+    return [...readiness.errors, ...readiness.warnings, ...readiness.suggestions];
+  });
+
+  readonly trackingSubprocessOptions = computed(() => {
+    const processId = this.trackingForm.get('process_id')?.value;
+    return processId ? this.subprocesses().filter((subprocess) => subprocess.process_id === processId) : [];
   });
 
   readonly orphanFindingsCount = computed(() =>
@@ -379,24 +461,55 @@ export class ProjectWorkspace {
     () => this.requirements().filter((requirement) => !this.traceability().some((item) => item.id === requirement.id && item.links.length > 0)).length
   );
 
+  // These artifacts are generated on the fly so they can be reviewed before anything is handed to an agent.
   readonly useCaseArtifacts = computed<DerivedUseCase[]>(() =>
     this.requirements().map((requirement) => {
       const sourceFindings = this.requirementSourceFindings(requirement);
+      const persisted = this.useCases().find((useCase) => useCase.requirement_id === requirement.id);
       const actor = sourceFindings[0]?.session_technique === 'Entrevista'
         ? 'stakeholder participante'
         : 'usuario del proceso';
       return {
-        id: `uc-${requirement.id}`,
-        title: `${requirement.code} - Caso de uso derivado`,
+        id: persisted ? `uc-persisted-${persisted.id}` : `uc-derived-${requirement.id}`,
+        persistedId: persisted?.id ?? null,
+        title: persisted?.title ?? `${requirement.code} - Caso de uso derivado`,
         requirement,
-        actor,
-        action: this.summarizeRequirementAction(requirement.description),
-        benefit: 'mantener el requisito trazable, verificable y listo para implementacion',
-        acceptanceCriteria: requirement.acceptance_criteria,
+        actor: persisted?.actor ?? actor,
+        action: persisted?.action ?? this.summarizeRequirementAction(requirement.description),
+        benefit: persisted?.benefit ?? 'mantener el requisito trazable, verificable y listo para implementacion',
+        acceptanceCriteria: persisted?.acceptance_criteria ?? requirement.acceptance_criteria,
         sourceFindings
       };
     })
   );
+
+  readonly activeDocumentEditor = computed<DocumentEditorKind | null>(() => {
+    if (this.editingFindingId()) {
+      return 'finding';
+    }
+    if (this.editingRequirementId()) {
+      return 'requirement';
+    }
+    if (this.editingUseCaseId()) {
+      return 'use_case';
+    }
+    return null;
+  });
+
+  readonly activeEditingFinding = computed(() => {
+    const id = this.editingFindingId();
+    return id ? this.findings().find((finding) => finding.id === id) ?? null : null;
+  });
+
+  readonly activeEditingRequirement = computed(() => {
+    const id = this.editingRequirementId();
+    return id ? this.requirements().find((requirement) => requirement.id === id) ?? null : null;
+  });
+
+  readonly activeEditingUseCase = computed(() => {
+    const id = this.editingUseCaseId();
+    return id ? this.useCaseArtifacts().find((useCase) => useCase.id === id) ?? null : null;
+  });
 
   readonly specArtifacts = computed<DerivedSpec[]>(() =>
     this.useCaseArtifacts().map((useCase) => {
@@ -433,12 +546,113 @@ export class ProjectWorkspace {
     })
   );
 
+  readonly designInputFiles = computed(() => this.managedProjectFiles().filter((file) => this.isDesignInputFile(file)));
+
+  readonly aiSpecHandoffPackage = computed(() => ({
+    format: 'specora-agent-handoff-v2',
+    agent_profile: this.activeAgentProfile().key,
+    model: this.activeAgentProfile().model,
+    provider: this.activeAgentProfile().provider,
+    prompt_version: this.aiHandoffPromptVersion,
+    offline_only: true,
+    language: 'es-MX',
+    generated_at: new Date().toISOString(),
+    project: {
+      id: this.projectId(),
+      name: this.project()?.name ?? 'Proyecto',
+      objective: this.project()?.objective ?? '',
+      scope: this.project()?.scope ?? '',
+      description: this.project()?.description ?? ''
+    },
+    instructions_file: '00_AGENT_INSTRUCTIONS.md',
+    instructions: this.agentInstructions(),
+    specs: this.specArtifacts().map((spec) => ({
+      spec_id: spec.id,
+      title: spec.title,
+      requirement_code: spec.useCase.requirement.code,
+      requirement_id: spec.useCase.requirement.id,
+      use_case_id: spec.useCase.persistedId,
+      requirement_type: spec.useCase.requirement.type,
+      priority: spec.useCase.requirement.priority,
+      objective: spec.useCase.requirement.description,
+      user_story: {
+        actor: spec.useCase.actor,
+        action: spec.useCase.action,
+        benefit: spec.useCase.benefit
+      },
+      acceptance_criteria: spec.useCase.acceptanceCriteria,
+      endpoints: spec.endpoints,
+      tests: spec.tests,
+      source_findings: spec.useCase.sourceFindings.map((finding) => ({
+        id: finding.id,
+        category: finding.category,
+        statement: finding.statement,
+        session_id: finding.session_id,
+        session_technique: finding.session_technique
+      })),
+      markdown: spec.markdown
+    })),
+    design_inputs: this.designInputFiles().map((file) => ({
+      path: this.projectFilePath(file),
+      kind: file.kind,
+      mime_type: file.mime_type ?? 'text/plain',
+      size_bytes: file.size_bytes ?? file.content.length,
+      encoding: file.encoding,
+      included_as_file: true
+    })),
+    diagrams: [
+      ...this.diagramArtifacts().map((diagram) => ({
+        id: diagram.id,
+        title: diagram.title,
+        kind: diagram.kind,
+        source: diagram.source,
+        sourceRequirementIds: diagram.sourceRequirementIds,
+        sourceUseCaseIds: diagram.sourceUseCaseIds,
+        sourceSpecIds: diagram.sourceSpecIds,
+        format: 'mermaid',
+        content: diagram.mermaid
+      })),
+      ...this.savedDiagrams().map((entry) => ({
+        id: entry.id,
+        title: entry.title,
+        kind: entry.type,
+        source: 'saved-diagram',
+        sourceRequirementIds: entry.diagram.sourceRequirementIds,
+        sourceUseCaseIds: entry.diagram.sourceUseCaseIds,
+        sourceSpecIds: entry.diagram.sourceSpecIds,
+        format: 'drawio-lite-json',
+        content: entry.diagram
+      }))
+    ],
+    traceability_matrix: this.traceabilityMatrixForHandoff()
+  }));
+
+  readonly traceabilityMatrixForHandoff = computed(() =>
+    this.traceAuditRows().map((row) => ({
+      stakeholder: row.stakeholder,
+      session_technique: row.technique,
+      evidence: row.evidence,
+      finding: row.finding,
+      requirement_id: row.requirement.id,
+      requirement_code: row.requirement.code,
+      user_story_or_use_case_id: row.useCase?.persistedId ?? row.useCase?.id ?? null,
+      spec_id: row.spec?.id ?? null,
+      diagram_id: row.diagram?.id ?? null,
+      design_input_paths: this.designInputFiles().map((file) => this.projectFilePath(file)),
+      agent_task_id: row.task?.id ?? null,
+      status: row.status
+    }))
+  );
+
   readonly diagramArtifacts = computed<DerivedDiagram[]>(() =>
     this.useCaseArtifacts().map((useCase) => ({
       id: `diagram-${useCase.requirement.id}`,
       title: `Caso de uso ${useCase.requirement.code}`,
       kind: 'use-case',
       source: useCase.requirement.code,
+      sourceRequirementIds: [useCase.requirement.id],
+      sourceUseCaseIds: useCase.persistedId ? [useCase.persistedId] : [],
+      sourceSpecIds: [`spec-${useCase.requirement.id}`],
       mermaid: [
         'flowchart LR',
         `  actor["${this.escapeDiagramText(useCase.actor)}"]`,
@@ -450,6 +664,223 @@ export class ProjectWorkspace {
     }))
   );
 
+  // The project folder is a virtual bundle: generated artifacts plus whatever I edit or import manually.
+  readonly generatedProjectArtifactFiles = computed<ProjectArtifactFile[]>(() => {
+    const files: ProjectArtifactFile[] = [];
+    const project = this.project();
+    const projectSlug = slugify(project?.name ?? `proyecto-${this.projectId() ?? 'nuevo'}`);
+
+    files.push({
+      id: 'specora-manifest',
+      folder: '',
+      name: 'SPECORA_MANIFEST.json',
+      kind: 'Manifest',
+      source: 'generated',
+      encoding: 'text',
+      content: JSON.stringify(
+        {
+          format: 'specora-project-folder-v2',
+          exported_at: new Date().toISOString(),
+          agent_profile: this.activeAgentProfile(),
+          offline_only: true,
+          project_id: this.projectId(),
+          project_name: project?.name ?? 'Proyecto',
+          file_structure: [
+            '00_IMPLEMENTATION_INSTRUCTIONS.md',
+            '01_PROJECT_BRIEF.md',
+            '02_REQUIREMENTS.md',
+            '03_USER_STORIES.md',
+            '04_USE_CASES.md',
+            '05_ACCEPTANCE_CRITERIA.md',
+            '06_DIAGRAMS/',
+            '07_DESIGN_IDEAS/',
+            '08_TRACEABILITY_MATRIX.json',
+            '09_BUILD_PLAN.md'
+          ]
+        },
+        null,
+        2
+      )
+    });
+
+    files.push({
+      id: 'agent-instructions',
+      folder: '',
+      name: '00_IMPLEMENTATION_INSTRUCTIONS.md',
+      kind: 'Instrucciones implementacion',
+      source: 'generated',
+      encoding: 'text',
+      content: this.agentInstructionsMarkdown()
+    });
+
+    files.push({
+      id: 'project-brief',
+      folder: '',
+      name: '01_PROJECT_BRIEF.md',
+      kind: 'Brief',
+      source: 'generated',
+      encoding: 'text',
+      content: this.projectBriefMarkdown()
+    });
+
+    files.push({
+      id: 'requirements-doc',
+      folder: '',
+      name: '02_REQUIREMENTS.md',
+      kind: 'Requisitos',
+      source: 'generated',
+      encoding: 'text',
+      content: this.requirementsMarkdown()
+    });
+
+    files.push({
+      id: 'user-stories-doc',
+      folder: '',
+      name: '03_USER_STORIES.md',
+      kind: 'Historias',
+      source: 'generated',
+      encoding: 'text',
+      content: this.userStoriesMarkdown()
+    });
+
+    files.push({
+      id: 'use-cases-doc',
+      folder: '',
+      name: '04_USE_CASES.md',
+      kind: 'Casos de uso',
+      source: 'generated',
+      encoding: 'text',
+      content: this.useCasesMarkdown()
+    });
+
+    files.push({
+      id: 'acceptance-criteria-doc',
+      folder: '',
+      name: '05_ACCEPTANCE_CRITERIA.md',
+      kind: 'Criterios',
+      source: 'generated',
+      encoding: 'text',
+      content: this.acceptanceCriteriaMarkdown()
+    });
+
+    files.push({
+      id: 'traceability-matrix',
+      folder: '',
+      name: '08_TRACEABILITY_MATRIX.json',
+      kind: 'Trazabilidad',
+      source: 'generated',
+      encoding: 'text',
+      content: JSON.stringify(this.traceabilityMatrixForHandoff(), null, 2)
+    });
+
+    files.push({
+      id: 'build-plan',
+      folder: '',
+      name: '09_BUILD_PLAN.md',
+      kind: 'Plan build',
+      source: 'generated',
+      encoding: 'text',
+      content: this.buildPlanMarkdown()
+    });
+
+    files.push({
+      id: 'project-context',
+      folder: '01_PROJECT_BRIEF_data',
+      name: `${projectSlug}-contexto.json`,
+      kind: 'Contexto',
+      source: 'generated',
+      encoding: 'text',
+      content: JSON.stringify(
+        {
+          project,
+          stakeholders: this.stakeholders(),
+          processes: this.processes(),
+          requirements: this.requirements(),
+          use_cases: this.useCases(),
+          flow_status: this.flowStatus()
+        },
+        null,
+        2
+      )
+    });
+
+    this.specArtifacts().forEach((spec) => {
+      files.push({
+        id: `spec-${spec.id}`,
+        folder: '02_REQUIREMENTS/specs',
+        name: `${slugify(spec.title)}.md`,
+        kind: 'Spec',
+        source: 'generated',
+        encoding: 'text',
+        content: spec.markdown
+      });
+    });
+
+    files.push({
+      id: 'implementation-handoff',
+      folder: '',
+      name: 'paquete-implementacion.json',
+      kind: 'Handoff tecnico',
+      source: 'generated',
+      encoding: 'text',
+      content: JSON.stringify(this.aiSpecHandoffPackage(), null, 2)
+    });
+
+    this.agentTasks().forEach((task) => {
+      files.push({
+        id: `agent-${task.id}`,
+        folder: '09_BUILD_PLAN/tasks',
+        name: `${slugify(task.title)}.txt`,
+        kind: 'Tarea tecnica',
+        source: 'generated',
+        encoding: 'text',
+        content: task.prompt
+      });
+    });
+
+    this.diagramArtifacts().forEach((diagram) => {
+      files.push({
+        id: `mermaid-${diagram.id}`,
+        folder: '06_DIAGRAMS/mermaid',
+        name: `${slugify(diagram.title)}.mmd`,
+        kind: 'Mermaid',
+        source: 'generated',
+        encoding: 'text',
+        content: diagram.mermaid
+      });
+    });
+
+    this.savedDiagrams().forEach((entry) => {
+      files.push({
+        id: `draw-${entry.id}`,
+        folder: '06_DIAGRAMS/editables',
+        name: `${slugify(entry.title)}.drawio-lite.json`,
+        kind: 'Draw.io lite',
+        source: 'generated',
+        encoding: 'text',
+        content: JSON.stringify(entry.diagram, null, 2)
+      });
+    });
+
+    return files;
+  });
+
+  readonly projectArtifactFiles = computed<ProjectArtifactFile[]>(() => {
+    const deleted = new Set(this.deletedGeneratedProjectFileIds());
+    const managed = this.managedProjectFiles();
+    const managedById = new Map(managed.map((file) => [file.id, file]));
+    const generated = this.generatedProjectArtifactFiles()
+      .filter((file) => !deleted.has(file.id))
+      .map((file) => managedById.get(file.id) ?? file);
+    const custom = managed.filter((file) => !this.generatedProjectArtifactFiles().some((generatedFile) => generatedFile.id === file.id));
+    return [...generated, ...custom].sort((a, b) => `${a.folder}/${a.name}`.localeCompare(`${b.folder}/${b.name}`));
+  });
+
+  readonly selectedProjectFile = computed(() => {
+    const fileId = this.selectedProjectFileId();
+    return this.projectArtifactFiles().find((file) => file.id === fileId) ?? this.projectArtifactFiles()[0] ?? null;
+  });
+
   readonly agentTasks = computed<DerivedAgentTask[]>(() =>
     this.specArtifacts().map((spec) => ({
       id: `task-${spec.useCase.requirement.id}`,
@@ -457,9 +888,14 @@ export class ProjectWorkspace {
       spec,
       files: ['frontend: componente/vista relacionada', 'backend: ruta/servicio si aplica', 'tests: pruebas de aceptacion'],
       prompt: [
+        'Perfil de implementacion',
+        `${this.activeAgentProfile().provider}: ${this.activeAgentProfile().label}`,
+        `Formato de entrega: ${this.aiHandoffPromptVersion}`,
+        '',
         'Contexto',
         `Proyecto: ${this.project()?.name ?? 'Proyecto'}`,
         `Spec fuente: ${spec.title}`,
+        `Requisito fuente: ${spec.useCase.requirement.code}`,
         '',
         'Objetivo',
         spec.useCase.requirement.description,
@@ -473,8 +909,17 @@ export class ProjectWorkspace {
         'Tests esperados',
         spec.tests.join('\n'),
         '',
+        'Diagramas relacionados',
+        this.diagramArtifacts()
+          .filter((diagram) => diagram.sourceRequirementIds.includes(spec.useCase.requirement.id))
+          .map((diagram) => `- ${diagram.title}: ${diagram.id}`)
+          .join('\n') || '- Sin diagrama relacionado',
+        '',
+        'Entradas de diseno disponibles',
+        this.designInputFiles().map((file) => `- ${this.projectFilePath(file)}`).join('\n') || '- Sin entradas de diseno',
+        '',
         'Restricciones',
-        'No romper rutas existentes. Mantener trazabilidad con el requisito fuente.'
+        ...this.agentInstructions()
       ].join('\n')
     }))
   );
@@ -489,6 +934,168 @@ export class ProjectWorkspace {
     return this.diagram()?.edges.find((edge) => edge.id === edgeId) ?? null;
   });
 
+  setAgentProfile(profile: AgentProfileKey) {
+    this.selectedAgentProfile.set(profile);
+    this.success.set(`Perfil de implementacion actualizado a ${this.activeAgentProfile().label}.`);
+  }
+
+  agentInstructions() {
+    return [
+      'Usa solamente los archivos incluidos en este paquete Specora como contexto de producto.',
+      'No uses internet para aclarar requisitos, reglas de negocio, diseno o arquitectura.',
+      'No inventes reglas de negocio; si falta informacion, crea ASSUMPTIONS.md antes de implementar.',
+      'Cada cambio implementado debe mapearse a requirement_id, requirement_code, spec_id, historia/caso y diagrama cuando aplique.',
+      'Implementa en incrementos verificables y conserva comportamiento existente que no este contradicho por las specs.',
+      'Al terminar, devuelve archivos modificados, pruebas ejecutadas, supuestos y riesgos abiertos.'
+    ];
+  }
+
+  agentInstructionsMarkdown() {
+    const profile = this.activeAgentProfile();
+    return [
+      '# Instrucciones para equipo de desarrollo',
+      '',
+      `Perfil seleccionado: ${profile.label}`,
+      `Responsable sugerido: ${profile.provider}`,
+      `Modo de trabajo: ${profile.model}`,
+      '',
+      '## Reglas obligatorias',
+      this.agentInstructions().map((item) => `- ${item}`).join('\n'),
+      '',
+      '## Orden de lectura',
+      '- 01_PROJECT_BRIEF.md',
+      '- 02_REQUIREMENTS.md',
+      '- 03_USER_STORIES.md',
+      '- 04_USE_CASES.md',
+      '- 05_ACCEPTANCE_CRITERIA.md',
+      '- 06_DIAGRAMS/',
+      '- 07_DESIGN_IDEAS/',
+      '- 08_TRACEABILITY_MATRIX.json',
+      '- 09_BUILD_PLAN.md',
+      '',
+      '## Entrega esperada',
+      '- Codigo implementado segun specs.',
+      '- Pruebas o pasos de verificacion por requisito.',
+      '- ASSUMPTIONS.md si hubo ambiguedades.',
+      '- Resumen con trazabilidad a IDs de Specora.'
+    ].join('\n');
+  }
+
+  projectBriefMarkdown() {
+    const project = this.project();
+    return [
+      `# ${project?.name ?? 'Proyecto'}`,
+      '',
+      '## Objetivo',
+      project?.objective || 'Pendiente',
+      '',
+      '## Alcance',
+      project?.scope || 'Pendiente',
+      '',
+      '## Descripcion',
+      project?.description || 'Pendiente',
+      '',
+      '## Stakeholders',
+      this.stakeholders().map((item) => `- ${item.name} (${item.role}, ${item.type})`).join('\n') || '- Pendiente',
+      '',
+      '## Procesos',
+      this.processes().map((item) => `- ${item.name}: ${item.description ?? 'Sin descripcion'}`).join('\n') || '- Pendiente'
+    ].join('\n');
+  }
+
+  requirementsMarkdown() {
+    return [
+      '# Requisitos',
+      '',
+      ...this.requirements().map((requirement) =>
+        [
+          `## ${requirement.code}`,
+          `- Tipo: ${requirement.type}`,
+          `- Prioridad: ${requirement.priority}`,
+          `- Hallazgos fuente: ${(requirement.finding_ids ?? []).join(', ') || 'Pendiente'}`,
+          '',
+          requirement.description
+        ].join('\n')
+      )
+    ].join('\n\n');
+  }
+
+  userStoriesMarkdown() {
+    return [
+      '# Historias de usuario',
+      '',
+      ...this.useCaseArtifacts().map((useCase) =>
+        [
+          `## ${useCase.title}`,
+          `- Requisito: ${useCase.requirement.code}`,
+          `- Use case ID: ${useCase.persistedId ?? useCase.id}`,
+          '',
+          `Como ${useCase.actor}, quiero ${useCase.action}, para ${useCase.benefit}.`
+        ].join('\n')
+      )
+    ].join('\n\n');
+  }
+
+  useCasesMarkdown() {
+    return [
+      '# Casos de uso',
+      '',
+      ...this.useCaseArtifacts().map((useCase) =>
+        [
+          `## ${useCase.title}`,
+          `- Requisito: ${useCase.requirement.code}`,
+          `- Actor: ${useCase.actor}`,
+          `- Accion: ${useCase.action}`,
+          `- Beneficio: ${useCase.benefit}`,
+          '',
+          '### Criterios',
+          useCase.acceptanceCriteria
+        ].join('\n')
+      )
+    ].join('\n\n');
+  }
+
+  acceptanceCriteriaMarkdown() {
+    return [
+      '# Criterios de aceptacion',
+      '',
+      ...this.specArtifacts().map((spec) =>
+        [`## ${spec.useCase.requirement.code}`, spec.useCase.acceptanceCriteria].join('\n\n')
+      )
+    ].join('\n\n');
+  }
+
+  buildPlanMarkdown() {
+    return [
+      '# Plan de construccion sugerido',
+      '',
+      ...this.agentTasks().map((task, index) =>
+        [
+          `## ${index + 1}. ${task.title}`,
+          `- Spec: ${task.spec.id}`,
+          `- Requisito: ${task.spec.useCase.requirement.code}`,
+          `- Perfil de implementacion: ${this.activeAgentProfile().label}`,
+          '',
+          '### Verificacion esperada',
+          task.spec.tests.map((test) => `- ${test}`).join('\n')
+        ].join('\n')
+      )
+    ].join('\n\n');
+  }
+
+  readonly selectedDiagramNodePosition = computed(() => {
+    const node = this.selectedDiagramNode();
+    return node
+      ? {
+          x: Math.round(node.x),
+          y: Math.round(node.y),
+          width: Math.round(node.width),
+          height: Math.round(node.height)
+        }
+      : null;
+  });
+
+  // This audit table is the quickest way to see where evidence stops becoming requirements.
   readonly traceAuditRows = computed<TraceAuditRow[]>(() => {
     const rows: TraceAuditRow[] = [];
     const useCases = this.useCaseArtifacts();
@@ -605,19 +1212,22 @@ export class ProjectWorkspace {
     {
       label: 'Tareas derivadas sin persistencia',
       count: this.agentTasks().length,
-      action: 'Revisar agente',
+      action: 'Revisar implementacion',
       module: 'agent' as ModuleKey
     }
   ]);
 
-  readonly projectReady = computed(() => {
-    const project = this.project();
-    return Boolean(project?.name && (project.objective || project.description) && this.stakeholders().length > 0);
-  });
+  readonly projectReady = computed(() => this.requirementReadiness().score >= 20 && this.requirementReadiness().errors.length === 0);
 
   readonly recommendedAction = computed(() => {
-    if (!this.projectReady()) {
+    if (!this.project()?.name || !(this.project()?.objective || this.project()?.description)) {
       return { module: 'context' as ModuleKey, label: 'Completar contexto del proyecto' };
+    }
+    if (this.stakeholders().length === 0) {
+      return { module: 'stakeholders' as ModuleKey, label: 'Registrar stakeholders fuente' };
+    }
+    if (this.processes().length === 0) {
+      return { module: 'processes' as ModuleKey, label: 'Documentar procesos del negocio' };
     }
     if (this.sessions().length === 0) {
       return { module: 'techniques' as ModuleKey, label: 'Registrar primera tecnica' };
@@ -634,20 +1244,28 @@ export class ProjectWorkspace {
     if (this.requirements().length > 0 && this.specArtifacts().length === 0) {
       return { module: 'specs' as ModuleKey, label: 'Generar specs desde requisitos' };
     }
+    if (this.requirementReadiness().warnings.length > 0) {
+      return { module: 'validation' as ModuleKey, label: 'Resolver warnings del paquete' };
+    }
     return { module: 'traceability' as ModuleKey, label: 'Validar cadena de trazabilidad' };
   });
 
   readonly pipelineSteps = computed(() => [
-    { label: 'Contexto', complete: this.projectReady(), module: 'context' as ModuleKey },
+    { label: 'Contexto', complete: Boolean(this.project()?.name && (this.project()?.objective || this.project()?.description)), module: 'context' as ModuleKey },
+    { label: 'Stakeholders', complete: this.stakeholders().length > 0, module: 'stakeholders' as ModuleKey },
+    { label: 'Procesos', complete: this.processes().length > 0, module: 'processes' as ModuleKey },
     { label: 'Tecnicas', complete: this.sessions().length > 0, module: 'techniques' as ModuleKey },
     { label: 'Evidencias', complete: this.evidenceCount() > 0 && this.techniquesWithoutEvidenceCount() === 0, module: 'evidences' as ModuleKey },
     { label: 'Hallazgos', complete: this.findings().length > 0, module: 'findings' as ModuleKey },
     { label: 'Requisitos', complete: this.requirements().length > 0 && this.orphanFindingsCount() === 0, module: 'requirements' as ModuleKey },
+    { label: 'Casos', complete: this.useCaseArtifacts().some((useCase) => useCase.persistedId), module: 'useCases' as ModuleKey },
     { label: 'Specs', complete: this.specArtifacts().length > 0, module: 'specs' as ModuleKey },
-    { label: 'Agente', complete: this.agentTasks().length > 0, module: 'agent' as ModuleKey },
+    { label: 'Validacion', complete: this.requirementReadiness().errors.length === 0 && this.requirementReadiness().warnings.length === 0, module: 'validation' as ModuleKey },
+    { label: 'Entrega', complete: this.requirementReadiness().score >= 70 && this.agentTasks().length > 0, module: 'agent' as ModuleKey },
     { label: 'Trazabilidad', complete: this.traceabilityHealth() === 100 && this.requirements().length > 0, module: 'traceability' as ModuleKey }
   ]);
 
+  // Loading starts from the route id because everything in the workspace belongs to one project.
   constructor(
     private readonly route: ActivatedRoute,
     private readonly projectsService: ProjectsService,
@@ -662,6 +1280,8 @@ export class ProjectWorkspace {
         return;
       }
       this.projectId.set(id);
+      this.loadSavedDiagrams(id);
+      this.loadManagedProjectFiles(id);
       this.refresh(id);
     });
   }
@@ -670,6 +1290,12 @@ export class ProjectWorkspace {
     this.activeModule.set(module);
     this.error.set(null);
     this.success.set(null);
+    if (module === 'projectFiles' && !this.projectFileDraft()) {
+      const firstFile = this.projectArtifactFiles()[0];
+      if (firstFile) {
+        this.selectProjectFile(firstFile.id);
+      }
+    }
   }
 
   toggleTheme() {
@@ -687,8 +1313,78 @@ export class ProjectWorkspace {
     this.selectedInterviewFiles.set(Array.from(input.files ?? []));
   }
 
+  onDocumentFilesSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.selectedDocumentFiles.set(Array.from(input.files ?? []));
+  }
+
   setTraceView(view: TraceViewKey) {
     this.activeTraceView.set(view);
+  }
+
+  goToReadinessIssue(issue: ReadinessIssue) {
+    this.setActiveModule(issue.module);
+    if (issue.module === 'traceability') {
+      this.activeTraceView.set('risks');
+    }
+  }
+
+  onTrackingProcessChange() {
+    const processId = this.trackingForm.get('process_id')?.value;
+    const subprocessId = this.trackingForm.get('subprocess_id')?.value;
+    if (subprocessId && !this.subprocesses().some((subprocess) => subprocess.id === subprocessId && subprocess.process_id === processId)) {
+      this.trackingForm.patchValue({ subprocess_id: null });
+    }
+  }
+
+  addTransactionStep() {
+    this.transactionSteps.set([
+      ...this.transactionSteps(),
+      {
+        name: '',
+        actorStakeholderId: null,
+        actorRole: '',
+        system: '',
+        channel: '',
+        input: '',
+        action: '',
+        output: '',
+        duration: '',
+        waitTime: '',
+        issue: '',
+        evidenceRef: '',
+        notes: ''
+      }
+    ]);
+  }
+
+  removeTransactionStep(index: number) {
+    const next = this.transactionSteps().filter((_, itemIndex) => itemIndex !== index);
+    this.transactionSteps.set(next.length > 0 ? next : [{
+      name: '',
+      actorStakeholderId: null,
+      actorRole: '',
+      system: '',
+      channel: '',
+      input: '',
+      action: '',
+      output: '',
+      duration: '',
+      waitTime: '',
+      issue: '',
+      evidenceRef: '',
+      notes: ''
+    }]);
+  }
+
+  updateTransactionStep(index: number, field: keyof TransactionTrackingStepDraft, value: string | number | null) {
+    this.transactionSteps.update((steps) =>
+      steps.map((step, itemIndex) =>
+        itemIndex === index
+          ? { ...step, [field]: field === 'actorStakeholderId' ? (value ? Number(value) : null) : String(value ?? '') }
+          : step
+      )
+    );
   }
 
   openDerivedSpecs() {
@@ -701,12 +1397,13 @@ export class ProjectWorkspace {
 
   openDerivedAgentTasks() {
     if (this.specArtifacts().length === 0) {
-      this.error.set('Necesitas specs derivadas para revisar tareas de agente.');
+      this.error.set('Necesitas specs derivadas para revisar tareas tecnicas.');
       return;
     }
     this.setActiveModule('agent');
   }
 
+  // Diagram editing stays local first; saving it adds the editable JSON to the project folder.
   generateEditableDiagram(kind: DiagramKind = 'use_case') {
     const projectId = this.projectId();
     const useCases = this.useCaseArtifacts();
@@ -728,10 +1425,12 @@ export class ProjectWorkspace {
     this.selectedDiagramNodeId.set(null);
     this.selectedDiagramEdgeId.set(null);
     this.connectSourceNodeId.set(null);
+    this.selectedSavedDiagramId.set(null);
     this.exportedDiagramJson.set(null);
     this.success.set('Diagrama editable generado desde requisitos y specs.');
   }
 
+  // I keep connection mode explicit so selecting, dragging, and linking nodes do not fight each other.
   setDiagramMode(mode: DiagramEditorMode) {
     this.diagramMode.set(mode);
     this.connectSourceNodeId.set(null);
@@ -778,6 +1477,7 @@ export class ProjectWorkspace {
 
   onDiagramNodePointerDown(event: PointerEvent, nodeId: string) {
     event.stopPropagation();
+    (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
     if (this.diagramMode() === 'connect') {
       this.completeDiagramConnection(nodeId);
       return;
@@ -792,13 +1492,54 @@ export class ProjectWorkspace {
     this.draggingNode.set({ nodeId, offsetX: point.x - node.x, offsetY: point.y - node.y });
   }
 
-  onDiagramPointerMove(event: PointerEvent) {
-    const dragging = this.draggingNode();
-    const current = this.diagram();
-    if (!dragging || !current) {
+  startDiagramNodeResize(event: PointerEvent, nodeId: string, handle: DiagramResizeHandle) {
+    event.stopPropagation();
+    (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
+    const node = this.diagram()?.nodes.find((item) => item.id === nodeId);
+    if (!node) {
       return;
     }
     const point = this.diagramPoint(event);
+    this.selectDiagramNode(nodeId);
+    this.resizingNode.set({
+      nodeId,
+      handle,
+      startX: point.x,
+      startY: point.y,
+      startWidth: node.width,
+      startHeight: node.height,
+      startNodeX: node.x,
+      startNodeY: node.y
+    });
+  }
+
+  startDiagramPortConnection(event: PointerEvent, nodeId: string) {
+    event.stopPropagation();
+    this.selectDiagramNode(nodeId);
+    this.diagramMode.set('connect');
+    this.connectSourceNodeId.set(nodeId);
+    const node = this.diagram()?.nodes.find((item) => item.id === nodeId);
+    this.success.set(`Conectando desde ${node?.label ?? 'nodo'}. Selecciona el nodo destino.`);
+  }
+
+  onDiagramPointerMove(event: PointerEvent) {
+    const resizing = this.resizingNode();
+    const dragging = this.draggingNode();
+    const current = this.diagram();
+    if (!current) {
+      return;
+    }
+    const point = this.diagramPoint(event);
+    if (resizing) {
+      const nextNodes = current.nodes.map((node) =>
+        node.id === resizing.nodeId ? this.resizedDiagramNode(node, resizing, point.x, point.y) : node
+      );
+      this.diagram.set({ ...current, nodes: nextNodes });
+      return;
+    }
+    if (!dragging) {
+      return;
+    }
     const nextNodes = current.nodes.map((node) =>
       node.id === dragging.nodeId
         ? { ...node, x: Math.max(16, point.x - dragging.offsetX), y: Math.max(16, point.y - dragging.offsetY) }
@@ -809,6 +1550,7 @@ export class ProjectWorkspace {
 
   stopDiagramDrag() {
     this.draggingNode.set(null);
+    this.resizingNode.set(null);
   }
 
   updateSelectedDiagramNodeLabel(value: string) {
@@ -823,6 +1565,14 @@ export class ProjectWorkspace {
     });
   }
 
+  updateDiagramTitle(value: string) {
+    const current = this.diagram();
+    if (!current) {
+      return;
+    }
+    this.diagram.set({ ...current, title: value });
+  }
+
   updateSelectedDiagramEdgeLabel(value: string) {
     const edge = this.selectedDiagramEdge();
     const current = this.diagram();
@@ -832,6 +1582,37 @@ export class ProjectWorkspace {
     this.diagram.set({
       ...current,
       edges: current.edges.map((item) => (item.id === edge.id ? { ...item, label: value } : item))
+    });
+  }
+
+  updateSelectedDiagramEdgeType(type: DiagramEdgeType) {
+    const edge = this.selectedDiagramEdge();
+    const current = this.diagram();
+    if (!edge || !current) {
+      return;
+    }
+    this.diagram.set({
+      ...current,
+      edges: current.edges.map((item) => (item.id === edge.id ? { ...item, type } : item))
+    });
+  }
+
+  updateSelectedDiagramNodeSize(field: 'width' | 'height', value: string) {
+    const node = this.selectedDiagramNode();
+    const current = this.diagram();
+    if (!node || !current) {
+      return;
+    }
+    const minimum = this.diagramNodeMinimumSize(node.type);
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+    this.diagram.set({
+      ...current,
+      nodes: current.nodes.map((item) =>
+        item.id === node.id ? { ...item, [field]: Math.max(minimum[field], Math.round(parsed)) } : item
+      )
     });
   }
 
@@ -880,13 +1661,415 @@ export class ProjectWorkspace {
     this.success.set('JSON del diagrama generado en el panel inferior.');
   }
 
+  saveCurrentDiagram() {
+    const current = this.diagram();
+    const projectId = this.projectId();
+    if (!current || !projectId) {
+      this.error.set('No hay diagrama activo para guardar.');
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const diagram: DiagramModel = {
+      ...current,
+      projectId,
+      title: current.title?.trim() || `Diagrama ${current.type}`,
+      derived: false
+    };
+    const selectedId = this.selectedSavedDiagramId();
+    const existing = this.savedDiagrams();
+    const entryId = selectedId && existing.some((entry) => entry.id === selectedId) ? selectedId : diagram.id;
+    const entry: SavedDiagramEntry = {
+      id: entryId,
+      title: diagram.title,
+      type: diagram.type,
+      updatedAt: now,
+      diagram: { ...diagram, id: entryId }
+    };
+    const next = existing.some((item) => item.id === entryId)
+      ? existing.map((item) => (item.id === entryId ? entry : item))
+      : [entry, ...existing];
+
+    this.persistSavedDiagrams(projectId, next);
+    this.diagram.set(entry.diagram);
+    this.selectedSavedDiagramId.set(entry.id);
+    this.exportedDiagramJson.set(JSON.stringify(entry.diagram, null, 2));
+    this.success.set(`Diagrama "${entry.title}" guardado en la carpeta del proyecto.`);
+  }
+
+  openSavedDiagram(diagramId: string) {
+    const entry = this.savedDiagrams().find((item) => item.id === diagramId);
+    if (!entry) {
+      this.error.set('No se encontro el diagrama guardado.');
+      return;
+    }
+    this.diagram.set(entry.diagram);
+    this.selectedSavedDiagramId.set(entry.id);
+    this.selectedDiagramNodeId.set(null);
+    this.selectedDiagramEdgeId.set(null);
+    this.connectSourceNodeId.set(null);
+    this.exportedDiagramJson.set(JSON.stringify(entry.diagram, null, 2));
+    this.success.set(`Diagrama "${entry.title}" abierto.`);
+  }
+
+  deleteSavedDiagram(diagramId: string) {
+    const projectId = this.projectId();
+    if (!projectId) {
+      return;
+    }
+    const next = this.savedDiagrams().filter((entry) => entry.id !== diagramId);
+    this.persistSavedDiagrams(projectId, next);
+    if (this.selectedSavedDiagramId() === diagramId) {
+      this.selectedSavedDiagramId.set(null);
+    }
+    this.success.set('Diagrama eliminado de la carpeta local del proyecto.');
+  }
+
+  downloadCurrentDiagramJson() {
+    const current = this.diagram();
+    if (!current) {
+      this.error.set('No hay diagrama para descargar.');
+      return;
+    }
+    this.downloadText(`${slugify(current.title)}.drawio-lite.json`, JSON.stringify(current, null, 2), 'application/json');
+  }
+
+  importDiagramFile(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result ?? ''));
+        const diagram = this.normalizeImportedDiagram(parsed);
+        this.diagram.set(diagram);
+        this.selectedSavedDiagramId.set(null);
+        this.exportedDiagramJson.set(JSON.stringify(diagram, null, 2));
+        this.success.set('Diagrama importado. Usa Guardar para anexarlo a la carpeta del proyecto.');
+      } catch {
+        this.error.set('El archivo no contiene un diagrama valido.');
+      } finally {
+        input.value = '';
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  exportProjectBundle() {
+    this.exportProjectZip();
+  }
+
+  // I keep JSON export for debugging, but ZIP is the real handoff format.
+  downloadProjectBundleJson() {
+    const project = this.project();
+    const bundle = {
+      exported_at: new Date().toISOString(),
+      project,
+      files: this.projectArtifactFiles().map((file) => ({
+        path: this.projectFilePath(file),
+        kind: file.kind,
+        encoding: file.encoding,
+        mime_type: file.mime_type,
+        content: file.content
+      }))
+    };
+    this.downloadText(
+      `${slugify(project?.name ?? `proyecto-${this.projectId() ?? 'workspace'}`)}-paquete-proyecto.json`,
+      JSON.stringify(bundle, null, 2),
+      'application/json'
+    );
+    this.success.set('Paquete del proyecto generado con specs, tareas y diagramas.');
+  }
+
+  downloadAiSpecHandoffPackage() {
+    const project = this.project();
+    this.downloadText(
+      `${slugify(project?.name ?? `proyecto-${this.projectId() ?? 'workspace'}`)}-handoff-tecnico.json`,
+      JSON.stringify(this.aiSpecHandoffPackage(), null, 2),
+      'application/json'
+    );
+    this.success.set('Paquete tecnico de specs generado.');
+  }
+
+  async exportProjectZip() {
+    const project = this.project();
+    const files = this.projectArtifactFiles().map((file) => ({
+      path: this.projectFilePath(file),
+      content: file.encoding === 'data_url' ? dataUrlToBytes(file.content) : file.content
+    }));
+    const manifest = {
+      exported_at: new Date().toISOString(),
+      project,
+      file_count: files.length,
+      format: 'specora-project-folder-v2',
+      implementation_profile: this.activeAgentProfile(),
+      offline_only: true
+    };
+    files.unshift({
+      path: 'manifest.json',
+      content: JSON.stringify(manifest, null, 2)
+    });
+    const blob = createZipBlob(files);
+    this.downloadBlob(`${slugify(project?.name ?? `proyecto-${this.projectId() ?? 'workspace'}`)}.zip`, blob);
+    this.success.set('ZIP del proyecto generado.');
+  }
+
+  async exportImplementationSpecsZip() {
+    const readiness = this.requirementReadiness();
+    if (readiness.errors.some((issue) => issue.code === 'NO_REQUIREMENTS')) {
+      this.error.set('No puedes exportar specs implementables sin requisitos o casos de uso documentados.');
+      this.setActiveModule('validation');
+      return;
+    }
+    const projectId = this.projectId();
+    const files = buildImplementationSpecFiles({
+      project: this.project(),
+      projectId,
+      stakeholders: this.stakeholders(),
+      processes: this.processes(),
+      sessions: this.sessions(),
+      findings: this.findings(),
+      requirements: this.requirements(),
+      useCases: this.useCaseArtifacts(),
+      diagrams: this.diagramArtifacts(),
+      savedDiagrams: this.savedDiagrams(),
+      readiness
+    });
+    const blob = createZipBlob(files);
+    this.downloadBlob(`specs_proyecto_${projectId ?? 'workspace'}.zip`, blob);
+    this.success.set(
+      readiness.warnings.length > 0
+        ? `Specs implementables generadas con ${readiness.warnings.length} warning(s) de validacion.`
+        : 'Specs implementables generadas con formato 01-08.'
+    );
+  }
+
+  // File edits live in local project storage so generated files can be customized without losing the source artifact.
+  selectProjectFile(fileId: string) {
+    const file = this.projectArtifactFiles().find((item) => item.id === fileId);
+    if (!file) {
+      return;
+    }
+    this.selectedProjectFileId.set(file.id);
+    this.projectFileDraft.set({
+      folder: file.folder,
+      name: file.name,
+      kind: file.kind,
+      content: file.content
+    });
+  }
+
+  updateProjectFileDraft(field: keyof ProjectFileDraft, value: string) {
+    const current = this.projectFileDraft() ?? {
+      folder: '',
+      name: '',
+      kind: 'Archivo',
+      content: ''
+    };
+    this.projectFileDraft.set({ ...current, [field]: value });
+  }
+
+  saveProjectFileDraft() {
+    const projectId = this.projectId();
+    const selected = this.selectedProjectFile();
+    const draft = this.projectFileDraft();
+    if (!projectId || !selected || !draft) {
+      this.error.set('Selecciona un archivo para guardar cambios.');
+      return;
+    }
+    const file: ProjectArtifactFile = {
+      id: selected.id,
+      folder: this.cleanProjectFolderPart(draft.folder || selected.folder),
+      name: cleanProjectFilePart(draft.name || selected.name),
+      kind: draft.kind || selected.kind,
+      content: selected.encoding === 'data_url' ? selected.content : draft.content ?? '',
+      encoding: selected.encoding ?? 'text',
+      mime_type: selected.mime_type,
+      size_bytes: selected.size_bytes,
+      source: selected.source === 'generated' ? 'edited' : selected.source,
+      updatedAt: new Date().toISOString()
+    };
+    this.upsertManagedProjectFile(projectId, file);
+    this.selectedProjectFileId.set(file.id);
+    this.projectFileDraft.set({ folder: file.folder, name: file.name, kind: file.kind, content: file.content });
+    this.success.set(`Archivo "${file.name}" guardado.`);
+  }
+
+  addProjectTextFile() {
+    const projectId = this.projectId();
+    if (!projectId) {
+      return;
+    }
+    const now = Date.now();
+    const file: ProjectArtifactFile = {
+      id: `custom-${now}`,
+      folder: '04-personalizados',
+      name: `nota-${now}.md`,
+      kind: 'Personalizado',
+      content: '# Nuevo archivo\n\n',
+      encoding: 'text',
+      source: 'custom',
+      updatedAt: new Date().toISOString()
+    };
+    this.upsertManagedProjectFile(projectId, file);
+    this.selectProjectFile(file.id);
+    this.success.set('Archivo personalizado creado.');
+  }
+
+  deleteProjectFile() {
+    const projectId = this.projectId();
+    const selected = this.selectedProjectFile();
+    if (!projectId || !selected) {
+      return;
+    }
+    const managed = this.managedProjectFiles().filter((file) => file.id !== selected.id);
+    const deleted = new Set(this.deletedGeneratedProjectFileIds());
+    if (this.generatedProjectArtifactFiles().some((file) => file.id === selected.id)) {
+      deleted.add(selected.id);
+    }
+    this.persistManagedProjectFiles(projectId, managed, [...deleted]);
+    const next = this.projectArtifactFiles().find((file) => file.id !== selected.id) ?? null;
+    this.selectedProjectFileId.set(next?.id ?? null);
+    this.projectFileDraft.set(next ? { folder: next.folder, name: next.name, kind: next.kind, content: next.content } : null);
+    this.success.set('Archivo removido de la carpeta del proyecto.');
+  }
+
+  restoreGeneratedProjectFile() {
+    const projectId = this.projectId();
+    const selected = this.selectedProjectFile();
+    if (!projectId || !selected) {
+      return;
+    }
+    const generated = this.generatedProjectArtifactFiles().find((file) => file.id === selected.id);
+    if (!generated) {
+      this.error.set('Este archivo no proviene de un artefacto generado.');
+      return;
+    }
+    const managed = this.managedProjectFiles().filter((file) => file.id !== selected.id);
+    const deleted = this.deletedGeneratedProjectFileIds().filter((id) => id !== selected.id);
+    this.persistManagedProjectFiles(projectId, managed, deleted);
+    this.selectProjectFile(generated.id);
+    this.success.set('Archivo restaurado desde el artefacto generado.');
+  }
+
+  downloadSelectedProjectFile() {
+    const selected = this.selectedProjectFile();
+    if (!selected) {
+      return;
+    }
+    if (selected.encoding === 'data_url') {
+      this.downloadBlob(selected.name, new Blob([dataUrlToBytes(selected.content)], { type: selected.mime_type ?? 'application/octet-stream' }));
+      return;
+    }
+    this.downloadText(selected.name, selected.content, 'text/plain;charset=utf-8');
+  }
+
+  // Imports support the project bundle and loose files, which makes rehydrating a workspace simple.
+  async importProjectFolderFile(event: Event) {
+    const projectId = this.projectId();
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    if (!projectId || files.length === 0) {
+      return;
+    }
+    try {
+      const imported: ProjectArtifactFile[] = [];
+      for (const file of files) {
+        if (file.name.toLowerCase().endsWith('.zip')) {
+          const zipFiles = readZipEntries(await file.arrayBuffer());
+          imported.push(...zipFiles.map((entry) => projectFileFromPath(entry.path, entry.content, 'imported')));
+          continue;
+        }
+        if (this.isImageProjectFileName(file.name)) {
+          imported.push({
+            id: `imported-${Date.now()}-${imported.length}`,
+            folder: '07_DESIGN_IDEAS',
+            name: cleanProjectFilePart(file.name),
+            kind: 'Imagen de diseno',
+            content: await this.readFileAsDataUrl(file),
+            encoding: 'data_url',
+            mime_type: file.type || 'application/octet-stream',
+            size_bytes: file.size,
+            source: 'imported',
+            updatedAt: new Date().toISOString()
+          });
+          continue;
+        }
+        const content = await file.text();
+        if (file.name.toLowerCase().endsWith('.json')) {
+          const bundleFiles = tryReadBundleFiles(content);
+          if (bundleFiles.length > 0) {
+            imported.push(...bundleFiles.map((entry) => projectFileFromPath(entry.path, entry.content, 'imported')));
+            continue;
+          }
+        }
+        imported.push({
+          id: `imported-${Date.now()}-${imported.length}`,
+          folder: this.isDesignIdeaFileName(file.name) ? '07_DESIGN_IDEAS' : '04-importados',
+          name: cleanProjectFilePart(file.name),
+          kind: this.isDesignIdeaFileName(file.name) ? 'Idea de diseno' : 'Importado',
+          content,
+          encoding: 'text',
+          mime_type: file.type || 'text/plain',
+          size_bytes: file.size,
+          source: 'imported',
+          updatedAt: new Date().toISOString()
+        });
+      }
+      const next = [...this.managedProjectFiles()];
+      for (const file of imported) {
+        const uniqueFile = { ...file, id: `${file.id}-${slugify(file.folder)}-${slugify(file.name)}` };
+        next.push(uniqueFile);
+      }
+      this.persistManagedProjectFiles(projectId, next, this.deletedGeneratedProjectFileIds());
+      if (imported[0]) {
+        this.selectProjectFile(next[next.length - imported.length].id);
+      }
+      this.success.set(`Se importaron ${imported.length} archivo(s) a la carpeta del proyecto.`);
+    } catch {
+      this.error.set('No se pudo importar el paquete o archivo seleccionado.');
+    } finally {
+      input.value = '';
+    }
+  }
+
   diagramNodeCenter(nodeId: string) {
     const node = this.diagram()?.nodes.find((item) => item.id === nodeId);
     return node ? { x: node.x + node.width / 2, y: node.y + node.height / 2 } : { x: 0, y: 0 };
   }
 
+  diagramNodeResizeHandles(node: DiagramNode) {
+    return [
+      { handle: 'nw' as const, x: 0, y: 0 },
+      { handle: 'ne' as const, x: node.width, y: 0 },
+      { handle: 'sw' as const, x: 0, y: node.height },
+      { handle: 'se' as const, x: node.width, y: node.height },
+      { handle: 'e' as const, x: node.width, y: node.height / 2 },
+      { handle: 's' as const, x: node.width / 2, y: node.height }
+    ];
+  }
+
+  diagramNodeConnectionPorts(node: DiagramNode) {
+    return [
+      { x: node.width / 2, y: 0 },
+      { x: node.width, y: node.height / 2 },
+      { x: node.width / 2, y: node.height },
+      { x: 0, y: node.height / 2 }
+    ];
+  }
+
   diagramNodeClass(node: DiagramNode) {
-    return `diagram-node node-${node.type}${this.selectedDiagramNodeId() === node.id ? ' selected' : ''}`;
+    const classes = [`diagram-node`, `node-${node.type}`];
+    if (this.selectedDiagramNodeId() === node.id) {
+      classes.push('selected');
+    }
+    if (this.connectSourceNodeId() === node.id) {
+      classes.push('connecting');
+    }
+    return classes.join(' ');
   }
 
   diagramNodeLines(node: DiagramNode) {
@@ -902,12 +2085,127 @@ export class ProjectWorkspace {
     return this.sessions().filter((session) => session.technique === technique);
   }
 
+  trackingSessions() {
+    return this.sessions().filter((session) => this.isTrackingSession(session));
+  }
+
+  processSubprocesses(processId: number) {
+    return this.subprocesses().filter((subprocess) => subprocess.process_id === processId);
+  }
+
+  processTrackingCount(processId: number) {
+    return this.trackingSessions().filter((session) => session.process_id === processId).length;
+  }
+
+  startTrackingForProcess(process: Process, subprocess?: Subprocess) {
+    this.trackingForm.patchValue({
+      process_id: process.id,
+      subprocess_id: subprocess?.id ?? null,
+      title: this.trackingForm.getRawValue().title || `Seguimiento: ${process.name}`
+    });
+    this.onTrackingProcessChange();
+    this.setActiveModule('techniques');
+    this.setActiveTechnique('tracking');
+  }
+
+  trackingTransactionId(session: Session) {
+    return this.metadataText(session, 'transactionId') || 'Sin ID de transaccion';
+  }
+
+  trackingTransactionType(session: Session) {
+    return this.metadataText(session, 'transactionType') || 'Transaccion real';
+  }
+
+  trackingProcessName(session: Session) {
+    return this.processes().find((process) => process.id === session.process_id)?.name ?? 'Proceso no vinculado';
+  }
+
+  trackingSubprocessName(session: Session) {
+    if (!session.subprocess_id) {
+      return null;
+    }
+    return this.subprocesses().find((subprocess) => subprocess.id === session.subprocess_id)?.name ?? null;
+  }
+
+  trackingPrimaryActor(session: Session) {
+    const actorId = this.metadataNumber(session, 'primaryActorId');
+    if (!actorId) {
+      return 'Actor principal no definido';
+    }
+    const stakeholder = this.stakeholders().find((item) => item.id === actorId);
+    return stakeholder ? `${stakeholder.name} (${stakeholder.role})` : 'Actor principal no encontrado';
+  }
+
+  trackingSystems(session: Session) {
+    const systems = session.metadata?.['systemsInvolved'];
+    if (!Array.isArray(systems)) {
+      return 'Sistemas/canales no especificados';
+    }
+    const labels = systems.map((item) => String(item).trim()).filter(Boolean);
+    return labels.length > 0 ? labels.join(', ') : 'Sistemas/canales no especificados';
+  }
+
+  trackingSteps(session: Session): TransactionTrackingStep[] {
+    const steps = session.metadata?.['steps'];
+    return Array.isArray(steps) ? steps as TransactionTrackingStep[] : [];
+  }
+
+  visibleTrackingSteps(session: Session) {
+    return this.trackingSteps(session).slice(0, 3);
+  }
+
+  trackingRemainingStepCount(session: Session) {
+    return Math.max(this.trackingSteps(session).length - 3, 0);
+  }
+
+  trackingProblems(session: Session): TransactionTrackingProblem[] {
+    const problems = session.metadata?.['problems'];
+    return Array.isArray(problems) ? problems as TransactionTrackingProblem[] : [];
+  }
+
+  trackingMetrics(session: Session): TransactionTrackingMetrics {
+    const metrics = session.metadata?.['metrics'];
+    return metrics && typeof metrics === 'object' ? metrics as TransactionTrackingMetrics : {};
+  }
+
+  trackingStepLabel(step: TransactionTrackingStep, index: number) {
+    return `${step.order ?? index + 1}. ${step.name || step.action || 'Paso sin nombre'}`;
+  }
+
+  trackingStepActor(step: TransactionTrackingStep) {
+    return this.trackingActorLabel(step.actorStakeholderId, step.actorRole ?? '');
+  }
+
+  createFindingFromTracking(session: Session) {
+    const firstProblem = this.trackingProblems(session)[0];
+    const firstStepWithIssue = this.trackingSteps(session).find((step) => step.issue);
+    const statement = firstProblem?.description || firstStepWithIssue?.issue || '';
+    this.findingForm.patchValue({
+      session_id: session.id,
+      category: 'problem',
+      statement
+    });
+    this.setActiveModule('findings');
+  }
+
   sessionEvidences(sessionId: number) {
     return this.evidencesBySession()[sessionId] ?? [];
   }
 
   sessionsForFindings() {
     return this.sessions().filter((session) => session.evidence_count > 0);
+  }
+
+  sessionsByDiscoveryType(type: DiscoveryType) {
+    return this.sessions().filter((session) => session.discovery_type === type);
+  }
+
+  updateSessionDiscoveryType(session: Session, discoveryType: DiscoveryType) {
+    this.updateSessionClassification(session, { discovery_type: discoveryType });
+  }
+
+  updateSessionStatus(session: Session, status: SessionStatus) {
+    this.updateSessionClassification(session, { status });
   }
 
   selectedFinding(findingId: number) {
@@ -924,6 +2222,411 @@ export class ProjectWorkspace {
     control?.setValue(next);
     control?.markAsDirty();
     control?.markAsTouched();
+  }
+
+  beginEditFinding(finding: Finding) {
+    this.closeDocumentationDrawer();
+    this.editingFindingId.set(finding.id);
+    this.findingEditDraft.set({
+      category: finding.category,
+      statement: finding.statement
+    });
+  }
+
+  updateFindingDraft(field: keyof FindingEditDraft, value: string) {
+    const draft = this.findingEditDraft();
+    if (!draft) {
+      return;
+    }
+    this.findingEditDraft.set({
+      ...draft,
+      [field]: field === 'category' ? (value as Finding['category']) : value
+    });
+  }
+
+  cancelEditFinding() {
+    this.editingFindingId.set(null);
+    this.findingEditDraft.set(null);
+  }
+
+  saveFindingEdit(findingId: number) {
+    const projectId = this.projectId();
+    const draft = this.findingEditDraft();
+    if (!projectId || !draft || draft.statement.trim().length < 20) {
+      this.error.set('El hallazgo debe tener al menos 20 caracteres.');
+      return;
+    }
+
+    this.setSavingState();
+    this.traceabilityService
+      .updateFinding(projectId, findingId, {
+        category: draft.category,
+        statement: draft.statement.trim()
+      })
+      .subscribe({
+        next: () => {
+          this.success.set('Hallazgo actualizado.');
+          this.cancelEditFinding();
+          this.afterMutation(projectId);
+        },
+        error: (err) => this.fail(err, 'No se pudo actualizar el hallazgo.')
+      });
+  }
+
+  beginEditRequirement(requirement: Requirement) {
+    this.closeDocumentationDrawer();
+    this.editingRequirementId.set(requirement.id);
+    this.requirementEditDraft.set({
+      type: requirement.type,
+      priority: requirement.priority,
+      description: requirement.description,
+      acceptance_criteria: requirement.acceptance_criteria,
+      finding_ids: [...(requirement.finding_ids ?? [])]
+    });
+  }
+
+  updateRequirementDraft(field: keyof Omit<RequirementEditDraft, 'finding_ids'>, value: string) {
+    const draft = this.requirementEditDraft();
+    if (!draft) {
+      return;
+    }
+    this.requirementEditDraft.set({
+      ...draft,
+      [field]: value
+    } as RequirementEditDraft);
+  }
+
+  requirementDraftFindingSelected(findingId: number) {
+    return this.requirementEditDraft()?.finding_ids.includes(findingId) ?? false;
+  }
+
+  toggleRequirementDraftFinding(findingId: number) {
+    const draft = this.requirementEditDraft();
+    if (!draft) {
+      return;
+    }
+    this.requirementEditDraft.set({
+      ...draft,
+      finding_ids: draft.finding_ids.includes(findingId)
+        ? draft.finding_ids.filter((id) => id !== findingId)
+        : [...draft.finding_ids, findingId]
+    });
+  }
+
+  cancelEditRequirement() {
+    this.editingRequirementId.set(null);
+    this.requirementEditDraft.set(null);
+  }
+
+  saveRequirementEdit(requirementId: number) {
+    const projectId = this.projectId();
+    const draft = this.requirementEditDraft();
+    if (
+      !projectId ||
+      !draft ||
+      draft.description.trim().length < 12 ||
+      draft.acceptance_criteria.trim().length < 12 ||
+      draft.finding_ids.length === 0
+    ) {
+      this.error.set('Completa descripcion, criterios y al menos un hallazgo fuente.');
+      return;
+    }
+
+    this.setSavingState();
+    this.traceabilityService
+      .updateRequirement(projectId, requirementId, {
+        type: draft.type,
+        priority: draft.priority,
+        description: draft.description.trim(),
+        acceptance_criteria: draft.acceptance_criteria.trim(),
+        finding_ids: draft.finding_ids
+      })
+      .subscribe({
+        next: () => {
+          this.success.set('Requisito actualizado. Specs, handoff y diagramas derivados ya usan el nuevo contenido.');
+          this.cancelEditRequirement();
+          this.afterMutation(projectId);
+        },
+        error: (err) => this.fail(err, 'No se pudo actualizar el requisito.')
+      });
+  }
+
+  beginEditUseCase(useCase: DerivedUseCase) {
+    this.closeDocumentationDrawer();
+    this.editingUseCaseId.set(useCase.id);
+    this.useCaseEditDraft.set({
+      requirement_id: useCase.requirement.id,
+      persistedId: useCase.persistedId,
+      title: useCase.title,
+      actor: useCase.actor,
+      action: useCase.action,
+      benefit: useCase.benefit,
+      acceptance_criteria: useCase.acceptanceCriteria
+    });
+  }
+
+  updateUseCaseDraft(field: keyof Omit<UseCaseEditDraft, 'requirement_id' | 'persistedId'>, value: string) {
+    const draft = this.useCaseEditDraft();
+    if (!draft) {
+      return;
+    }
+    this.useCaseEditDraft.set({ ...draft, [field]: value });
+  }
+
+  cancelEditUseCase() {
+    this.editingUseCaseId.set(null);
+    this.useCaseEditDraft.set(null);
+  }
+
+  closeDocumentationDrawer() {
+    this.cancelEditFinding();
+    this.cancelEditRequirement();
+    this.cancelEditUseCase();
+  }
+
+  saveUseCaseEdit() {
+    const projectId = this.projectId();
+    const draft = this.useCaseEditDraft();
+    if (
+      !projectId ||
+      !draft ||
+      draft.title.trim().length < 3 ||
+      draft.actor.trim().length < 2 ||
+      draft.action.trim().length < 3 ||
+      draft.benefit.trim().length < 3
+    ) {
+      this.error.set('Completa titulo, actor, accion y beneficio del caso de uso.');
+      return;
+    }
+
+    const payload = {
+      title: draft.title.trim(),
+      actor: draft.actor.trim(),
+      action: draft.action.trim(),
+      benefit: draft.benefit.trim(),
+      acceptance_criteria: draft.acceptance_criteria.trim() || null
+    };
+    this.setSavingState();
+    const request = draft.persistedId
+      ? this.traceabilityService.updateUseCase(projectId, draft.persistedId, payload)
+      : this.traceabilityService.createUseCase(projectId, {
+          requirement_id: draft.requirement_id,
+          ...payload
+        });
+
+    request.subscribe({
+      next: () => {
+        this.success.set('Caso de uso guardado y enlazado al requisito.');
+        this.cancelEditUseCase();
+        this.afterMutation(projectId);
+      },
+      error: (err) => this.fail(err, 'No se pudo guardar el caso de uso.')
+    });
+  }
+
+  private updateSessionClassification(
+    session: Session,
+    payload: { discovery_type?: DiscoveryType; status?: SessionStatus }
+  ) {
+    const projectId = this.projectId();
+    if (!projectId) {
+      return;
+    }
+    this.setSavingState();
+    this.traceabilityService.updateSession(projectId, session.id, payload).subscribe({
+      next: () => {
+        this.success.set('Sesion actualizada.');
+        this.afterMutation(projectId);
+      },
+      error: (err) => this.fail(err, 'No se pudo actualizar la sesion.')
+    });
+  }
+
+  toggleSurveyStakeholder(stakeholderId: number) {
+    const current = this.selectedSurveyStakeholderIds();
+    this.selectedSurveyStakeholderIds.set(
+      current.includes(stakeholderId) ? current.filter((id) => id !== stakeholderId) : [...current, stakeholderId]
+    );
+  }
+
+  isSurveyStakeholderSelected(stakeholderId: number) {
+    return this.selectedSurveyStakeholderIds().includes(stakeholderId);
+  }
+
+  // Questionnaires still use survey routes underneath, but the UI treats them as instruments.
+  addSurveyQuestion() {
+    this.surveyQuestionsDraft.set([
+      ...this.surveyQuestionsDraft(),
+      { question_text: '', question_type: 'short_text', required: false, optionsText: '', help_text: '' }
+    ]);
+  }
+
+  generateSurveyQuestionsWithAI() {
+    const value = this.surveyForm.getRawValue();
+    const prompt = this.surveyAIPrompt().trim();
+    const title = (value.title ?? '').trim();
+    const description = (value.description ?? '').trim();
+    const objective = (value.objective ?? '').trim();
+    if (`${title} ${description} ${objective} ${prompt}`.trim().length < 8) {
+      this.error.set('Completa titulo, descripcion u objetivo de la encuesta, o agrega un mini prompt.');
+      return;
+    }
+    const suggestions = buildLocalQuestionnaireSuggestions({ title, description, objective, prompt });
+    this.applySurveyQuestionSuggestions(suggestions);
+    this.success.set(`Se generaron ${suggestions.length} pregunta(s) base editables desde la plantilla local.`);
+  }
+
+  private applySurveyQuestionSuggestions(questions: SurveyQuestion[]) {
+    this.surveyQuestionsDraft.set(
+      questions.map((question) => ({
+        question_text: question.question_text,
+        question_type: question.question_type,
+        required: question.required,
+        optionsText: (question.options ?? []).join('\n'),
+        help_text: question.help_text ?? ''
+      }))
+    );
+  }
+
+  removeSurveyQuestion(index: number) {
+    const next = this.surveyQuestionsDraft().filter((_, itemIndex) => itemIndex !== index);
+    this.surveyQuestionsDraft.set(
+      next.length > 0 ? next : [{ question_text: '', question_type: 'long_text', required: true, optionsText: '', help_text: '' }]
+    );
+  }
+
+  updateSurveyQuestion(index: number, field: keyof SurveyQuestionDraft, value: string | boolean) {
+    this.surveyQuestionsDraft.set(
+      this.surveyQuestionsDraft().map((question, itemIndex) =>
+        itemIndex === index ? { ...question, [field]: value } : question
+      )
+    );
+  }
+
+  saveSurvey() {
+    const projectId = this.projectId();
+    const value = this.surveyForm.getRawValue();
+    const questions = this.surveyQuestionsDraft()
+      .map((question, index): SurveyQuestion => ({
+        question_text: question.question_text.trim(),
+        question_type: question.question_type,
+        required: question.required,
+        options: question.optionsText
+          .split('\n')
+          .map((option) => option.trim())
+          .filter(Boolean),
+        sort_order: index,
+        help_text: question.help_text || null
+      }))
+      .filter((question) => question.question_text.length >= 3);
+    if (!projectId || this.surveyForm.invalid || questions.length === 0) {
+      this.surveyForm.markAllAsTouched();
+      this.error.set('Completa la encuesta y agrega al menos una pregunta valida.');
+      return;
+    }
+    const invalidOptions = questions.find((question) =>
+      ['single_choice', 'multiple_choice'].includes(question.question_type) && question.options.length < 2
+    );
+    if (invalidOptions) {
+      this.error.set('Las preguntas de opcion requieren al menos dos opciones, una por linea.');
+      return;
+    }
+    this.setSavingState();
+    this.traceabilityService
+      .createSurvey(projectId, {
+        title: value.title ?? '',
+        description: value.description ?? '',
+        objective: value.objective || null,
+        category: value.category ?? 'survey',
+        status: value.status ?? 'draft',
+        due_at: value.due_at || null,
+        allow_audio: Boolean(value.allow_audio),
+        allow_document: Boolean(value.allow_document),
+        allow_anonymous_response: Boolean(value.allow_anonymous_response),
+        stakeholder_ids: this.selectedSurveyStakeholderIds(),
+        questions
+      })
+      .subscribe({
+        next: (response) => {
+          this.success.set('Cuestionario creado como sesion de tecnica con link compartible.');
+          this.saving.set(false);
+          this.surveyForm.reset({
+            title: '',
+            description: '',
+            objective: '',
+            category: 'survey',
+            allow_audio: false,
+            allow_document: false,
+            allow_anonymous_response: true,
+            due_at: '',
+            participants: 0,
+            status: 'draft',
+            question: ''
+          });
+          this.selectedSurveyStakeholderIds.set([]);
+          this.surveyQuestionsDraft.set([{ question_text: '', question_type: 'long_text', required: true, optionsText: '', help_text: '' }]);
+          this.loadSessions(projectId);
+          this.loadFlowStatus(projectId);
+          this.loadSurveys(projectId);
+          this.openSurvey(response.id);
+        },
+        error: (err) => {
+          this.saving.set(false);
+          const backendMessage = err?.error?.message;
+          const fieldErrors = err?.error?.errors ? JSON.stringify(err.error.errors) : '';
+          this.error.set(
+            backendMessage
+              ? `No se pudo crear la encuesta: ${backendMessage}${fieldErrors ? ` ${fieldErrors}` : ''}`
+              : 'No se pudo crear la encuesta.'
+          );
+        }
+      });
+  }
+
+  openSurvey(surveyId: number) {
+    this.selectedSurveyId.set(surveyId);
+    this.traceabilityService.getSurvey(surveyId).subscribe({
+      next: (response) => {
+        this.selectedSurveyQuestions.set(response.questions ?? []);
+        this.selectedSurveyRecipients.set(response.recipients ?? []);
+        this.loadSurveyResults(surveyId);
+      },
+      error: () => {
+        this.selectedSurveyQuestions.set([]);
+        this.selectedSurveyRecipients.set([]);
+      }
+    });
+  }
+
+  setSurveyStatus(surveyId: number, status: 'draft' | 'active' | 'closed') {
+    const projectId = this.projectId();
+    if (!projectId) {
+      return;
+    }
+    this.setSavingState();
+    this.traceabilityService.updateSurveyStatus(surveyId, status).subscribe({
+      next: () => {
+        this.saving.set(false);
+        this.success.set('Estado de encuesta actualizado.');
+        this.loadSurveys(projectId);
+        this.openSurvey(surveyId);
+      },
+      error: (err) => this.fail(err, 'No se pudo actualizar la encuesta.')
+    });
+  }
+
+  surveyShareLink(survey: SurveyForm) {
+    return `${window.location.origin}/questionnaires/respond/${survey.share_token}`;
+  }
+
+  copySurveyLink(survey: SurveyForm) {
+    navigator.clipboard?.writeText(this.surveyShareLink(survey));
+    this.success.set('Link de encuesta copiado.');
+  }
+
+  selectedSurvey() {
+    const id = this.selectedSurveyId();
+    return this.surveys().find((survey) => survey.id === id) ?? null;
   }
 
   saveStakeholder() {
@@ -974,6 +2677,33 @@ export class ProjectWorkspace {
       });
   }
 
+  saveSubprocess() {
+    const projectId = this.projectId();
+    if (!projectId || this.subprocessForm.invalid) {
+      this.subprocessForm.markAllAsTouched();
+      return;
+    }
+    const value = this.subprocessForm.getRawValue();
+    if (!value.process_id) {
+      this.subprocessForm.markAllAsTouched();
+      return;
+    }
+    this.setSavingState();
+    this.processesService
+      .createSubprocess(value.process_id, {
+        name: value.name ?? '',
+        description: value.description || null
+      })
+      .subscribe({
+        next: () => {
+          this.success.set('Subproceso agregado.');
+          this.subprocessForm.reset({ process_id: value.process_id, name: '', description: '' });
+          this.afterMutation(projectId);
+        },
+        error: (err) => this.fail(err, 'No se pudo agregar el subproceso.')
+      });
+  }
+
   saveProjectContext() {
     const projectId = this.projectId();
     if (!projectId || this.projectForm.invalid) {
@@ -1011,29 +2741,46 @@ export class ProjectWorkspace {
       form.markAllAsTouched();
       return;
     }
+    if (module === 'tracking' && this.normalizedTransactionSteps().length === 0) {
+      this.error.set('Agrega al menos un paso observado para el seguimiento transaccional.');
+      return;
+    }
 
     const stakeholderIds = await this.stakeholderIdsForCapture(projectId, module);
-    if (stakeholderIds.length === 0) {
+    if (stakeholderIds.length === 0 && module !== 'tracking') {
       form.markAllAsTouched();
       return;
     }
 
     const title = this.captureTitle(module);
     const notes = this.captureNotes(module);
+    const metadata = this.captureMetadata(module);
+    const processId = module === 'tracking' ? this.trackingForm.getRawValue().process_id ?? null : null;
+    const subprocessId = module === 'tracking' ? this.trackingForm.getRawValue().subprocess_id ?? null : null;
     this.setSavingState();
     this.traceabilityService
       .createSession(projectId, {
         title,
         technique: config.technique,
+        technique_code: module === 'tracking' ? 'transaction_tracking' : undefined,
+        discovery_type: module === 'tracking' ? 'direct' : undefined,
+        status: module === 'tracking' ? 'completed' : undefined,
         notes,
-        occurred_at: new Date().toISOString(),
-        stakeholder_ids: stakeholderIds
+        occurred_at: module === 'tracking' && metadata['startedAt'] ? String(metadata['startedAt']) : new Date().toISOString(),
+        stakeholder_ids: stakeholderIds,
+        process_id: processId,
+        subprocess_id: subprocessId,
+        metadata
       })
       .subscribe({
         next: (response) => {
           this.success.set(`${config.label} registrado.`);
           if (module === 'interviews') {
             this.persistInterviewEvidences(response.id, notes, projectId).finally(() => this.resetCapture(module));
+            return;
+          }
+          if (module === 'documents') {
+            this.persistDocumentEvidences(response.id, notes, projectId).finally(() => this.resetCapture(module));
             return;
           }
           this.resetCapture(module);
@@ -1106,45 +2853,15 @@ export class ProjectWorkspace {
   }
 
   generateAIFindings() {
-    const projectId = this.projectId();
-    const sessionIds = this.sessionsForFindings().map((session) => session.id);
-    if (!projectId || sessionIds.length === 0) {
-      this.error.set('Necesitas tecnicas con evidencia para generar hallazgos con IA.');
-      return;
-    }
+    this.error.set('La generacion automatica esta desactivada. Documenta los hallazgos manualmente desde Evidencias.');
+  }
 
-    this.setSavingState();
-    this.traceabilityService
-      .generateAIDraftFindings(projectId, { session_ids: sessionIds, max_drafts: 8, prompt_version: 'workspace-v1' })
-      .subscribe({
-        next: (response) => {
-          this.success.set(`IA genero ${response.generated_count} borrador(es) de hallazgo.`);
-          this.saving.set(false);
-          this.loadAIDrafts(projectId);
-        },
-        error: (err) => this.fail(err, 'No se pudieron generar hallazgos con IA.')
-      });
+  generateAIDocumentFindings() {
+    this.error.set('La generacion automatica esta desactivada. Registra hallazgos manuales desde el analisis documental.');
   }
 
   generateAIRequirements() {
-    const projectId = this.projectId();
-    const findingIds = this.findings().map((finding) => finding.id);
-    if (!projectId || findingIds.length === 0) {
-      this.error.set('Necesitas hallazgos para generar requisitos con IA.');
-      return;
-    }
-
-    this.setSavingState();
-    this.traceabilityService
-      .generateAIDraftRequirements(projectId, { finding_ids: findingIds, max_drafts: 8, prompt_version: 'workspace-v1' })
-      .subscribe({
-        next: (response) => {
-          this.success.set(`IA genero ${response.generated_count} borrador(es) de requisito.`);
-          this.saving.set(false);
-          this.loadAIDrafts(projectId);
-        },
-        error: (err) => this.fail(err, 'No se pudieron generar requisitos con IA.')
-      });
+    this.error.set('La generacion automatica esta desactivada. Crea requisitos manuales desde hallazgos seleccionados.');
   }
 
   acceptAIDraftFinding(draft: AIDraftFinding) {
@@ -1164,7 +2881,7 @@ export class ProjectWorkspace {
           this.success.set('Borrador aceptado y guardado como hallazgo real.');
           this.afterMutation(projectId);
         },
-        error: (err) => this.fail(err, 'No se pudo aceptar el hallazgo IA.')
+        error: (err) => this.fail(err, 'No se pudo aceptar el hallazgo.')
       });
   }
 
@@ -1179,7 +2896,7 @@ export class ProjectWorkspace {
         this.success.set('Borrador de hallazgo rechazado.');
         this.afterMutation(projectId);
       },
-      error: (err) => this.fail(err, 'No se pudo rechazar el hallazgo IA.')
+      error: (err) => this.fail(err, 'No se pudo rechazar el hallazgo.')
     });
   }
 
@@ -1203,7 +2920,7 @@ export class ProjectWorkspace {
           this.success.set('Borrador aceptado y guardado como requisito real.');
           this.afterMutation(projectId);
         },
-        error: (err) => this.fail(err, 'No se pudo aceptar el requisito IA.')
+        error: (err) => this.fail(err, 'No se pudo aceptar el requisito.')
       });
   }
 
@@ -1218,10 +2935,11 @@ export class ProjectWorkspace {
         this.success.set('Borrador de requisito rechazado.');
         this.afterMutation(projectId);
       },
-      error: (err) => this.fail(err, 'No se pudo rechazar el requisito IA.')
+      error: (err) => this.fail(err, 'No se pudo rechazar el requisito.')
     });
   }
 
+  // Refresh pulls each slice independently because the workspace can still be useful if one panel fails.
   private refresh(projectId: number) {
     this.loading.set(true);
     this.error.set(null);
@@ -1233,12 +2951,15 @@ export class ProjectWorkspace {
     this.loadSessions(projectId);
     this.loadFindings(projectId);
     this.loadRequirements(projectId);
+    this.loadUseCases(projectId);
     this.loadTraceability(projectId);
     this.loadFlowStatus(projectId);
     this.loadAIDrafts(projectId);
+    this.loadSurveys(projectId);
     this.loading.set(false);
   }
 
+  // After a save I reload the chain, not just the edited row, because counts and traceability depend on each other.
   private afterMutation(projectId: number) {
     this.saving.set(false);
     this.loadStakeholders(projectId);
@@ -1246,9 +2967,11 @@ export class ProjectWorkspace {
     this.loadSessions(projectId);
     this.loadFindings(projectId);
     this.loadRequirements(projectId);
+    this.loadUseCases(projectId);
     this.loadTraceability(projectId);
     this.loadFlowStatus(projectId);
     this.loadAIDrafts(projectId);
+    this.loadSurveys(projectId);
   }
 
   private loadProject(projectId: number) {
@@ -1290,8 +3013,22 @@ export class ProjectWorkspace {
 
   private loadProcesses(projectId: number) {
     this.processesService.getProcesses(projectId).subscribe({
-      next: (response) => this.processes.set(response.processes ?? []),
-      error: () => this.processes.set([])
+      next: async (response) => {
+        const processes = response.processes ?? [];
+        this.processes.set(processes);
+        const subprocessGroups = await Promise.all(
+          processes.map((process) =>
+            firstValueFrom(this.processesService.getSubprocesses(process.id))
+              .then((result) => result.subprocesses ?? [])
+              .catch(() => [])
+          )
+        );
+        this.subprocesses.set(subprocessGroups.flat());
+      },
+      error: () => {
+        this.processes.set([]);
+        this.subprocesses.set([]);
+      }
     });
   }
 
@@ -1343,6 +3080,13 @@ export class ProjectWorkspace {
     });
   }
 
+  private loadUseCases(projectId: number) {
+    this.traceabilityService.getUseCases(projectId).subscribe({
+      next: (response) => this.useCases.set(response.use_cases ?? []),
+      error: () => this.useCases.set([])
+    });
+  }
+
   private loadTraceability(projectId: number) {
     this.traceabilityService.getTraceability(projectId).subscribe({
       next: (response) => this.traceability.set(response.traceability ?? []),
@@ -1368,6 +3112,32 @@ export class ProjectWorkspace {
     });
   }
 
+  private loadSurveys(projectId: number) {
+    this.traceabilityService.getSurveys(projectId).subscribe({
+      next: (response) => {
+        this.surveys.set(response.surveys ?? []);
+        const selected = this.selectedSurveyId();
+        if (selected && response.surveys?.some((survey) => survey.id === selected)) {
+          this.openSurvey(selected);
+        }
+      },
+      error: () => this.surveys.set([])
+    });
+  }
+
+  private loadSurveyResults(surveyId: number) {
+    this.traceabilityService.getSurveyResults(surveyId).subscribe({
+      next: (response) => {
+        this.surveyResponses.set(response.responses ?? []);
+        this.surveyMetrics.set(response.metrics ?? []);
+      },
+      error: () => {
+        this.surveyResponses.set([]);
+        this.surveyMetrics.set([]);
+      }
+    });
+  }
+
   private formForCapture(module: CaptureModuleKey): any {
     const forms = {
       interviews: this.interviewForm,
@@ -1380,6 +3150,7 @@ export class ProjectWorkspace {
     return forms[module];
   }
 
+  // Capture modules share the same session/evidence pipeline, so I normalize each form into notes.
   private captureTitle(module: CaptureModuleKey) {
     const form = this.formForCapture(module);
     return String(form.get('title')?.value ?? '').trim();
@@ -1392,10 +3163,16 @@ export class ProjectWorkspace {
         const interviewer = this.techUsers().find((user) => user.id === value.interviewer_user_id);
         const interviewee = this.resolveIntervieweeLabel();
         return [
+          value.objective ? `Objetivo: ${value.objective}` : '',
+          value.scheduled_at ? `Fecha/hora: ${value.scheduled_at}` : '',
+          value.duration ? `Duracion: ${value.duration}` : '',
           `Entrevistador tecnico: ${interviewer?.name ?? 'No seleccionado'} (${interviewer?.email ?? 'sin correo'})`,
           `Entrevistado: ${interviewee}`,
           `Preguntas y respuestas:\n${value.questions}`,
           value.transcript ? `Transcripcion:\n${value.transcript}` : '',
+          value.agreements ? `Acuerdos:\n${value.agreements}` : '',
+          value.pains ? `Dolores detectados:\n${value.pains}` : '',
+          value.needs ? `Necesidades:\n${value.needs}` : '',
           value.notes ? `Notas: ${value.notes}` : ''
         ].filter(Boolean).join('\n');
       }
@@ -1410,7 +3187,18 @@ export class ProjectWorkspace {
       }
       case 'observations': {
         const value = this.observationForm.getRawValue();
-        return [`Nota: ${value.note}`, value.keyPoint ? `Punto clave: ${value.keyPoint}` : ''].filter(Boolean).join('\n');
+        return [
+          value.processName ? `Proceso observado: ${value.processName}` : '',
+          value.place ? `Lugar/canal: ${value.place}` : '',
+          value.observedActor ? `Actor observado: ${value.observedActor}` : '',
+          value.observedAt ? `Fecha/hora: ${value.observedAt}` : '',
+          value.context ? `Condiciones/contexto: ${value.context}` : '',
+          value.behavior ? `Comportamiento observado: ${value.behavior}` : '',
+          value.problem ? `Problema detectado: ${value.problem}` : '',
+          value.impact ? `Impacto: ${value.impact}` : '',
+          `Nota: ${value.note}`,
+          value.keyPoint ? `Punto clave: ${value.keyPoint}` : ''
+        ].filter(Boolean).join('\n');
       }
       case 'focus': {
         const value = this.focusForm.getRawValue();
@@ -1418,6 +3206,11 @@ export class ProjectWorkspace {
           `Moderador: ${value.moderator}`,
           value.mediaType ? `Tipo de media: ${value.mediaType}` : '',
           `Objetivo: ${value.objective}`,
+          value.participants ? `Participantes:\n${value.participants}` : '',
+          value.guideQuestions ? `Preguntas guia:\n${value.guideQuestions}` : '',
+          value.agreements ? `Acuerdos:\n${value.agreements}` : '',
+          value.disagreements ? `Desacuerdos:\n${value.disagreements}` : '',
+          value.detectedNeeds ? `Necesidades detectadas:\n${value.detectedNeeds}` : '',
           value.conclusions ? `Conclusiones: ${value.conclusions}` : ''
         ].filter(Boolean).join('\n');
       }
@@ -1427,20 +3220,133 @@ export class ProjectWorkspace {
           `Tipo: ${value.documentType}`,
           `Fuente: ${value.source}`,
           `Documento analizado: ${value.documentName}`,
+          value.version ? `Version: ${value.version}` : '',
+          value.documentDate ? `Fecha del documento: ${value.documentDate}` : '',
+          value.author ? `Autor/fuente responsable: ${value.author}` : '',
+          value.summary ? `Resumen:\n${value.summary}` : '',
+          value.businessRules ? `Reglas de negocio encontradas:\n${value.businessRules}` : '',
+          value.explicitRequirements ? `Requisitos explicitos:\n${value.explicitRequirements}` : '',
+          value.risks ? `Inconsistencias o riesgos:\n${value.risks}` : '',
+          value.documentContent ? `Contenido o extracto relevante:\n${value.documentContent}` : '',
           value.findings ? `Hallazgos: ${value.findings}` : ''
         ].filter(Boolean).join('\n');
       }
       case 'tracking': {
         const value = this.trackingForm.getRawValue();
+        const process = this.processes().find((item) => item.id === value.process_id);
+        const subprocess = this.subprocesses().find((item) => item.id === value.subprocess_id);
+        const steps = this.normalizedTransactionSteps();
         return [
           `ID transaccion: ${value.transactionId}`,
-          `Proceso: ${value.processName}`,
-          `Paso: ${value.stepName}`,
-          value.duration ? `Duracion: ${value.duration}` : '',
+          value.transactionType ? `Tipo de transaccion: ${value.transactionType}` : '',
+          `Proceso: ${process?.name ?? 'No seleccionado'}`,
+          subprocess ? `Subproceso: ${subprocess.name}` : '',
+          value.objective ? `Objetivo del seguimiento: ${value.objective}` : '',
+          value.realFlowSummary ? `Resumen del flujo real:\n${value.realFlowSummary}` : '',
+          steps.length
+            ? `Pasos observados:\n${steps.map((step) => `${step.order}. ${step.name} | actor: ${this.trackingActorLabel(step.actorStakeholderId, step.actorRole)} | sistema/canal: ${[step.system, step.channel].filter(Boolean).join(' / ') || 'No especificado'} | accion: ${step.action || 'No especificada'}${step.issue ? ` | problema: ${step.issue}` : ''}`).join('\n')}`
+            : 'Pasos observados: pendiente',
+          this.transactionProblems().length
+            ? `Problemas detectados:\n${this.transactionProblems().map((problem) => `- Paso ${problem.stepOrder}: ${problem.description}`).join('\n')}`
+            : '',
+          value.totalTime ? `Tiempo total: ${value.totalTime}` : '',
+          value.targetTime ? `Tiempo objetivo: ${value.targetTime}` : '',
+          value.deviation ? `Desviacion: ${value.deviation}` : '',
           value.metrics ? `Metricas: ${value.metrics}` : ''
         ].filter(Boolean).join('\n');
       }
     }
+  }
+
+  private captureMetadata(module: CaptureModuleKey): Record<string, unknown> {
+    if (module !== 'tracking') {
+      return {};
+    }
+    const value = this.trackingForm.getRawValue();
+    const steps = this.normalizedTransactionSteps();
+    return {
+      transactionId: value.transactionId,
+      transactionType: value.transactionType || null,
+      startedAt: value.startedAt || null,
+      completedAt: value.completedAt || null,
+      finalStatus: value.finalStatus || value.status || null,
+      primaryActorId: value.primaryActorId ?? null,
+      systemsInvolved: this.splitList(value.systemsInvolved),
+      objective: value.objective || null,
+      realFlowSummary: value.realFlowSummary || null,
+      steps,
+      problems: this.transactionProblems(),
+      metrics: {
+        totalTime: value.totalTime || null,
+        targetTime: value.targetTime || null,
+        deviation: value.deviation || null,
+        reworkCount: Number(value.reworkCount ?? 0),
+        manualStepCount: Number(value.manualStepCount ?? 0),
+        informalApprovalCount: Number(value.informalApprovalCount ?? 0),
+        notes: value.metrics || null
+      }
+    };
+  }
+
+  private normalizedTransactionSteps() {
+    return this.transactionSteps()
+      .map((step, index) => ({
+        order: index + 1,
+        name: step.name.trim(),
+        actorStakeholderId: step.actorStakeholderId,
+        actorRole: step.actorRole.trim(),
+        system: step.system.trim(),
+        channel: step.channel.trim(),
+        input: step.input.trim(),
+        action: step.action.trim(),
+        output: step.output.trim(),
+        duration: step.duration.trim(),
+        waitTime: step.waitTime.trim(),
+        issue: step.issue.trim(),
+        evidenceRef: step.evidenceRef.trim(),
+        notes: step.notes.trim()
+      }))
+      .filter((step) => step.name || step.action || step.issue || step.actorStakeholderId || step.actorRole);
+  }
+
+  private transactionProblems() {
+    return this.normalizedTransactionSteps()
+      .filter((step) => step.issue)
+      .map((step) => ({
+        stepOrder: step.order,
+        description: step.issue,
+        severity: 'medium',
+        impact: step.notes || null,
+        evidenceRef: step.evidenceRef || null
+      }));
+  }
+
+  private isTrackingSession(session: Session) {
+    return session.technique_code === 'transaction_tracking'
+      || /seguimiento|transaccional|transaction/i.test(`${session.technique} ${session.title}`);
+  }
+
+  private metadataText(session: Session, key: string) {
+    const value = session.metadata?.[key];
+    return value === null || value === undefined ? '' : String(value);
+  }
+
+  private metadataNumber(session: Session, key: string) {
+    const value = session.metadata?.[key];
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  private trackingActorLabel(stakeholderId: number | null | undefined, role: string) {
+    const stakeholder = stakeholderId ? this.stakeholders().find((item) => item.id === stakeholderId) : null;
+    return stakeholder ? `${stakeholder.name} (${stakeholder.role})` : role || 'No especificado';
+  }
+
+  private splitList(value: string | null | undefined) {
+    return String(value ?? '')
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
 
   private resetCapture(module: CaptureModuleKey) {
@@ -1450,15 +3356,62 @@ export class ProjectWorkspace {
       interviewed_stakeholder_id: null,
       questions: '',
       transcript: '',
+      agreements: '',
+      pains: '',
+      needs: '',
       notes: ''
     });
     this.selectedInterviewFiles.set([]);
+    this.selectedDocumentFiles.set([]);
     this.surveyForm.patchValue({ participants: 0, status: 'draft' });
+    if (module === 'tracking') {
+      this.trackingForm.reset({
+        title: '',
+        process_id: null,
+        subprocess_id: null,
+        transactionId: '',
+        transactionType: '',
+        startedAt: '',
+        completedAt: '',
+        finalStatus: '',
+        primaryActorId: null,
+        systemsInvolved: '',
+        objective: '',
+        realFlowSummary: '',
+        totalTime: '',
+        targetTime: '',
+        deviation: '',
+        reworkCount: 0,
+        manualStepCount: 0,
+        informalApprovalCount: 0,
+        status: '',
+        metrics: ''
+      });
+      this.transactionSteps.set([{
+        name: '',
+        actorStakeholderId: null,
+        actorRole: '',
+        system: '',
+        channel: '',
+        input: '',
+        action: '',
+        output: '',
+        duration: '',
+        waitTime: '',
+        issue: '',
+        evidenceRef: '',
+        notes: ''
+      }]);
+    }
   }
 
   private async stakeholderIdsForCapture(projectId: number, module: CaptureModuleKey): Promise<number[]> {
     if (module === 'interviews') {
       return this.resolveInterviewStakeholderIds(projectId);
+    }
+    if (module === 'tracking') {
+      const actorId = this.trackingForm.getRawValue().primaryActorId;
+      return actorId ? [actorId] : [];
     }
 
     const defaultStakeholder = this.stakeholders()[0];
@@ -1488,6 +3441,7 @@ export class ProjectWorkspace {
     return stakeholder ? `${stakeholder.name} (${stakeholder.role})` : 'Stakeholder no seleccionado';
   }
 
+  // File and transcript evidence are saved after the session so traceability has a parent to attach to.
   private async persistInterviewEvidences(sessionId: number, notes: string, projectId: number) {
     const transcript = this.interviewForm.getRawValue().transcript?.trim() ?? '';
     const files = this.selectedInterviewFiles();
@@ -1509,6 +3463,28 @@ export class ProjectWorkspace {
       this.afterMutation(projectId);
     } catch {
       this.error.set('La entrevista se guardo, pero alguna evidencia no pudo subirse.');
+      this.afterMutation(projectId);
+    }
+  }
+
+  // Document analysis can start as pasted text, uploaded files, or both.
+  private async persistDocumentEvidences(sessionId: number, notes: string, projectId: number) {
+    const files = this.selectedDocumentFiles();
+    const tasks = [];
+    if (notes.trim().length >= 20) {
+      tasks.push(firstValueFrom(this.traceabilityService.createSessionEvidence(sessionId, { kind: 'note', notes })));
+    }
+    if (files.length > 0) {
+      tasks.push(firstValueFrom(this.traceabilityService.uploadSessionEvidenceFiles(sessionId, files, 'Documento analizado manualmente')));
+    }
+
+    try {
+      if (tasks.length > 0) {
+        await Promise.all(tasks);
+      }
+      this.afterMutation(projectId);
+    } catch {
+      this.error.set('El analisis se guardo, pero algun documento no pudo subirse.');
       this.afterMutation(projectId);
     }
   }
@@ -1546,12 +3522,9 @@ export class ProjectWorkspace {
     return value.replace(/"/g, "'");
   }
 
-  private removeAccents(value: string) {
-    return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  }
-
+  // These helpers are lightweight guesses, not a replacement for real modeling done by the analyst.
   private toPascalCase(value: string) {
-    const cleaned = this.removeAccents(value)
+    const cleaned = removeAccents(value)
       .replace(/[^a-zA-Z0-9\s]/g, ' ')
       .trim();
     const words = cleaned.split(/\s+/).filter(Boolean);
@@ -1601,7 +3574,7 @@ export class ProjectWorkspace {
   }
 
   private inferDomainEntities(useCases: DerivedUseCase[]): DomainEntity[] {
-    const text = this.removeAccents(this.domainText(useCases)).toLowerCase();
+    const text = removeAccents(this.domainText(useCases)).toLowerCase();
     const catalog: Array<{ terms: string[]; entity: DomainEntity }> = [
       { terms: ['paciente', 'pacientes'], entity: { name: 'Paciente', attributes: ['id', 'nombre', 'telefono', 'correo'], operations: ['registrar()', 'actualizarDatos()'] } },
       { terms: ['cita', 'citas', 'agenda', 'agendar'], entity: { name: 'Cita', attributes: ['id', 'fecha', 'hora', 'estado'], operations: ['agendar()', 'cancelar()', 'reprogramar()'] } },
@@ -1627,7 +3600,7 @@ export class ProjectWorkspace {
     const fallbackNames = Array.from(
       new Set(
         useCases
-          .flatMap((useCase) => useCase.requirement.description.match(/\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{3,}\b/g) ?? [])
+          .flatMap((useCase) => useCase.requirement.description.match(/\b[A-ZÃÃ‰ÃÃ“ÃšÃ‘][a-zÃ¡Ã©Ã­Ã³ÃºÃ±]{3,}\b/g) ?? [])
           .map((value) => this.toPascalCase(value))
           .filter((value) => !['Sistema', 'Usuario', 'Requisito'].includes(value))
       )
@@ -1722,6 +3695,7 @@ export class ProjectWorkspace {
       type: 'use_case',
       title: 'Diagrama editable de casos de uso',
       sourceRequirementIds: useCases.map((useCase) => useCase.requirement.id),
+      sourceUseCaseIds: useCases.map((useCase) => useCase.persistedId).filter((id): id is number => typeof id === 'number'),
       sourceSpecIds: useCases.map((useCase) => `spec-${useCase.requirement.id}`),
       nodes,
       edges,
@@ -1782,10 +3756,10 @@ export class ProjectWorkspace {
       { id: 'pkg-security', type: 'package', label: 'Seguridad\nRoles\nPermisos', x: 600, y: 310, width: 190, height: 110 }
     ];
     const edges: DiagramEdge[] = [
-      { id: 'pkg-edge-1', sourceNodeId: 'pkg-foundation', targetNodeId: 'pkg-discovery', type: 'dependency' },
-      { id: 'pkg-edge-2', sourceNodeId: 'pkg-discovery', targetNodeId: 'pkg-analysis', type: 'dependency' },
-      { id: 'pkg-edge-3', sourceNodeId: 'pkg-analysis', targetNodeId: 'pkg-spec', type: 'dependency' },
-      { id: 'pkg-edge-4', sourceNodeId: 'pkg-spec', targetNodeId: 'pkg-delivery', type: 'dependency' }
+      { id: 'pkg-edge-1', sourceNodeId: 'pkg-ui', targetNodeId: 'pkg-app', type: 'dependency', label: 'usa' },
+      { id: 'pkg-edge-2', sourceNodeId: 'pkg-app', targetNodeId: 'pkg-domain', type: 'dependency', label: 'coordina' },
+      { id: 'pkg-edge-3', sourceNodeId: 'pkg-app', targetNodeId: 'pkg-infra', type: 'dependency', label: 'persiste' },
+      { id: 'pkg-edge-4', sourceNodeId: 'pkg-app', targetNodeId: 'pkg-security', type: 'dependency', label: 'autoriza' }
     ];
     return this.diagramModel(projectId, 'package', 'Diagrama de paquetes', nodes, edges, useCases);
   }
@@ -1823,6 +3797,7 @@ export class ProjectWorkspace {
       type,
       title,
       sourceRequirementIds: useCases.map((useCase) => useCase.requirement.id),
+      sourceUseCaseIds: useCases.map((useCase) => useCase.persistedId).filter((id): id is number => typeof id === 'number'),
       sourceSpecIds: useCases.map((useCase) => `spec-${useCase.requirement.id}`),
       nodes,
       edges,
@@ -1841,6 +3816,7 @@ export class ProjectWorkspace {
       type: 'free',
       title: 'Diagrama libre',
       sourceRequirementIds: [],
+      sourceUseCaseIds: [],
       sourceSpecIds: [],
       nodes: [],
       edges: [],
@@ -1848,6 +3824,283 @@ export class ProjectWorkspace {
     };
     this.diagram.set(empty);
     return empty;
+  }
+
+  private loadSavedDiagrams(projectId: number) {
+    try {
+      const raw = localStorage.getItem(this.diagramStorageKey(projectId));
+      const parsed = raw ? JSON.parse(raw) : [];
+      const entries = Array.isArray(parsed)
+        ? parsed
+            .map((item) => this.normalizeSavedDiagramEntry(item))
+            .filter((item): item is SavedDiagramEntry => Boolean(item))
+        : [];
+      this.savedDiagrams.set(entries);
+    } catch {
+      this.savedDiagrams.set([]);
+    }
+  }
+
+  private persistSavedDiagrams(projectId: number, diagrams: SavedDiagramEntry[]) {
+    this.savedDiagrams.set(diagrams);
+    localStorage.setItem(this.diagramStorageKey(projectId), JSON.stringify(diagrams));
+  }
+
+  private diagramStorageKey(projectId: number) {
+    return `graficacion:project:${projectId}:diagrams`;
+  }
+
+  private loadManagedProjectFiles(projectId: number) {
+    try {
+      const raw = localStorage.getItem(this.projectFilesStorageKey(projectId));
+      const parsed = raw ? JSON.parse(raw) : {};
+      const files = Array.isArray(parsed.files)
+        ? parsed.files
+            .map((file: unknown) => this.normalizeProjectFile(file))
+            .filter((file: ProjectArtifactFile | null): file is ProjectArtifactFile => Boolean(file))
+        : [];
+      const deleted = Array.isArray(parsed.deletedGeneratedIds) ? parsed.deletedGeneratedIds.map(String) : [];
+      this.managedProjectFiles.set(files);
+      this.deletedGeneratedProjectFileIds.set(deleted);
+      this.selectedProjectFileId.set(null);
+      this.projectFileDraft.set(null);
+    } catch {
+      this.managedProjectFiles.set([]);
+      this.deletedGeneratedProjectFileIds.set([]);
+    }
+  }
+
+  private persistManagedProjectFiles(projectId: number, files: ProjectArtifactFile[], deletedGeneratedIds: string[]) {
+    this.managedProjectFiles.set(files);
+    this.deletedGeneratedProjectFileIds.set(deletedGeneratedIds);
+    localStorage.setItem(this.projectFilesStorageKey(projectId), JSON.stringify({ files, deletedGeneratedIds }));
+  }
+
+  private upsertManagedProjectFile(projectId: number, file: ProjectArtifactFile) {
+    const files = this.managedProjectFiles();
+    const next = files.some((item) => item.id === file.id)
+      ? files.map((item) => (item.id === file.id ? file : item))
+      : [...files, file];
+    const deleted = this.deletedGeneratedProjectFileIds().filter((id) => id !== file.id);
+    this.persistManagedProjectFiles(projectId, next, deleted);
+  }
+
+  private projectFilesStorageKey(projectId: number) {
+    return `graficacion:project:${projectId}:files`;
+  }
+
+  private projectFilePath(file: ProjectArtifactFile) {
+    return file.folder ? `${file.folder}/${file.name}` : file.name;
+  }
+
+  private cleanProjectFolderPart(value: string) {
+    return value.trim().length > 0 ? cleanProjectFilePart(value) : '';
+  }
+
+  private isImageProjectFileName(fileName: string) {
+    return /\.(png|jpe?g|webp|svg)$/i.test(fileName);
+  }
+
+  private isDesignIdeaFileName(fileName: string) {
+    return /\.(md|txt|png|jpe?g|webp|svg)$/i.test(fileName);
+  }
+
+  private isDesignInputFile(file: ProjectArtifactFile) {
+    return file.folder.startsWith('07_DESIGN_IDEAS') || file.kind.toLowerCase().includes('diseno') || this.isImageProjectFileName(file.name);
+  }
+
+  private readFileAsDataUrl(file: File) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  private normalizeProjectFile(value: unknown): ProjectArtifactFile | null {
+    if (!value || typeof value !== 'object') {
+      return null;
+    }
+    const file = value as Partial<ProjectArtifactFile>;
+    if (!file.id || !file.name) {
+      return null;
+    }
+    const sources: ProjectArtifactFile['source'][] = ['generated', 'edited', 'custom', 'imported'];
+    const encoding: ProjectArtifactFile['encoding'] = file.encoding === 'data_url' ? 'data_url' : 'text';
+    return {
+      id: String(file.id),
+      folder: typeof file.folder === 'string' && file.folder.trim() === '' ? '' : cleanProjectFilePart(file.folder || '04-importados'),
+      name: cleanProjectFilePart(file.name),
+      kind: String(file.kind || 'Archivo'),
+      content: String(file.content ?? ''),
+      encoding,
+      mime_type: file.mime_type ? String(file.mime_type) : undefined,
+      size_bytes: Number.isFinite(Number(file.size_bytes)) ? Number(file.size_bytes) : undefined,
+      source: sources.includes(file.source as ProjectArtifactFile['source']) ? (file.source as ProjectArtifactFile['source']) : 'imported',
+      updatedAt: file.updatedAt ? String(file.updatedAt) : undefined
+    };
+  }
+
+  private normalizeSavedDiagramEntry(value: unknown): SavedDiagramEntry | null {
+    if (!value || typeof value !== 'object') {
+      return null;
+    }
+    const entry = value as Partial<SavedDiagramEntry>;
+    try {
+      const diagram = this.normalizeImportedDiagram(entry.diagram);
+      return {
+        id: String(entry.id || diagram.id),
+        title: String(entry.title || diagram.title || 'Diagrama'),
+        type: diagram.type,
+        updatedAt: String(entry.updatedAt || new Date().toISOString()),
+        diagram
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private normalizeImportedDiagram(value: unknown): DiagramModel {
+    if (!value || typeof value !== 'object') {
+      throw new Error('Invalid diagram');
+    }
+    const diagram = value as Partial<DiagramModel>;
+    if (!Array.isArray(diagram.nodes) || !Array.isArray(diagram.edges)) {
+      throw new Error('Invalid diagram');
+    }
+    const allowedTypes: DiagramKind[] = ['use_case', 'class', 'sequence', 'package', 'component', 'free'];
+    const type = allowedTypes.includes(diagram.type as DiagramKind) ? (diagram.type as DiagramKind) : 'free';
+    return {
+      id: String(diagram.id || `diagram-${Date.now()}`),
+      projectId: this.projectId(),
+      type,
+      title: String(diagram.title || `Diagrama ${type}`),
+      sourceRequirementIds: Array.isArray(diagram.sourceRequirementIds) ? diagram.sourceRequirementIds.map(Number).filter(Number.isFinite) : [],
+      sourceUseCaseIds: Array.isArray(diagram.sourceUseCaseIds) ? diagram.sourceUseCaseIds.map(Number).filter(Number.isFinite) : [],
+      sourceSpecIds: Array.isArray(diagram.sourceSpecIds) ? diagram.sourceSpecIds.map(String) : [],
+      nodes: diagram.nodes.map((node, index) => this.normalizeDiagramNode(node, index)),
+      edges: diagram.edges.map((edge, index) => this.normalizeDiagramEdge(edge, index)).filter((edge): edge is DiagramEdge => Boolean(edge)),
+      derived: Boolean(diagram.derived)
+    };
+  }
+
+  private normalizeDiagramNode(value: unknown, index: number): DiagramNode {
+    const node = value as Partial<DiagramNode>;
+    const allowedTypes: DiagramNodeType[] = ['actor', 'use_case', 'class', 'package', 'component', 'requirement', 'spec', 'note', 'lifeline', 'boundary'];
+    const type = allowedTypes.includes(node.type as DiagramNodeType) ? (node.type as DiagramNodeType) : 'note';
+    return {
+      id: String(node.id || `node-${Date.now()}-${index}`),
+      type,
+      label: String(node.label || this.defaultDiagramNodeLabel(type, index + 1)),
+      x: Number.isFinite(Number(node.x)) ? Number(node.x) : 80 + index * 24,
+      y: Number.isFinite(Number(node.y)) ? Number(node.y) : 80 + index * 24,
+      width: Number.isFinite(Number(node.width)) ? Number(node.width) : 150,
+      height: Number.isFinite(Number(node.height)) ? Number(node.height) : 68,
+      requirementId: Number.isFinite(Number(node.requirementId)) ? Number(node.requirementId) : undefined,
+      specId: node.specId ? String(node.specId) : undefined
+    };
+  }
+
+  private normalizeDiagramEdge(value: unknown, index: number): DiagramEdge | null {
+    const edge = value as Partial<DiagramEdge>;
+    if (!edge.sourceNodeId || !edge.targetNodeId) {
+      return null;
+    }
+    const allowedTypes: DiagramEdgeType[] = ['association', 'include', 'extend', 'dependency', 'inheritance'];
+    return {
+      id: String(edge.id || `edge-${Date.now()}-${index}`),
+      sourceNodeId: String(edge.sourceNodeId),
+      targetNodeId: String(edge.targetNodeId),
+      type: allowedTypes.includes(edge.type as DiagramEdgeType) ? (edge.type as DiagramEdgeType) : 'association',
+      label: edge.label ? String(edge.label) : ''
+    };
+  }
+
+  private resizedDiagramNode(
+    node: DiagramNode,
+    resize: {
+      handle: DiagramResizeHandle;
+      startX: number;
+      startY: number;
+      startWidth: number;
+      startHeight: number;
+      startNodeX: number;
+      startNodeY: number;
+    },
+    pointerX: number,
+    pointerY: number
+  ): DiagramNode {
+    const minimum = this.diagramNodeMinimumSize(node.type);
+    const deltaX = pointerX - resize.startX;
+    const deltaY = pointerY - resize.startY;
+    let x = resize.startNodeX;
+    let y = resize.startNodeY;
+    let width = resize.startWidth;
+    let height = resize.startHeight;
+
+    if (resize.handle.includes('e')) {
+      width = resize.startWidth + deltaX;
+    }
+    if (resize.handle.includes('s')) {
+      height = resize.startHeight + deltaY;
+    }
+    if (resize.handle.includes('w')) {
+      width = resize.startWidth - deltaX;
+      x = resize.startNodeX + deltaX;
+    }
+    if (resize.handle.includes('n')) {
+      height = resize.startHeight - deltaY;
+      y = resize.startNodeY + deltaY;
+    }
+
+    if (width < minimum.width) {
+      if (resize.handle.includes('w')) {
+        x = resize.startNodeX + resize.startWidth - minimum.width;
+      }
+      width = minimum.width;
+    }
+    if (height < minimum.height) {
+      if (resize.handle.includes('n')) {
+        y = resize.startNodeY + resize.startHeight - minimum.height;
+      }
+      height = minimum.height;
+    }
+
+    return {
+      ...node,
+      x: Math.max(8, Math.round(x)),
+      y: Math.max(8, Math.round(y)),
+      width: Math.round(width),
+      height: Math.round(height)
+    };
+  }
+
+  private diagramNodeMinimumSize(type: DiagramNodeType) {
+    if (type === 'lifeline') {
+      return { width: 96, height: 180 };
+    }
+    if (type === 'class') {
+      return { width: 150, height: 110 };
+    }
+    if (type === 'use_case') {
+      return { width: 130, height: 58 };
+    }
+    return { width: 96, height: 56 };
+  }
+
+  private downloadText(fileName: string, content: string, mimeType: string) {
+    const blob = new Blob([content], { type: mimeType });
+    this.downloadBlob(fileName, blob);
+  }
+
+  private downloadBlob(fileName: string, blob: Blob) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   private defaultDiagramNodeLabel(type: DiagramNodeType, count: number) {
@@ -1898,9 +4151,12 @@ export class ProjectWorkspace {
       ? event.currentTarget
       : (event.currentTarget as Element).closest('svg');
     const rect = svg?.getBoundingClientRect();
+    const viewBox = svg?.viewBox.baseVal;
+    const scaleX = rect && viewBox?.width ? viewBox.width / rect.width : 1;
+    const scaleY = rect && viewBox?.height ? viewBox.height / rect.height : 1;
     return {
-      x: event.clientX - (rect?.left ?? 0),
-      y: event.clientY - (rect?.top ?? 0)
+      x: (event.clientX - (rect?.left ?? 0)) * scaleX + (viewBox?.x ?? 0),
+      y: (event.clientY - (rect?.top ?? 0)) * scaleY + (viewBox?.y ?? 0)
     };
   }
 

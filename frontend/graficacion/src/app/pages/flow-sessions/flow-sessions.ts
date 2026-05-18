@@ -2,12 +2,14 @@ import { CommonModule } from '@angular/common';
 import { Component, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { EntityPickerComponent } from '../../components/entity-picker/entity-picker';
 import {
   TraceabilityService,
   type Evidence,
   type FlowStatus,
   type Session,
-  type Stakeholder
+  type TechniqueDefinition,
+  type TechniqueRelation
 } from '../../services/traceability.service';
 
 type EvidenceDraft = {
@@ -24,12 +26,12 @@ type AlertMessage = {
 
 @Component({
   selector: 'app-flow-sessions',
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink, EntityPickerComponent],
   templateUrl: './flow-sessions.html'
 })
 export class FlowSessionsPage {
   readonly projectId = signal<number | null>(null);
-  readonly stakeholders = signal<Stakeholder[]>([]);
+  readonly techniqueDefinitions = signal<TechniqueDefinition[]>([]);
   readonly sessions = signal<Session[]>([]);
   readonly flowStatus = signal<FlowStatus | null>(null);
   readonly evidencesBySession = signal<Record<number, Evidence[]>>({});
@@ -76,10 +78,17 @@ export class FlowSessionsPage {
   ) {
     this.sessionForm = this.fb.group({
       title: ['', [Validators.required, Validators.minLength(3)]],
-      technique: ['', [Validators.required, Validators.minLength(3)]],
+      technique_code: ['', [Validators.required]],
       notes: ['', [Validators.maxLength(4000)]],
       occurred_at: [''],
-      stakeholder_ids: this.fb.control<number[]>([], [Validators.required])
+      stakeholder_ids: this.fb.control<number[]>([]),
+      process_id: this.fb.control<number | null>(null),
+      subprocess_id: this.fb.control<number | null>(null),
+      interviewer_user_id: this.fb.control<number | null>(null),
+      moderator_user_id: this.fb.control<number | null>(null),
+      tech_user_ids: this.fb.control<number[]>([]),
+      metadata_objective: ['', [Validators.maxLength(1000)]],
+      metadata_plan: ['', [Validators.maxLength(2000)]]
     });
 
     this.route.paramMap.subscribe((params) => {
@@ -92,21 +101,6 @@ export class FlowSessionsPage {
       this.projectId.set(id);
       this.refresh(id);
     });
-  }
-
-  toggleStakeholder(stakeholderId: number) {
-    const control = this.sessionForm.get('stakeholder_ids');
-    const current = (control?.value as number[]) ?? [];
-    const exists = current.includes(stakeholderId);
-    const next = exists ? current.filter((id) => id !== stakeholderId) : [...current, stakeholderId];
-    control?.setValue(next);
-    control?.markAsTouched();
-    control?.markAsDirty();
-  }
-
-  stakeholderSelected(stakeholderId: number) {
-    const current = (this.sessionForm.get('stakeholder_ids')?.value as number[]) ?? [];
-    return current.includes(stakeholderId);
   }
 
   createSession() {
@@ -125,6 +119,12 @@ export class FlowSessionsPage {
       this.successMessage.set(null);
       return;
     }
+    const relationError = this.validateSessionRelations();
+    if (relationError) {
+      this.errorMessage.set(relationError);
+      this.successMessage.set(null);
+      return;
+    }
 
     const value = this.sessionForm.getRawValue();
     this.errorMessage.set(null);
@@ -134,20 +134,36 @@ export class FlowSessionsPage {
     this.traceabilityService
       .createSession(id, {
         title: value.title ?? '',
-        technique: value.technique ?? '',
+        technique_code: value.technique_code ?? '',
         notes: value.notes || null,
         occurred_at: value.occurred_at || null,
-        stakeholder_ids: (value.stakeholder_ids ?? []).slice()
+        stakeholder_ids: (value.stakeholder_ids ?? []).slice(),
+        process_id: value.process_id ?? null,
+        subprocess_id: value.subprocess_id ?? null,
+        interviewer_user_id: value.interviewer_user_id ?? null,
+        moderator_user_id: value.moderator_user_id ?? null,
+        tech_user_ids: (value.tech_user_ids ?? []).slice(),
+        metadata: {
+          objective: value.metadata_objective || null,
+          plan: value.metadata_plan || null
+        }
       })
       .subscribe({
         next: () => {
           this.savingSession.set(false);
           this.sessionForm.reset({
             title: '',
-            technique: '',
+            technique_code: '',
             notes: '',
             occurred_at: '',
-            stakeholder_ids: []
+            stakeholder_ids: [],
+            process_id: null,
+            subprocess_id: null,
+            interviewer_user_id: null,
+            moderator_user_id: null,
+            tech_user_ids: [],
+            metadata_objective: '',
+            metadata_plan: ''
           });
           this.successMessage.set('Sesion creada. Ahora agrega evidencia para habilitar el siguiente paso.');
           this.loadSessions(id);
@@ -382,6 +398,77 @@ export class FlowSessionsPage {
     return this.flowStatus()?.steps.step2.locked === false;
   }
 
+  selectedTechnique(): TechniqueDefinition | null {
+    const code = this.sessionForm.get('technique_code')?.value;
+    return this.techniqueDefinitions().find((definition) => definition.code === code) ?? null;
+  }
+
+  selectedTechniqueRequires(relation: TechniqueRelation) {
+    return this.selectedTechnique()?.requiredRelations.includes(relation) ?? false;
+  }
+
+  selectedStakeholderIds() {
+    return (this.sessionForm.get('stakeholder_ids')?.value as number[]) ?? [];
+  }
+
+  selectedPrimaryStakeholderId() {
+    const ids = this.selectedStakeholderIds();
+    return ids.length > 0 ? ids[0] : null;
+  }
+
+  selectedTechUserIds() {
+    return (this.sessionForm.get('tech_user_ids')?.value as number[]) ?? [];
+  }
+
+  selectedProcessId() {
+    return (this.sessionForm.get('process_id')?.value as number | null) ?? null;
+  }
+
+  setTechnique(code: string) {
+    this.sessionForm.patchValue({
+      technique_code: code,
+      stakeholder_ids: [],
+      process_id: null,
+      subprocess_id: null,
+      interviewer_user_id: null,
+      moderator_user_id: null,
+      tech_user_ids: []
+    });
+    this.sessionForm.get('technique_code')?.markAsDirty();
+    this.errorMessage.set(null);
+  }
+
+  setStakeholderValue(value: number | number[] | null) {
+    const definition = this.selectedTechnique();
+    const next =
+      definition?.stakeholderSelection === 'single'
+        ? value === null
+          ? []
+          : [Number(value)]
+        : Array.isArray(value)
+          ? value
+          : value
+            ? [Number(value)]
+            : [];
+    this.sessionForm.get('stakeholder_ids')?.setValue(next);
+    this.sessionForm.get('stakeholder_ids')?.markAsDirty();
+  }
+
+  setNumericControl(controlName: string, value: number | number[] | null) {
+    const control = this.sessionForm.get(controlName);
+    control?.setValue(Array.isArray(value) ? value[0] ?? null : value);
+    control?.markAsDirty();
+    if (controlName === 'process_id') {
+      this.sessionForm.get('subprocess_id')?.setValue(null);
+    }
+  }
+
+  setMultiControl(controlName: string, value: number | number[] | null) {
+    const control = this.sessionForm.get(controlName);
+    control?.setValue(Array.isArray(value) ? value : value ? [value] : []);
+    control?.markAsDirty();
+  }
+
   canGoToFindings() {
     return this.flowStatus()?.steps.step2.complete ?? false;
   }
@@ -440,13 +527,13 @@ export class FlowSessionsPage {
     this.loadFlowStatus(projectId, true);
   }
 
-  private loadStakeholders(projectId: number) {
-    this.traceabilityService.getStakeholders(projectId).subscribe({
+  private loadTechniqueDefinitions() {
+    this.traceabilityService.getTechniqueDefinitions().subscribe({
       next: (response) => {
-        this.stakeholders.set(response.stakeholders ?? []);
+        this.techniqueDefinitions.set(response.techniques ?? []);
       },
       error: () => {
-        this.stakeholders.set([]);
+        this.techniqueDefinitions.set([]);
       }
     });
   }
@@ -476,7 +563,7 @@ export class FlowSessionsPage {
           return;
         }
         if (bootstrap) {
-          this.loadStakeholders(projectId);
+          this.loadTechniqueDefinitions();
           this.loadSessions(projectId);
           this.loading.set(false);
         }
@@ -484,7 +571,7 @@ export class FlowSessionsPage {
       error: () => {
         this.flowStatus.set(null);
         if (bootstrap) {
-          this.loadStakeholders(projectId);
+          this.loadTechniqueDefinitions();
           this.loadSessions(projectId);
           this.loading.set(false);
         }
@@ -561,6 +648,34 @@ export class FlowSessionsPage {
   private buildInfoMessage(): string | null {
     if (this.sessions().length === 0) {
       return 'Crea la primera sesion y agrega su evidencia para habilitar el Paso 3.';
+    }
+    return null;
+  }
+
+  private validateSessionRelations(): string | null {
+    const definition = this.selectedTechnique();
+    if (!definition) {
+      return 'Selecciona una tecnica valida.';
+    }
+
+    const stakeholderIds = this.selectedStakeholderIds();
+    if (definition.stakeholderSelection === 'single' && stakeholderIds.length !== 1) {
+      return `${definition.label} requiere exactamente un stakeholder.`;
+    }
+    if (definition.stakeholderSelection === 'multiple' && stakeholderIds.length < 1) {
+      return `${definition.label} requiere uno o mas stakeholders.`;
+    }
+    if (definition.requiredRelations.includes('process') && !this.sessionForm.get('process_id')?.value) {
+      return `${definition.label} requiere seleccionar un proceso.`;
+    }
+    if (definition.requiredRelations.includes('subprocess') && !this.sessionForm.get('subprocess_id')?.value) {
+      return `${definition.label} requiere seleccionar un subproceso.`;
+    }
+    if (definition.requiredRelations.includes('interviewer') && !this.sessionForm.get('interviewer_user_id')?.value) {
+      return `${definition.label} requiere seleccionar un entrevistador.`;
+    }
+    if (definition.requiredRelations.includes('moderator') && !this.sessionForm.get('moderator_user_id')?.value) {
+      return `${definition.label} requiere seleccionar un moderador.`;
     }
     return null;
   }

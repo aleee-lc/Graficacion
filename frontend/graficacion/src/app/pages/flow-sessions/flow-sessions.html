@@ -48,6 +48,31 @@
 
       <form class="mt-4 space-y-4" [formGroup]="sessionForm" (ngSubmit)="createSession()">
         <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Tecnica de levantamiento</p>
+          <div class="mt-2 grid gap-2 sm:grid-cols-2">
+            <button
+              *ngFor="let technique of techniqueDefinitions()"
+              type="button"
+              class="rounded-2xl border px-3 py-3 text-left text-xs transition"
+              [class.border-blue-500]="sessionForm.get('technique_code')?.value === technique.code"
+              [class.bg-blue-500/10]="sessionForm.get('technique_code')?.value === technique.code"
+              [class.border-slate-800]="sessionForm.get('technique_code')?.value !== technique.code"
+              [class.bg-slate-950]="sessionForm.get('technique_code')?.value !== technique.code"
+              (click)="setTechnique(technique.code)"
+            >
+              <span class="block font-semibold text-slate-100">{{ technique.label }}</span>
+              <span class="mt-1 block text-slate-400">{{ technique.description }}</span>
+              <span class="mt-2 inline-flex rounded-full border border-slate-700 px-2 py-1 text-[10px] text-slate-400">
+                {{ technique.stakeholderSelection === 'single' ? '1 stakeholder' : technique.stakeholderSelection === 'multiple' ? 'Multiples stakeholders' : 'Stakeholder opcional' }}
+              </span>
+            </button>
+          </div>
+          <p *ngIf="sessionForm.get('technique_code')?.touched && sessionForm.get('technique_code')?.invalid" class="mt-1 text-xs text-amber-300">
+            Selecciona una tecnica.
+          </p>
+        </div>
+
+        <div>
           <input
             formControlName="title"
             placeholder="Titulo de la sesion"
@@ -55,17 +80,6 @@
           />
           <p *ngIf="sessionForm.get('title')?.touched && sessionForm.get('title')?.invalid" class="mt-1 text-xs text-amber-300">
             Captura un titulo (minimo 3 caracteres).
-          </p>
-        </div>
-
-        <div>
-          <input
-            formControlName="technique"
-            placeholder="Tecnica: entrevista, observacion, formulario..."
-            class="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm"
-          />
-          <p *ngIf="sessionForm.get('technique')?.touched && sessionForm.get('technique')?.invalid" class="mt-1 text-xs text-amber-300">
-            Captura la tecnica (minimo 3 caracteres).
           </p>
         </div>
 
@@ -82,30 +96,92 @@
           class="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm"
         />
 
-        <div class="rounded-2xl border border-slate-800 bg-slate-950 p-3">
-          <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Stakeholders de la sesion</p>
-          <label
-            *ngFor="let stakeholder of stakeholders()"
-            class="mt-2 flex cursor-pointer items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs"
-          >
-            <input
-              type="checkbox"
-              class="h-4 w-4 accent-blue-500"
-              [checked]="stakeholderSelected(stakeholder.id)"
-              (change)="toggleStakeholder(stakeholder.id)"
-            />
-            <span>{{ stakeholder.name }}</span>
-            <span class="ml-auto text-slate-500">{{ stakeholder.role }}</span>
-          </label>
-          <p *ngIf="stakeholders().length === 0" class="mt-2 text-xs text-slate-500">
-            No hay stakeholders disponibles. Regresa al Paso 1.
-          </p>
-          <p
-            *ngIf="sessionForm.get('stakeholder_ids')?.touched && sessionForm.get('stakeholder_ids')?.invalid"
-            class="mt-2 text-xs text-amber-300"
-          >
-            Selecciona al menos un stakeholder.
-          </p>
+        <div *ngIf="projectId() && selectedTechnique() as technique" class="space-y-4 rounded-2xl border border-slate-800 bg-slate-950 p-3">
+          <app-entity-picker
+            [projectId]="projectId()!"
+            entity="stakeholders"
+            [label]="technique.stakeholderSelection === 'single' ? 'Stakeholder principal' : 'Stakeholders participantes'"
+            placeholder="Buscar stakeholder por nombre, rol o contacto"
+            [multiple]="technique.stakeholderSelection !== 'single'"
+            [required]="technique.stakeholderSelection !== 'optional'"
+            [value]="technique.stakeholderSelection === 'single' ? selectedPrimaryStakeholderId() : selectedStakeholderIds()"
+            (valueChange)="setStakeholderValue($event)"
+          ></app-entity-picker>
+
+          <div class="grid gap-4 lg:grid-cols-2">
+            <app-entity-picker
+              *ngIf="selectedTechniqueRequires('process') || selectedTechniqueRequires('subprocess')"
+              [projectId]="projectId()!"
+              entity="processes"
+              label="Proceso vinculado"
+              placeholder="Buscar proceso"
+              [required]="selectedTechniqueRequires('process')"
+              [value]="selectedProcessId()"
+              (valueChange)="setNumericControl('process_id', $event)"
+            ></app-entity-picker>
+
+            <app-entity-picker
+              *ngIf="selectedTechniqueRequires('subprocess') || selectedProcessId()"
+              [projectId]="projectId()!"
+              entity="subprocesses"
+              label="Subproceso vinculado"
+              placeholder="Buscar subproceso"
+              [processId]="selectedProcessId()"
+              [required]="selectedTechniqueRequires('subprocess')"
+              [value]="sessionForm.get('subprocess_id')?.value ?? null"
+              (valueChange)="setNumericControl('subprocess_id', $event)"
+            ></app-entity-picker>
+          </div>
+
+          <div class="grid gap-4 lg:grid-cols-2">
+            <app-entity-picker
+              *ngIf="selectedTechniqueRequires('interviewer')"
+              [projectId]="projectId()!"
+              entity="users"
+              label="Entrevistador"
+              placeholder="Buscar usuario tecnico"
+              [required]="true"
+              [value]="sessionForm.get('interviewer_user_id')?.value ?? null"
+              (valueChange)="setNumericControl('interviewer_user_id', $event)"
+            ></app-entity-picker>
+
+            <app-entity-picker
+              *ngIf="selectedTechniqueRequires('moderator')"
+              [projectId]="projectId()!"
+              entity="users"
+              label="Moderador"
+              placeholder="Buscar usuario tecnico"
+              [required]="true"
+              [value]="sessionForm.get('moderator_user_id')?.value ?? null"
+              (valueChange)="setNumericControl('moderator_user_id', $event)"
+            ></app-entity-picker>
+          </div>
+
+          <app-entity-picker
+            *ngIf="selectedTechniqueRequires('techUsers')"
+            [projectId]="projectId()!"
+            entity="users"
+            label="Usuarios tecnicos"
+            placeholder="Buscar colaboradores"
+            [multiple]="true"
+            [value]="selectedTechUserIds()"
+            (valueChange)="setMultiControl('tech_user_ids', $event)"
+          ></app-entity-picker>
+
+          <div class="grid gap-3 lg:grid-cols-2">
+            <textarea
+              rows="3"
+              formControlName="metadata_objective"
+              placeholder="Objetivo especifico de la sesion"
+              class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm"
+            ></textarea>
+            <textarea
+              rows="3"
+              formControlName="metadata_plan"
+              placeholder="Preguntas, tareas, documentos o metricas planeadas"
+              class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm"
+            ></textarea>
+          </div>
         </div>
 
         <button

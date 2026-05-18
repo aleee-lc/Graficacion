@@ -12,12 +12,47 @@ export type Stakeholder = {
   created_at: string;
 };
 
+export type StakeholderSelection = 'single' | 'multiple' | 'optional';
+export type TechniqueCategory = 'direct' | 'indirect' | 'self_managed' | 'synthesis' | 'tracking';
+export type TechniqueRelation =
+  | 'stakeholders'
+  | 'moderator'
+  | 'interviewer'
+  | 'process'
+  | 'subprocess'
+  | 'techUsers';
+export type TechniqueEvidenceType = 'note' | 'file' | 'audio' | 'transcript' | 'document' | 'metric';
+
+export type TechniqueDefinition = {
+  code: string;
+  label: string;
+  description: string;
+  category: TechniqueCategory;
+  stakeholderSelection: StakeholderSelection;
+  requiredRelations: TechniqueRelation[];
+  evidenceTypes: TechniqueEvidenceType[];
+};
+
+export type EntityOption = {
+  value: string;
+  label: string;
+  description: string | null;
+  group: string | null;
+  meta: string | null;
+};
+
 export type Session = {
   id: number;
   project_id: number;
   title: string;
   technique: string;
+  technique_code: string | null;
+  discovery_type: 'direct' | 'indirect' | 'self_managed' | 'synthesis';
+  status: 'planned' | 'in_analysis' | 'completed';
   notes: string | null;
+  process_id: number | null;
+  subprocess_id: number | null;
+  metadata: Record<string, unknown>;
   occurred_at: string;
   created_at: string;
   stakeholder_count: number;
@@ -61,6 +96,20 @@ export type Requirement = {
   created_at: string;
   finding_ids: number[] | null;
   finding_count: number;
+};
+
+export type UseCase = {
+  id: number;
+  project_id: number;
+  requirement_id: number;
+  requirement_code: string;
+  title: string;
+  actor: string;
+  action: string;
+  benefit: string;
+  acceptance_criteria: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type AIDraftFinding = {
@@ -154,9 +203,100 @@ export type FlowStatus = {
   };
 };
 
+export type SurveyQuestionType =
+  | 'short_text'
+  | 'long_text'
+  | 'single_choice'
+  | 'multiple_choice'
+  | 'scale_1_5'
+  | 'yes_no'
+  | 'date'
+  | 'number'
+  | 'file';
+
+export type QuestionnaireCategory =
+  | 'interview'
+  | 'survey'
+  | 'observation'
+  | 'focus_group'
+  | 'document'
+  | 'transaction'
+  | 'general';
+
+export type QuestionnaireResponseMode = 'form' | 'audio' | 'interview' | 'document' | 'observation' | 'transaction';
+
+export type SurveyQuestion = {
+  id?: number;
+  survey_id?: number;
+  question_text: string;
+  question_type: SurveyQuestionType;
+  required: boolean;
+  options: string[];
+  sort_order: number;
+  help_text?: string | null;
+};
+
+export type SurveyForm = {
+  id: number;
+  project_id: number;
+  title: string;
+  description: string;
+  objective: string | null;
+  category: QuestionnaireCategory;
+  status: 'draft' | 'active' | 'closed';
+  allow_audio: boolean;
+  allow_document: boolean;
+  allow_anonymous_response: boolean;
+  share_token: string;
+  due_at: string | null;
+  trace_session_id: number | null;
+  created_at: string;
+  updated_at: string;
+  response_count: number;
+};
+
+export type SurveyResponse = {
+  id: number;
+  survey_id: number;
+  stakeholder_id: number | null;
+  respondent_name: string | null;
+  respondent_contact: string | null;
+  response_mode: QuestionnaireResponseMode;
+  notes: string | null;
+  submitted_at: string;
+  trace_session_id: number | null;
+  stakeholder_name: string | null;
+  stakeholder_role: string | null;
+  answers: Array<{ question_id: number; answer: unknown }>;
+};
+
+export type SurveyMetric = {
+  question_id: number;
+  question_text: string;
+  question_type: SurveyQuestionType;
+  counts: Record<string, number>;
+};
+
 @Injectable({ providedIn: 'root' })
 export class TraceabilityService {
   constructor(private readonly http: HttpClient) {}
+
+  getTechniqueDefinitions() {
+    return this.http.get<{ techniques: TechniqueDefinition[] }>(`${API_BASE_URL}/technique-definitions`);
+  }
+
+  searchOptions(
+    projectId: number,
+    entity: 'stakeholders' | 'users' | 'processes' | 'subprocesses' | 'findings' | 'requirements',
+    q = '',
+    extra?: { process_id?: number | null }
+  ) {
+    const params = new URLSearchParams({ entity, q });
+    if (extra?.process_id) {
+      params.set('process_id', String(extra.process_id));
+    }
+    return this.http.get<{ options: EntityOption[] }>(`${API_BASE_URL}/projects/${projectId}/options?${params}`);
+  }
 
   getStakeholders(projectId: number) {
     return this.http.get<{ stakeholders: Stakeholder[] }>(`${API_BASE_URL}/projects/${projectId}/stakeholders`);
@@ -184,13 +324,33 @@ export class TraceabilityService {
     projectId: number,
     payload: {
       title: string;
-      technique: string;
+      technique?: string;
+      technique_code?: string;
+      discovery_type?: 'direct' | 'indirect' | 'self_managed' | 'synthesis';
+      status?: 'planned' | 'in_analysis' | 'completed';
       notes?: string | null;
       occurred_at?: string | null;
       stakeholder_ids: number[];
+      process_id?: number | null;
+      subprocess_id?: number | null;
+      interviewer_user_id?: number | null;
+      moderator_user_id?: number | null;
+      tech_user_ids?: number[];
+      metadata?: Record<string, unknown>;
     }
   ) {
     return this.http.post<{ id: number }>(`${API_BASE_URL}/projects/${projectId}/sessions`, payload);
+  }
+
+  updateSession(
+    projectId: number,
+    sessionId: number,
+    payload: {
+      discovery_type?: 'direct' | 'indirect' | 'self_managed' | 'synthesis';
+      status?: 'planned' | 'in_analysis' | 'completed';
+    }
+  ) {
+    return this.http.patch<{ session: Session }>(`${API_BASE_URL}/projects/${projectId}/sessions/${sessionId}`, payload);
   }
 
   getSessionEvidences(sessionId: number) {
@@ -255,6 +415,17 @@ export class TraceabilityService {
     }>(`${API_BASE_URL}/sessions/${sessionId}/findings`, payload);
   }
 
+  updateFinding(
+    projectId: number,
+    findingId: number,
+    payload: {
+      category?: 'problem' | 'need' | 'constraint';
+      statement?: string;
+    }
+  ) {
+    return this.http.patch<{ finding: Finding }>(`${API_BASE_URL}/projects/${projectId}/findings/${findingId}`, payload);
+  }
+
   getRequirements(projectId: number) {
     return this.http.get<{ requirements: Requirement[] }>(`${API_BASE_URL}/projects/${projectId}/requirements`);
   }
@@ -270,6 +441,58 @@ export class TraceabilityService {
     }
   ) {
     return this.http.post<{ id: number; code: string }>(`${API_BASE_URL}/projects/${projectId}/requirements`, payload);
+  }
+
+  updateRequirement(
+    projectId: number,
+    requirementId: number,
+    payload: {
+      type?: 'functional' | 'non_functional';
+      priority?: 'low' | 'medium' | 'high' | 'critical';
+      description?: string;
+      acceptance_criteria?: string;
+      finding_ids?: number[];
+    }
+  ) {
+    return this.http.patch<{ requirement: Requirement }>(
+      `${API_BASE_URL}/projects/${projectId}/requirements/${requirementId}`,
+      payload
+    );
+  }
+
+  getUseCases(projectId: number) {
+    return this.http.get<{ use_cases: UseCase[] }>(`${API_BASE_URL}/projects/${projectId}/use-cases`);
+  }
+
+  createUseCase(
+    projectId: number,
+    payload: {
+      requirement_id: number;
+      title: string;
+      actor: string;
+      action: string;
+      benefit: string;
+      acceptance_criteria?: string | null;
+    }
+  ) {
+    return this.http.post<{ use_case: UseCase }>(`${API_BASE_URL}/projects/${projectId}/use-cases`, payload);
+  }
+
+  updateUseCase(
+    projectId: number,
+    useCaseId: number,
+    payload: {
+      title?: string;
+      actor?: string;
+      action?: string;
+      benefit?: string;
+      acceptance_criteria?: string | null;
+    }
+  ) {
+    return this.http.patch<{ use_case: UseCase }>(
+      `${API_BASE_URL}/projects/${projectId}/use-cases/${useCaseId}`,
+      payload
+    );
   }
 
   getTraceability(projectId: number) {
@@ -346,6 +569,110 @@ export class TraceabilityService {
     return this.http.patch<{ draft: AIDraftRequirement }>(
       `${API_BASE_URL}/projects/${projectId}/ai/draft-requirements/${draftId}`,
       payload
+    );
+  }
+
+  getSurveys(projectId: number) {
+    return this.http.get<{ surveys: SurveyForm[] }>(`${API_BASE_URL}/surveys/projects/${projectId}/surveys`);
+  }
+
+  getSurvey(surveyId: number) {
+    return this.http.get<{
+      survey: SurveyForm;
+      questions: SurveyQuestion[];
+      recipients: Array<{ id: number; name: string; role: string }>;
+    }>(`${API_BASE_URL}/surveys/${surveyId}`);
+  }
+
+  createSurvey(
+    projectId: number,
+    payload: {
+      title: string;
+      description: string;
+      objective?: string | null;
+      category: QuestionnaireCategory;
+      status: 'draft' | 'active' | 'closed';
+      due_at?: string | null;
+      allow_audio: boolean;
+      allow_document: boolean;
+      allow_anonymous_response: boolean;
+      stakeholder_ids: number[];
+      questions: SurveyQuestion[];
+    }
+  ) {
+    return this.http.post<{ id: number; share_token: string; trace_session_id: number }>(
+      `${API_BASE_URL}/surveys/projects/${projectId}/surveys`,
+      payload
+    );
+  }
+
+  generateSurveyQuestions(
+    projectId: number,
+    payload: { title?: string; description?: string; objective?: string; prompt?: string; count?: number }
+  ) {
+    return this.http.post<{ questions: SurveyQuestion[]; model: string; warning?: string }>(
+      `${API_BASE_URL}/surveys/projects/${projectId}/surveys/ai-questions`,
+      payload
+    );
+  }
+
+  updateSurveyStatus(surveyId: number, status: 'draft' | 'active' | 'closed') {
+    return this.http.patch<{ status: 'draft' | 'active' | 'closed' }>(`${API_BASE_URL}/surveys/${surveyId}/status`, {
+      status
+    });
+  }
+
+  getSurveyResults(surveyId: number) {
+    return this.http.get<{ questions: SurveyQuestion[]; responses: SurveyResponse[]; metrics: SurveyMetric[] }>(
+      `${API_BASE_URL}/surveys/${surveyId}/results`
+    );
+  }
+
+  getPublicSurvey(token: string) {
+    return this.http.get<{
+      survey: SurveyForm;
+      questions: SurveyQuestion[];
+      recipients: Array<{ id: number; name: string; role: string }>;
+    }>(`${API_BASE_URL}/surveys/public/${token}`);
+  }
+
+  submitPublicSurveyResponse(
+    token: string,
+    payload: {
+      stakeholder_id?: number | null;
+      respondent_name?: string | null;
+      respondent_contact?: string | null;
+      response_mode?: QuestionnaireResponseMode;
+      notes?: string | null;
+      answers: Array<{ question_id: number; answer: string | number | boolean | string[] }>;
+    }
+  ) {
+    return this.http.post<{ response_id: number; trace_session_id: number }>(
+      `${API_BASE_URL}/surveys/public/${token}/responses`,
+      payload
+    );
+  }
+
+  submitPublicQuestionnaireResponse(
+    token: string,
+    payload: {
+      stakeholder_id?: number | null;
+      respondent_name?: string | null;
+      respondent_contact?: string | null;
+      response_mode?: QuestionnaireResponseMode;
+      notes?: string | null;
+      answers: Array<{ question_id: number; answer: string | number | boolean | string[] }>;
+    },
+    files: File[]
+  ) {
+    const formData = new FormData();
+    formData.append('payload', JSON.stringify(payload));
+    for (const file of files) {
+      formData.append('files', file);
+    }
+    return this.http.post<{ response_id: number; trace_session_id: number }>(
+      `${API_BASE_URL}/surveys/public/${token}/responses`,
+      formData
     );
   }
 }

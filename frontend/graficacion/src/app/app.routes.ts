@@ -14,12 +14,15 @@ import { FlowRequirementsPage } from './pages/flow-requirements/flow-requirement
 import { FlowSessionsPage } from './pages/flow-sessions/flow-sessions';
 import { FlowTraceabilityPage } from './pages/flow-traceability/flow-traceability';
 import { ProjectWorkspace } from './pages/project-workspace/project-workspace';
+import { SurveyResponsePage } from './pages/survey-response/survey-response';
 import { authChildGuard } from './services/auth.guard';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'landing', pathMatch: 'full' },
   { path: 'landing', component: Landing },
   { path: 'login', component: Login },
+  { path: 'surveys/respond/:token', component: SurveyResponsePage },
+  { path: 'questionnaires/respond/:token', component: SurveyResponsePage },
   {
     path: '',
     component: AppShell,

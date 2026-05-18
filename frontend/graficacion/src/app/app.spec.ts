@@ -21,6 +21,6 @@ describe('App', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Grafic');
+    expect(compiled.textContent).toContain('Specora');
   });
 });

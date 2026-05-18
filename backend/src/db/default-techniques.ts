@@ -27,6 +27,10 @@ const DEFAULT_TECHNIQUES: DefaultTechnique[] = [
     description: 'Revision de procesos, reglas de negocio y documentacion existente del dominio.'
   },
   {
+    name: 'Historias de usuario',
+    description: 'Tecnica de sintesis para convertir necesidades validadas en historias trazables y verificables.'
+  },
+  {
     name: 'User story mapping',
     description: 'Desglose del journey de usuario para estructurar el backlog y plan de entregas.'
   },
@@ -58,4 +62,3 @@ export const ensureDefaultTechniques = async (): Promise<number> => {
 
   return inserted;
 };
-

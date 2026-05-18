@@ -1,7 +1,19 @@
+import { createHash } from 'crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { getUserTypeIdByCode } from '../db/catalogs';
 import { pool } from '../db/pool';
+import {
+  ensureTraceabilityWorkspaceSchema,
+  type DiscoveryType,
+  type SessionStatus
+} from '../lib/traceability-workspace-schema';
+import {
+  getTechniqueDefinition,
+  normalizeTechniqueCode,
+  techniqueLabelForCode,
+  type TechniqueCategory
+} from '../lib/technique-definitions';
 import { requireAuth, type AuthRequest } from '../middleware/auth';
 import { hashPassword } from '../utils/password';
 
@@ -105,7 +117,13 @@ type SessionRow = {
   project_id: number;
   title: string;
   technique: string;
+  technique_code: string | null;
+  discovery_type: DiscoveryType;
+  status: SessionStatus;
   notes: string | null;
+  process_id: number | null;
+  subprocess_id: number | null;
+  metadata: Record<string, unknown>;
   occurred_at: string;
   created_at: string;
   stakeholder_count: number;
@@ -136,6 +154,20 @@ type RequirementRow = {
   created_at: string;
   finding_ids: number[] | null;
   finding_count: number;
+};
+
+type UseCaseRow = {
+  id: number;
+  project_id: number;
+  requirement_id: number;
+  requirement_code: string;
+  title: string;
+  actor: string;
+  action: string;
+  benefit: string;
+  acceptance_criteria: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type TraceabilityRow = {
@@ -223,10 +255,45 @@ const stakeholderSchema = z.object({
 
 const createSessionSchema = z.object({
   title: z.string().min(2),
-  technique: z.string().min(2),
+  technique: z.string().min(2).optional(),
+  technique_code: z.string().min(2).optional(),
+  discovery_type: z.enum(['direct', 'indirect', 'self_managed', 'synthesis']).optional(),
+  status: z.enum(['planned', 'in_analysis', 'completed']).optional(),
   notes: z.string().optional().nullable(),
   occurred_at: z.string().optional().nullable(),
-  stakeholder_ids: z.array(z.number().int().positive()).min(1)
+  stakeholder_ids: z.array(z.number().int().positive()).default([]),
+  process_id: z.number().int().positive().optional().nullable(),
+  subprocess_id: z.number().int().positive().optional().nullable(),
+  interviewer_user_id: z.number().int().positive().optional().nullable(),
+  moderator_user_id: z.number().int().positive().optional().nullable(),
+  tech_user_ids: z.array(z.number().int().positive()).optional().default([]),
+  metadata: z.record(z.unknown()).optional().default({})
+}).refine((value) => Boolean(value.technique_code || value.technique), {
+  message: 'technique_code or technique is required',
+  path: ['technique_code']
+});
+
+const updateSessionRelationsSchema = z.object({
+  stakeholder_ids: z.array(z.number().int().positive()).default([]),
+  process_id: z.number().int().positive().optional().nullable(),
+  subprocess_id: z.number().int().positive().optional().nullable(),
+  interviewer_user_id: z.number().int().positive().optional().nullable(),
+  moderator_user_id: z.number().int().positive().optional().nullable(),
+  tech_user_ids: z.array(z.number().int().positive()).optional().default([]),
+  metadata: z.record(z.unknown()).optional().default({})
+});
+
+const optionsQuerySchema = z.object({
+  entity: z.enum(['stakeholders', 'users', 'processes', 'subprocesses', 'findings', 'requirements']),
+  q: z.string().max(100).optional().default(''),
+  process_id: z.coerce.number().int().positive().optional()
+});
+
+const updateSessionSchema = z.object({
+  discovery_type: z.enum(['direct', 'indirect', 'self_managed', 'synthesis']).optional(),
+  status: z.enum(['planned', 'in_analysis', 'completed']).optional()
+}).refine((value) => value.discovery_type !== undefined || value.status !== undefined, {
+  message: 'At least one field is required'
 });
 
 const createRequirementSchema = z.object({
@@ -236,6 +303,54 @@ const createRequirementSchema = z.object({
   acceptance_criteria: z.string().min(12),
   finding_ids: z.array(z.number().int().positive()).min(1)
 });
+
+const updateFindingSchema = z.object({
+  category: z.enum(['problem', 'need', 'constraint']).optional(),
+  statement: z.string().min(20).optional()
+}).refine((value) => value.category !== undefined || value.statement !== undefined, {
+  message: 'At least one field is required'
+});
+
+const updateRequirementSchema = z.object({
+  type: z.enum(['functional', 'non_functional']).optional(),
+  priority: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  description: z.string().min(12).optional(),
+  acceptance_criteria: z.string().min(12).optional(),
+  finding_ids: z.array(z.number().int().positive()).min(1).optional()
+}).refine(
+  (value) =>
+    value.type !== undefined ||
+    value.priority !== undefined ||
+    value.description !== undefined ||
+    value.acceptance_criteria !== undefined ||
+    value.finding_ids !== undefined,
+  { message: 'At least one field is required' }
+);
+
+const useCaseSchema = z.object({
+  requirement_id: z.number().int().positive(),
+  title: z.string().min(3),
+  actor: z.string().min(2),
+  action: z.string().min(3),
+  benefit: z.string().min(3),
+  acceptance_criteria: z.string().optional().nullable()
+});
+
+const updateUseCaseSchema = z.object({
+  title: z.string().min(3).optional(),
+  actor: z.string().min(2).optional(),
+  action: z.string().min(3).optional(),
+  benefit: z.string().min(3).optional(),
+  acceptance_criteria: z.string().optional().nullable()
+}).refine(
+  (value) =>
+    value.title !== undefined ||
+    value.actor !== undefined ||
+    value.action !== undefined ||
+    value.benefit !== undefined ||
+    value.acceptance_criteria !== undefined,
+  { message: 'At least one field is required' }
+);
 
 const hasProjectAccess = async (projectId: number, userId: number) => {
   const rows = await pool.query(
@@ -270,6 +385,182 @@ const buildRequirementCode = async (
 
   const nextValue = sequenceResult.rows[0]?.next_value ?? 1;
   return `REQ-${String(nextValue).padStart(4, '0')}`;
+};
+
+const discoveryTypeForCategory = (category: TechniqueCategory): DiscoveryType => {
+  if (category === 'indirect') {
+    return 'indirect';
+  }
+  if (category === 'self_managed') {
+    return 'self_managed';
+  }
+  if (category === 'synthesis') {
+    return 'synthesis';
+  }
+  return 'direct';
+};
+
+const validateProjectStakeholderIds = async (
+  projectId: number,
+  stakeholderIds: number[],
+  db: Pick<typeof pool, 'query'> = pool
+) => {
+  const uniqueIds = Array.from(new Set(stakeholderIds));
+  if (uniqueIds.length === 0) {
+    return uniqueIds;
+  }
+
+  const rows = await db.query<{ id: number }>(
+    `SELECT id
+     FROM trace_stakeholders
+     WHERE project_id = $1
+       AND id = ANY($2::int[])`,
+    [projectId, uniqueIds]
+  );
+
+  return rows.rows.length === uniqueIds.length ? uniqueIds : null;
+};
+
+const validateProjectUserIds = async (
+  projectId: number,
+  userIds: number[],
+  db: Pick<typeof pool, 'query'> = pool
+) => {
+  const uniqueIds = Array.from(new Set(userIds));
+  if (uniqueIds.length === 0) {
+    return uniqueIds;
+  }
+
+  const rows = await db.query<{ id: number }>(
+    `SELECT u.id
+     FROM users u
+     INNER JOIN project_users pu ON pu.user_id = u.id
+     WHERE pu.project_id = $1
+       AND u.id = ANY($2::int[])`,
+    [projectId, uniqueIds]
+  );
+
+  return rows.rows.length === uniqueIds.length ? uniqueIds : null;
+};
+
+const validateProjectProcessRefs = async (
+  projectId: number,
+  processId?: number | null,
+  subprocessId?: number | null,
+  db: Pick<typeof pool, 'query'> = pool
+) => {
+  if (processId) {
+    const processRows = await db.query<{ id: number }>(
+      'SELECT id FROM processes WHERE project_id = $1 AND id = $2 LIMIT 1',
+      [projectId, processId]
+    );
+    if (processRows.rows.length === 0) {
+      return false;
+    }
+  }
+
+  if (subprocessId) {
+    const subprocessRows = await db.query<{ id: number }>(
+      `SELECT sp.id
+       FROM subprocesses sp
+       INNER JOIN processes p ON p.id = sp.process_id
+       WHERE p.project_id = $1
+         AND sp.id = $2
+         AND ($3::int IS NULL OR p.id = $3)
+       LIMIT 1`,
+      [projectId, subprocessId, processId ?? null]
+    );
+    if (subprocessRows.rows.length === 0) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const buildSessionMetadata = (payload: {
+  metadata?: Record<string, unknown>;
+  interviewer_user_id?: number | null;
+  moderator_user_id?: number | null;
+  tech_user_ids?: number[];
+}) => ({
+  ...(payload.metadata ?? {}),
+  interviewer_user_id: payload.interviewer_user_id ?? null,
+  moderator_user_id: payload.moderator_user_id ?? null,
+  tech_user_ids: Array.from(new Set(payload.tech_user_ids ?? []))
+});
+
+const validateTechniqueRelations = (params: {
+  techniqueCode: string;
+  stakeholderIds: number[];
+  processId?: number | null;
+  subprocessId?: number | null;
+  interviewerUserId?: number | null;
+  moderatorUserId?: number | null;
+}) => {
+  const definition = getTechniqueDefinition(params.techniqueCode);
+  if (!definition) {
+    return { ok: false as const, message: 'Unknown technique definition' };
+  }
+
+  if (definition.stakeholderSelection === 'single' && params.stakeholderIds.length !== 1) {
+    return { ok: false as const, message: `${definition.label} requires exactly one stakeholder.` };
+  }
+  if (definition.stakeholderSelection === 'multiple' && params.stakeholderIds.length < 1) {
+    return { ok: false as const, message: `${definition.label} requires at least one stakeholder.` };
+  }
+  if (definition.requiredRelations.includes('process') && !params.processId) {
+    return { ok: false as const, message: `${definition.label} requires a linked process.` };
+  }
+  if (definition.requiredRelations.includes('subprocess') && !params.subprocessId) {
+    return { ok: false as const, message: `${definition.label} requires a linked subprocess.` };
+  }
+  if (definition.requiredRelations.includes('interviewer') && !params.interviewerUserId) {
+    return { ok: false as const, message: `${definition.label} requires an interviewer.` };
+  }
+  if (definition.requiredRelations.includes('moderator') && !params.moderatorUserId) {
+    return { ok: false as const, message: `${definition.label} requires a moderator.` };
+  }
+
+  return { ok: true as const, definition };
+};
+
+const validateProjectFindingIds = async (
+  projectId: number,
+  findingIds: number[],
+  db: Pick<typeof pool, 'query'> = pool
+) => {
+  const uniqueFindingIds = Array.from(new Set(findingIds));
+  const findingRows = await db.query<{ id: number }>(
+    `SELECT f.id
+     FROM trace_findings f
+     INNER JOIN trace_sessions s ON s.id = f.session_id
+     WHERE s.project_id = $1
+       AND f.id = ANY($2::int[])`,
+    [projectId, uniqueFindingIds]
+  );
+
+  return findingRows.rows.length === uniqueFindingIds.length ? uniqueFindingIds : null;
+};
+
+const mapUseCaseRow = (row: UseCaseRow) => ({
+  id: row.id,
+  project_id: row.project_id,
+  requirement_id: row.requirement_id,
+  requirement_code: row.requirement_code,
+  title: row.title,
+  actor: row.actor,
+  action: row.action,
+  benefit: row.benefit,
+  acceptance_criteria: row.acceptance_criteria,
+  created_at: row.created_at,
+  updated_at: row.updated_at
+});
+
+const buildFindingDedupeKey = (statement: string) => {
+  const normalized = statement.trim().toLowerCase().replace(/\s+/g, ' ');
+  const digest = createHash('sha1').update(normalized).digest('hex');
+  return `auto:${digest.slice(0, 24)}`;
 };
 
 const computeFlowStatus = async (
@@ -720,6 +1011,146 @@ router.get('/:id/stakeholders', async (req: AuthRequest, res) => {
   res.json({ stakeholders: rows.rows });
 });
 
+router.get('/:id/options', async (req: AuthRequest, res) => {
+  await ensureTraceabilityWorkspaceSchema();
+  const userId = req.user?.sub;
+  const projectId = Number(req.params.id);
+
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (Number.isNaN(projectId)) {
+    res.status(400).json({ message: 'Invalid project id' });
+    return;
+  }
+
+  const hasAccess = await hasProjectAccess(projectId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Project not found' });
+    return;
+  }
+
+  const parsed = optionsQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ message: 'Invalid query params', errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const search = `%${parsed.data.q.trim().toLowerCase()}%`;
+  if (parsed.data.entity === 'stakeholders') {
+    const rows = await pool.query(
+      `SELECT id::text AS value,
+              name AS label,
+              role AS description,
+              type AS group,
+              contact AS meta
+       FROM trace_stakeholders
+       WHERE project_id = $1
+         AND ($2 = '%%' OR LOWER(name || ' ' || role || ' ' || COALESCE(contact, '')) LIKE $2)
+       ORDER BY name ASC
+       LIMIT 25`,
+      [projectId, search]
+    );
+    res.json({ options: rows.rows });
+    return;
+  }
+
+  if (parsed.data.entity === 'users') {
+    const rows = await pool.query(
+      `SELECT u.id::text AS value,
+              COALESCE(u.name, u.email, 'Usuario sin nombre') AS label,
+              u.email AS description,
+              ut.code AS group,
+              sr.name AS meta
+       FROM project_users pu
+       INNER JOIN users u ON u.id = pu.user_id
+       LEFT JOIN user_types ut ON ut.id = u.user_type
+       LEFT JOIN stakeholder_profile sp ON sp.user_id = u.id
+       LEFT JOIN stakeholder_roles sr ON sr.id = sp.stakeholder_role_id
+       WHERE pu.project_id = $1
+         AND ($2 = '%%' OR LOWER(COALESCE(u.name, '') || ' ' || COALESCE(u.email, '')) LIKE $2)
+       ORDER BY COALESCE(u.name, u.email) ASC
+       LIMIT 25`,
+      [projectId, search]
+    );
+    res.json({ options: rows.rows });
+    return;
+  }
+
+  if (parsed.data.entity === 'processes') {
+    const rows = await pool.query(
+      `SELECT id::text AS value,
+              name AS label,
+              description,
+              'Proceso' AS group,
+              NULL::text AS meta
+       FROM processes
+       WHERE project_id = $1
+         AND ($2 = '%%' OR LOWER(name || ' ' || COALESCE(description, '')) LIKE $2)
+       ORDER BY name ASC
+       LIMIT 25`,
+      [projectId, search]
+    );
+    res.json({ options: rows.rows });
+    return;
+  }
+
+  if (parsed.data.entity === 'subprocesses') {
+    const rows = await pool.query(
+      `SELECT sp.id::text AS value,
+              sp.name AS label,
+              sp.description,
+              p.name AS group,
+              p.id::text AS meta
+       FROM subprocesses sp
+       INNER JOIN processes p ON p.id = sp.process_id
+       WHERE p.project_id = $1
+         AND ($3::int IS NULL OR p.id = $3)
+         AND ($2 = '%%' OR LOWER(sp.name || ' ' || COALESCE(sp.description, '') || ' ' || p.name) LIKE $2)
+       ORDER BY p.name ASC, sp.name ASC
+       LIMIT 25`,
+      [projectId, search, parsed.data.process_id ?? null]
+    );
+    res.json({ options: rows.rows });
+    return;
+  }
+
+  if (parsed.data.entity === 'findings') {
+    const rows = await pool.query(
+      `SELECT f.id::text AS value,
+              f.statement AS label,
+              s.title AS description,
+              f.category AS group,
+              s.technique AS meta
+       FROM trace_findings f
+       INNER JOIN trace_sessions s ON s.id = f.session_id
+       WHERE s.project_id = $1
+         AND ($2 = '%%' OR LOWER(f.statement || ' ' || s.title) LIKE $2)
+       ORDER BY f.id DESC
+       LIMIT 25`,
+      [projectId, search]
+    );
+    res.json({ options: rows.rows });
+    return;
+  }
+
+  const rows = await pool.query(
+    `SELECT r.id::text AS value,
+            r.code AS label,
+            r.description,
+            r.priority AS group,
+            r.type AS meta
+     FROM trace_requirements r
+     WHERE r.project_id = $1
+       AND ($2 = '%%' OR LOWER(r.code || ' ' || r.description) LIKE $2)
+     ORDER BY r.id DESC
+     LIMIT 25`,
+    [projectId, search]
+  );
+  res.json({ options: rows.rows });
+});
+
 router.post('/:id/stakeholders', async (req: AuthRequest, res) => {
   const userId = req.user?.sub;
   const projectId = Number(req.params.id);
@@ -757,6 +1188,7 @@ router.post('/:id/stakeholders', async (req: AuthRequest, res) => {
 });
 
 router.get('/:id/sessions', async (req: AuthRequest, res) => {
+  await ensureTraceabilityWorkspaceSchema();
   const userId = req.user?.sub;
   const projectId = Number(req.params.id);
 
@@ -780,7 +1212,13 @@ router.get('/:id/sessions', async (req: AuthRequest, res) => {
             s.project_id,
             s.title,
             s.technique,
+            s.technique_code,
+            s.discovery_type,
+            s.status,
             s.notes,
+            s.process_id,
+            s.subprocess_id,
+            s.metadata,
             s.occurred_at::text,
             s.created_at::text,
             COALESCE(sc.stakeholder_count, 0)::int AS stakeholder_count,
@@ -811,6 +1249,7 @@ router.get('/:id/sessions', async (req: AuthRequest, res) => {
 });
 
 router.post('/:id/sessions', async (req: AuthRequest, res) => {
+  await ensureTraceabilityWorkspaceSchema();
   const userId = req.user?.sub;
   const projectId = Number(req.params.id);
 
@@ -841,47 +1280,323 @@ router.post('/:id/sessions', async (req: AuthRequest, res) => {
     return;
   }
 
+  const techniqueCode = normalizeTechniqueCode(parsed.data.technique_code ?? parsed.data.technique ?? '');
+  if (!techniqueCode) {
+    res.status(400).json({ message: 'Unknown technique definition' });
+    return;
+  }
+
   const uniqueStakeholderIds = Array.from(new Set(parsed.data.stakeholder_ids));
+  const validation = validateTechniqueRelations({
+    techniqueCode,
+    stakeholderIds: uniqueStakeholderIds,
+    processId: parsed.data.process_id,
+    subprocessId: parsed.data.subprocess_id,
+    interviewerUserId: parsed.data.interviewer_user_id,
+    moderatorUserId: parsed.data.moderator_user_id
+  });
+  if (!validation.ok) {
+    res.status(400).json({ message: validation.message });
+    return;
+  }
+
+  const uniqueTechUserIds = Array.from(
+    new Set([
+      ...(parsed.data.tech_user_ids ?? []),
+      ...(parsed.data.interviewer_user_id ? [parsed.data.interviewer_user_id] : []),
+      ...(parsed.data.moderator_user_id ? [parsed.data.moderator_user_id] : [])
+    ])
+  );
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const stakeholderRows = await client.query<{ id: number }>(
-      `SELECT id
-       FROM trace_stakeholders
-       WHERE project_id = $1
-         AND id = ANY($2::int[])`,
-      [projectId, uniqueStakeholderIds]
-    );
-
-    if (stakeholderRows.rows.length !== uniqueStakeholderIds.length) {
+    const validStakeholders = await validateProjectStakeholderIds(projectId, uniqueStakeholderIds, client);
+    if (!validStakeholders) {
       await client.query('ROLLBACK');
       res.status(400).json({ message: 'Some stakeholders do not belong to this project' });
       return;
     }
+    const validUsers = await validateProjectUserIds(projectId, uniqueTechUserIds, client);
+    if (!validUsers) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ message: 'Some users do not belong to this project' });
+      return;
+    }
+    const validProcessRefs = await validateProjectProcessRefs(
+      projectId,
+      parsed.data.process_id,
+      parsed.data.subprocess_id,
+      client
+    );
+    if (!validProcessRefs) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ message: 'Process or subprocess does not belong to this project' });
+      return;
+    }
 
+    const discoveryType = parsed.data.discovery_type ?? discoveryTypeForCategory(validation.definition.category);
+    const status = parsed.data.status ?? 'planned';
+    const sessionMetadata = buildSessionMetadata({
+      metadata: parsed.data.metadata,
+      interviewer_user_id: parsed.data.interviewer_user_id,
+      moderator_user_id: parsed.data.moderator_user_id,
+      tech_user_ids: validUsers
+    });
     const sessionResult = await client.query<{ id: number }>(
-      `INSERT INTO trace_sessions (project_id, technique, title, notes, occurred_at)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO trace_sessions (
+         project_id,
+         technique,
+         technique_code,
+         discovery_type,
+         status,
+         title,
+         notes,
+         occurred_at,
+         process_id,
+         subprocess_id,
+         metadata
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
        RETURNING id`,
-      [projectId, parsed.data.technique, parsed.data.title, parsed.data.notes ?? null, occurredAt]
+      [
+        projectId,
+        techniqueLabelForCode(techniqueCode),
+        techniqueCode,
+        discoveryType,
+        status,
+        parsed.data.title,
+        parsed.data.notes ?? null,
+        occurredAt,
+        parsed.data.process_id ?? null,
+        parsed.data.subprocess_id ?? null,
+        JSON.stringify(sessionMetadata)
+      ]
     );
     const sessionId = sessionResult.rows[0].id;
 
-    for (const stakeholderId of uniqueStakeholderIds) {
+    for (const [index, stakeholderId] of validStakeholders.entries()) {
       await client.query(
-        `INSERT INTO trace_session_stakeholders (session_id, stakeholder_id)
-         VALUES ($1, $2)
-         ON CONFLICT (session_id, stakeholder_id) DO NOTHING`,
-        [sessionId, stakeholderId]
+        `INSERT INTO trace_session_stakeholders (session_id, stakeholder_id, participation_role, is_primary)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (session_id, stakeholder_id)
+         DO UPDATE SET participation_role = EXCLUDED.participation_role,
+                       is_primary = EXCLUDED.is_primary`,
+        [
+          sessionId,
+          stakeholderId,
+          validation.definition.stakeholderSelection === 'single' ? 'subject' : 'participant',
+          index === 0
+        ]
       );
     }
 
     await client.query('COMMIT');
     res.status(201).json({ id: sessionId });
-  } catch {
+  } catch (error) {
     await client.query('ROLLBACK');
-    res.status(500).json({ message: 'Could not create session.' });
+    res.status(500).json({ message: error instanceof Error ? error.message : 'Could not create session.' });
+  } finally {
+    client.release();
+  }
+});
+
+router.patch('/:id/sessions/:sessionId', async (req: AuthRequest, res) => {
+  await ensureTraceabilityWorkspaceSchema();
+  const userId = req.user?.sub;
+  const projectId = Number(req.params.id);
+  const sessionId = Number(req.params.sessionId);
+
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (Number.isNaN(projectId) || Number.isNaN(sessionId)) {
+    res.status(400).json({ message: 'Invalid route params' });
+    return;
+  }
+
+  const hasAccess = await hasProjectAccess(projectId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Project not found' });
+    return;
+  }
+
+  const parsed = updateSessionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: 'Invalid request', errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const result = await pool.query<SessionRow>(
+    `UPDATE trace_sessions
+        SET discovery_type = COALESCE($3, discovery_type),
+            status = COALESCE($4, status)
+      WHERE project_id = $1
+        AND id = $2
+      RETURNING id,
+                project_id,
+                title,
+                technique,
+                technique_code,
+                discovery_type,
+                status,
+                notes,
+                process_id,
+                subprocess_id,
+                metadata,
+                occurred_at::text,
+                created_at::text,
+                0::int AS stakeholder_count,
+                0::int AS evidence_count,
+                0::int AS finding_count`,
+    [projectId, sessionId, parsed.data.discovery_type ?? null, parsed.data.status ?? null]
+  );
+
+  if (result.rows.length === 0) {
+    res.status(404).json({ message: 'Session not found' });
+    return;
+  }
+
+  res.json({ session: result.rows[0] });
+});
+
+router.patch('/:id/sessions/:sessionId/relations', async (req: AuthRequest, res) => {
+  await ensureTraceabilityWorkspaceSchema();
+  const userId = req.user?.sub;
+  const projectId = Number(req.params.id);
+  const sessionId = Number(req.params.sessionId);
+
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (Number.isNaN(projectId) || Number.isNaN(sessionId)) {
+    res.status(400).json({ message: 'Invalid route params' });
+    return;
+  }
+
+  const hasAccess = await hasProjectAccess(projectId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Project not found' });
+    return;
+  }
+
+  const parsed = updateSessionRelationsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: 'Invalid request', errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const existingRows = await pool.query<{ id: number; technique: string; technique_code: string | null }>(
+    'SELECT id, technique, technique_code FROM trace_sessions WHERE project_id = $1 AND id = $2',
+    [projectId, sessionId]
+  );
+  const existing = existingRows.rows[0];
+  if (!existing) {
+    res.status(404).json({ message: 'Session not found' });
+    return;
+  }
+
+  const techniqueCode = existing.technique_code ?? normalizeTechniqueCode(existing.technique);
+  if (!techniqueCode) {
+    res.status(400).json({ message: 'Unknown technique definition' });
+    return;
+  }
+
+  const uniqueStakeholderIds = Array.from(new Set(parsed.data.stakeholder_ids));
+  const validation = validateTechniqueRelations({
+    techniqueCode,
+    stakeholderIds: uniqueStakeholderIds,
+    processId: parsed.data.process_id,
+    subprocessId: parsed.data.subprocess_id,
+    interviewerUserId: parsed.data.interviewer_user_id,
+    moderatorUserId: parsed.data.moderator_user_id
+  });
+  if (!validation.ok) {
+    res.status(400).json({ message: validation.message });
+    return;
+  }
+
+  const uniqueTechUserIds = Array.from(
+    new Set([
+      ...(parsed.data.tech_user_ids ?? []),
+      ...(parsed.data.interviewer_user_id ? [parsed.data.interviewer_user_id] : []),
+      ...(parsed.data.moderator_user_id ? [parsed.data.moderator_user_id] : [])
+    ])
+  );
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const validStakeholders = await validateProjectStakeholderIds(projectId, uniqueStakeholderIds, client);
+    if (!validStakeholders) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ message: 'Some stakeholders do not belong to this project' });
+      return;
+    }
+    const validUsers = await validateProjectUserIds(projectId, uniqueTechUserIds, client);
+    if (!validUsers) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ message: 'Some users do not belong to this project' });
+      return;
+    }
+    const validProcessRefs = await validateProjectProcessRefs(
+      projectId,
+      parsed.data.process_id,
+      parsed.data.subprocess_id,
+      client
+    );
+    if (!validProcessRefs) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ message: 'Process or subprocess does not belong to this project' });
+      return;
+    }
+
+    const sessionMetadata = buildSessionMetadata({
+      metadata: parsed.data.metadata,
+      interviewer_user_id: parsed.data.interviewer_user_id,
+      moderator_user_id: parsed.data.moderator_user_id,
+      tech_user_ids: validUsers
+    });
+
+    await client.query(
+      `UPDATE trace_sessions
+          SET process_id = $3,
+              subprocess_id = $4,
+              metadata = $5::jsonb
+        WHERE project_id = $1
+          AND id = $2`,
+      [
+        projectId,
+        sessionId,
+        parsed.data.process_id ?? null,
+        parsed.data.subprocess_id ?? null,
+        JSON.stringify(sessionMetadata)
+      ]
+    );
+
+    await client.query('DELETE FROM trace_session_stakeholders WHERE session_id = $1', [sessionId]);
+    for (const [index, stakeholderId] of validStakeholders.entries()) {
+      await client.query(
+        `INSERT INTO trace_session_stakeholders (session_id, stakeholder_id, participation_role, is_primary)
+         VALUES ($1, $2, $3, $4)`,
+        [
+          sessionId,
+          stakeholderId,
+          validation.definition.stakeholderSelection === 'single' ? 'subject' : 'participant',
+          index === 0
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ message: 'Session relations updated' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ message: error instanceof Error ? error.message : 'Could not update session relations.' });
   } finally {
     client.release();
   }
@@ -924,6 +1639,78 @@ router.get('/:id/findings', async (req: AuthRequest, res) => {
   );
 
   res.json({ findings: rows.rows });
+});
+
+router.patch('/:id/findings/:findingId', async (req: AuthRequest, res) => {
+  const userId = req.user?.sub;
+  const projectId = Number(req.params.id);
+  const findingId = Number(req.params.findingId);
+
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (Number.isNaN(projectId) || Number.isNaN(findingId)) {
+    res.status(400).json({ message: 'Invalid route params' });
+    return;
+  }
+
+  const hasAccess = await hasProjectAccess(projectId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Project not found' });
+    return;
+  }
+
+  const parsed = updateFindingSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: 'Invalid request', errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const existingRows = await pool.query<{ statement: string }>(
+    `SELECT f.statement
+     FROM trace_findings f
+     INNER JOIN trace_sessions s ON s.id = f.session_id
+     WHERE s.project_id = $1
+       AND f.id = $2`,
+    [projectId, findingId]
+  );
+  const existing = existingRows.rows[0];
+  if (!existing) {
+    res.status(404).json({ message: 'Finding not found' });
+    return;
+  }
+
+  const nextStatement = parsed.data.statement?.trim() ?? existing.statement;
+  const result = await pool.query<FindingRow>(
+    `UPDATE trace_findings f
+        SET category = COALESCE($3, f.category),
+            statement = $4,
+            dedupe_key = CASE WHEN $5::boolean THEN $6 ELSE f.dedupe_key END
+       FROM trace_sessions s
+      WHERE s.id = f.session_id
+        AND s.project_id = $1
+        AND f.id = $2
+      RETURNING f.id,
+                f.session_id,
+                f.category,
+                f.statement,
+                f.dedupe_key,
+                f.created_at::text,
+                s.title AS session_title,
+                s.technique AS session_technique,
+                s.occurred_at::text`,
+    [
+      projectId,
+      findingId,
+      parsed.data.category ?? null,
+      nextStatement,
+      parsed.data.statement !== undefined,
+      buildFindingDedupeKey(nextStatement)
+    ]
+  );
+
+  res.json({ finding: result.rows[0] });
 });
 
 router.get('/:id/requirements', async (req: AuthRequest, res) => {
@@ -1077,6 +1864,312 @@ router.post('/:id/requirements', async (req: AuthRequest, res) => {
   } finally {
     client.release();
   }
+});
+
+router.patch('/:id/requirements/:requirementId', async (req: AuthRequest, res) => {
+  const userId = req.user?.sub;
+  const projectId = Number(req.params.id);
+  const requirementId = Number(req.params.requirementId);
+
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (Number.isNaN(projectId) || Number.isNaN(requirementId)) {
+    res.status(400).json({ message: 'Invalid route params' });
+    return;
+  }
+
+  const hasAccess = await hasProjectAccess(projectId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Project not found' });
+    return;
+  }
+
+  const parsed = updateRequirementSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: 'Invalid request', errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const requirementRows = await client.query<{ id: number }>(
+      `SELECT id FROM trace_requirements WHERE project_id = $1 AND id = $2 FOR UPDATE`,
+      [projectId, requirementId]
+    );
+    if (requirementRows.rows.length === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ message: 'Requirement not found' });
+      return;
+    }
+
+    if (parsed.data.finding_ids) {
+      const findingIds = await validateProjectFindingIds(projectId, parsed.data.finding_ids, client);
+      if (!findingIds) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ message: 'All finding_ids must belong to this project' });
+        return;
+      }
+
+      const findingWithoutEvidenceRows = await client.query<{ id: number }>(
+        `SELECT f.id
+         FROM trace_findings f
+         INNER JOIN trace_sessions s ON s.id = f.session_id
+         WHERE s.project_id = $1
+           AND f.id = ANY($2::int[])
+           AND NOT EXISTS (
+             SELECT 1
+             FROM trace_evidences e
+             WHERE e.session_id = s.id
+           )
+         LIMIT 1`,
+        [projectId, findingIds]
+      );
+      if (findingWithoutEvidenceRows.rows.length > 0) {
+        await client.query('ROLLBACK');
+        res.status(400).json({
+          message: 'Requirements can only use findings from sessions with at least one evidence.'
+        });
+        return;
+      }
+
+      await client.query('DELETE FROM trace_requirement_findings WHERE requirement_id = $1', [requirementId]);
+      for (const findingId of findingIds) {
+        await client.query(
+          `INSERT INTO trace_requirement_findings (requirement_id, finding_id)
+           VALUES ($1, $2)
+           ON CONFLICT (requirement_id, finding_id) DO NOTHING`,
+          [requirementId, findingId]
+        );
+      }
+    }
+
+    const updatedRows = await client.query<RequirementRow>(
+      `UPDATE trace_requirements r
+          SET type = COALESCE($3, r.type),
+              priority = COALESCE($4, r.priority),
+              description = COALESCE($5, r.description),
+              acceptance_criteria = COALESCE($6, r.acceptance_criteria)
+        WHERE r.project_id = $1
+          AND r.id = $2
+        RETURNING r.id,
+                  r.project_id,
+                  r.code,
+                  r.type,
+                  r.priority,
+                  r.description,
+                  r.acceptance_criteria,
+                  r.created_at::text,
+                  (SELECT array_agg(rf.finding_id ORDER BY rf.finding_id)
+                   FROM trace_requirement_findings rf
+                   WHERE rf.requirement_id = r.id) AS finding_ids,
+                  (SELECT COUNT(*)::int
+                   FROM trace_requirement_findings rf
+                   WHERE rf.requirement_id = r.id) AS finding_count`,
+      [
+        projectId,
+        requirementId,
+        parsed.data.type ?? null,
+        parsed.data.priority ?? null,
+        parsed.data.description ?? null,
+        parsed.data.acceptance_criteria ?? null
+      ]
+    );
+
+    await client.query('COMMIT');
+    res.json({ requirement: updatedRows.rows[0] });
+  } catch {
+    await client.query('ROLLBACK');
+    res.status(500).json({ message: 'Could not update requirement.' });
+  } finally {
+    client.release();
+  }
+});
+
+router.get('/:id/use-cases', async (req: AuthRequest, res) => {
+  await ensureTraceabilityWorkspaceSchema();
+  const userId = req.user?.sub;
+  const projectId = Number(req.params.id);
+
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (Number.isNaN(projectId)) {
+    res.status(400).json({ message: 'Invalid project id' });
+    return;
+  }
+
+  const hasAccess = await hasProjectAccess(projectId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Project not found' });
+    return;
+  }
+
+  const rows = await pool.query<UseCaseRow>(
+    `SELECT uc.id,
+            uc.project_id,
+            uc.requirement_id,
+            r.code AS requirement_code,
+            uc.title,
+            uc.actor,
+            uc.action,
+            uc.benefit,
+            uc.acceptance_criteria,
+            uc.created_at::text,
+            uc.updated_at::text
+     FROM trace_use_cases uc
+     INNER JOIN trace_requirements r ON r.id = uc.requirement_id
+     WHERE uc.project_id = $1
+     ORDER BY uc.updated_at DESC, uc.id DESC`,
+    [projectId]
+  );
+
+  res.json({ use_cases: rows.rows.map(mapUseCaseRow) });
+});
+
+router.post('/:id/use-cases', async (req: AuthRequest, res) => {
+  await ensureTraceabilityWorkspaceSchema();
+  const userId = req.user?.sub;
+  const projectId = Number(req.params.id);
+
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (Number.isNaN(projectId)) {
+    res.status(400).json({ message: 'Invalid project id' });
+    return;
+  }
+
+  const hasAccess = await hasProjectAccess(projectId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Project not found' });
+    return;
+  }
+
+  const parsed = useCaseSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: 'Invalid request', errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const requirementRows = await pool.query<{ id: number }>(
+    'SELECT id FROM trace_requirements WHERE project_id = $1 AND id = $2',
+    [projectId, parsed.data.requirement_id]
+  );
+  if (requirementRows.rows.length === 0) {
+    res.status(400).json({ message: 'Requirement does not belong to this project' });
+    return;
+  }
+
+  const result = await pool.query<UseCaseRow>(
+    `INSERT INTO trace_use_cases (project_id, requirement_id, title, actor, action, benefit, acceptance_criteria)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (requirement_id)
+     DO UPDATE SET title = EXCLUDED.title,
+                   actor = EXCLUDED.actor,
+                   action = EXCLUDED.action,
+                   benefit = EXCLUDED.benefit,
+                   acceptance_criteria = EXCLUDED.acceptance_criteria,
+                   updated_at = NOW()
+     RETURNING id,
+               project_id,
+               requirement_id,
+               (SELECT code FROM trace_requirements WHERE id = trace_use_cases.requirement_id) AS requirement_code,
+               title,
+               actor,
+               action,
+               benefit,
+               acceptance_criteria,
+               created_at::text,
+               updated_at::text`,
+    [
+      projectId,
+      parsed.data.requirement_id,
+      parsed.data.title,
+      parsed.data.actor,
+      parsed.data.action,
+      parsed.data.benefit,
+      parsed.data.acceptance_criteria ?? null
+    ]
+  );
+
+  res.status(201).json({ use_case: mapUseCaseRow(result.rows[0]) });
+});
+
+router.patch('/:id/use-cases/:useCaseId', async (req: AuthRequest, res) => {
+  await ensureTraceabilityWorkspaceSchema();
+  const userId = req.user?.sub;
+  const projectId = Number(req.params.id);
+  const useCaseId = Number(req.params.useCaseId);
+
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (Number.isNaN(projectId) || Number.isNaN(useCaseId)) {
+    res.status(400).json({ message: 'Invalid route params' });
+    return;
+  }
+
+  const hasAccess = await hasProjectAccess(projectId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Project not found' });
+    return;
+  }
+
+  const parsed = updateUseCaseSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: 'Invalid request', errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const result = await pool.query<UseCaseRow>(
+    `UPDATE trace_use_cases uc
+        SET title = COALESCE($3, uc.title),
+            actor = COALESCE($4, uc.actor),
+            action = COALESCE($5, uc.action),
+            benefit = COALESCE($6, uc.benefit),
+            acceptance_criteria = CASE WHEN $7::boolean THEN $8 ELSE uc.acceptance_criteria END,
+            updated_at = NOW()
+       FROM trace_requirements r
+      WHERE r.id = uc.requirement_id
+        AND r.project_id = $1
+        AND uc.project_id = $1
+        AND uc.id = $2
+      RETURNING uc.id,
+                uc.project_id,
+                uc.requirement_id,
+                r.code AS requirement_code,
+                uc.title,
+                uc.actor,
+                uc.action,
+                uc.benefit,
+                uc.acceptance_criteria,
+                uc.created_at::text,
+                uc.updated_at::text`,
+    [
+      projectId,
+      useCaseId,
+      parsed.data.title ?? null,
+      parsed.data.actor ?? null,
+      parsed.data.action ?? null,
+      parsed.data.benefit ?? null,
+      parsed.data.acceptance_criteria !== undefined,
+      parsed.data.acceptance_criteria ?? null
+    ]
+  );
+
+  if (result.rows.length === 0) {
+    res.status(404).json({ message: 'Use case not found' });
+    return;
+  }
+
+  res.json({ use_case: mapUseCaseRow(result.rows[0]) });
 });
 
 router.get('/:id/traceability', async (req: AuthRequest, res) => {

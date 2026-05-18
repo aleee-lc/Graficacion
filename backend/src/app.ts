@@ -11,6 +11,8 @@ import processesRouter from './routes/processes';
 import rolesRouter from './routes/roles';
 import sessionsRouter from './routes/sessions';
 import subprocessesRouter from './routes/subprocesses';
+import surveysRouter from './routes/surveys';
+import techniqueDefinitionsRouter from './routes/technique-definitions';
 import techniquesRouter from './routes/techniques';
 import usersRouter from './routes/users';
 
@@ -49,6 +51,9 @@ app.use('/processes', processesRouter);
 app.use('/roles', rolesRouter);
 app.use('/sessions', sessionsRouter);
 app.use('/subprocesses', subprocessesRouter);
+app.use('/surveys', surveysRouter);
+app.use('/questionnaires', surveysRouter);
+app.use('/technique-definitions', techniqueDefinitionsRouter);
 app.use('/techniques', techniquesRouter);
 app.use('/users', usersRouter);
 

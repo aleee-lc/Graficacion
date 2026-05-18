@@ -1,0 +1,67 @@
+<div class="space-y-2">
+  <div class="flex items-center justify-between gap-2">
+    <label class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+      {{ label }}
+    </label>
+    <span *ngIf="required" class="text-[11px] text-amber-300">Obligatorio</span>
+  </div>
+
+  <div class="rounded-2xl border border-slate-800 bg-slate-950 p-2">
+    <div *ngIf="selectedOptions().length > 0" class="mb-2 flex flex-wrap gap-2">
+      <button
+        *ngFor="let option of selectedOptions()"
+        type="button"
+        class="inline-flex max-w-full items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-2 py-1 text-left text-xs text-slate-200"
+        [disabled]="disabled"
+        (click)="remove(option)"
+      >
+        <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-blue-500/20 text-[10px] font-bold text-blue-200">
+          {{ initials(option.label) }}
+        </span>
+        <span class="min-w-0 truncate">{{ option.label }}</span>
+        <span class="text-slate-500">x</span>
+      </button>
+    </div>
+
+    <input
+      type="search"
+      class="w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-500"
+      [disabled]="disabled"
+      [placeholder]="placeholder"
+      [value]="query()"
+      (focus)="open.set(true)"
+      (input)="onSearch($any($event.target).value)"
+      (keydown)="onKeydown($event)"
+    />
+
+    <div *ngIf="open()" class="mt-2 max-h-64 overflow-auto rounded-xl border border-slate-800 bg-slate-900 p-1">
+      <div *ngIf="loading()" class="px-3 py-3 text-xs text-slate-400">Buscando...</div>
+
+      <button
+        *ngFor="let option of options(); let index = index"
+        type="button"
+        class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs hover:bg-slate-800"
+        [class.bg-slate-800]="index === activeIndex()"
+        [class.text-blue-200]="isSelected(option)"
+        [class.text-slate-200]="!isSelected(option)"
+        (mousedown)="$event.preventDefault()"
+        (click)="toggleOption(option)"
+      >
+        <span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-700 text-[11px] font-semibold">
+          {{ initials(option.label) }}
+        </span>
+        <span class="min-w-0 flex-1">
+          <span class="block truncate font-semibold">{{ option.label }}</span>
+          <span class="block truncate text-slate-400">{{ option.description || option.meta || option.group }}</span>
+        </span>
+        <span class="rounded-full border border-slate-700 px-2 py-1 text-[10px] text-slate-400">
+          {{ option.group || 'Relacion' }}
+        </span>
+      </button>
+
+      <div *ngIf="!loading() && options().length === 0" class="px-3 py-3 text-xs text-slate-500">
+        Sin resultados para esta busqueda.
+      </div>
+    </div>
+  </div>
+</div>

@@ -464,16 +464,17 @@ router.post('/:id/ai/draft-findings', async (req: AuthRequest, res) => {
         {
           role: 'system',
           content:
-            'Eres analista senior de requisitos. Responde UNICAMENTE JSON valido. Genera hallazgos en ESPANOL, claros, accionables y basados estrictamente en las sesiones y evidencias proporcionadas. No escribas en ingles.'
+            'Eres analista senior de requisitos. Responde UNICAMENTE JSON valido. Sintetiza hallazgos tecnicos en ESPANOL basados estrictamente en las sesiones y evidencias proporcionadas. Cada hallazgo debe ser un borrador revisable, incluir una justificacion implicita en la evidencia y conservar trazabilidad a evidencia. No escribas en ingles.'
         },
         {
           role: 'user',
           content: [
             `Project ID: ${projectId}`,
             `Prompt version: ${parsed.data.prompt_version}`,
-            `Genera hasta ${requestedDrafts} borradores de hallazgo.`,
+            `Sintetiza hasta ${requestedDrafts} borradores de hallazgo tecnico.`,
             'Categorias permitidas: problem, need, constraint.',
             'Cada statement debe estar en ESPANOL, ser claro, verificable y tener minimo 20 caracteres y 4 palabras.',
+            'No inventes necesidades fuera del contexto. Resume la evidencia como una conclusion tecnica accionable.',
             'Formato JSON obligatorio:',
             '{"drafts":[{"session_id":number,"source_evidence_ids":[number],"category":"problem|need|constraint","statement":"string","confidence":0..1}]}',
             'Usa solamente session_id y evidence ids que existan en el contexto.',
@@ -649,19 +650,20 @@ router.post('/:id/ai/draft-requirements', async (req: AuthRequest, res) => {
         {
           role: 'system',
           content:
-            'Eres analista senior de sistemas. Responde UNICAMENTE JSON valido. Genera requisitos en ESPANOL a partir de los hallazgos proporcionados. No escribas en ingles.'
+            'Eres analista senior de sistemas. Responde UNICAMENTE JSON valido. Sintetiza requisitos tecnicos verificables en ESPANOL a partir de los hallazgos proporcionados. Los resultados son borradores revisables para que un ingeniero los corrija y valide. No escribas en ingles.'
         },
         {
           role: 'user',
           content: [
             `Project ID: ${projectId}`,
             `Prompt version: ${parsed.data.prompt_version}`,
-            `Genera hasta ${requestedDrafts} borradores de requisito.`,
+            `Sintetiza hasta ${requestedDrafts} borradores de requisito verificable.`,
             'Cada borrador debe mapearse a uno o mas finding_ids permitidos.',
             `Allowed finding_ids: [${requestedFindingIds.join(', ')}]`,
             'Formato JSON obligatorio:',
             '{"drafts":[{"type":"functional|non_functional","priority":"low|medium|high|critical","description":"string","acceptance_criteria":"string","finding_ids":[number],"confidence":0..1}]}',
-            'description y acceptance_criteria deben estar en ESPANOL, ser claros y verificables.',
+            'description y acceptance_criteria deben estar en ESPANOL, ser claros, verificables y explicitamente trazables a los hallazgos seleccionados.',
+            'No reemplaces documentacion validada ni inventes alcance no sustentado por hallazgos.',
             'Contexto:',
             promptContext
           ].join('\n\n')

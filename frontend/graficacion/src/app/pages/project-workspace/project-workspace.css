@@ -28,14 +28,11 @@
 }
 
 .brand-icon {
-  display: grid;
   height: 40px;
   width: 40px;
-  place-items: center;
   border-radius: 12px;
-  background: #2563eb;
-  color: #ffffff;
-  font-weight: 900;
+  object-fit: cover;
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.26);
 }
 
 .brand-title {
@@ -628,6 +625,51 @@
   opacity: 0.55;
 }
 
+.handoff-panel,
+.diagram-design-board {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.handoff-panel article,
+.diagram-design-board article {
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.86);
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.handoff-panel .material-icons,
+.diagram-design-board .material-icons {
+  border-radius: 14px;
+  background: rgba(37, 99, 235, 0.16);
+  color: #93c5fd;
+  font-size: 22px;
+  padding: 10px;
+}
+
+.handoff-panel strong,
+.diagram-design-board strong {
+  color: #f8fafc;
+  display: block;
+  font-size: 13px;
+}
+
+.handoff-panel p,
+.diagram-design-board p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
 .empty-state {
   display: grid;
   justify-items: center;
@@ -658,6 +700,105 @@
 
 .data-card {
   padding: 20px;
+}
+
+.document-card {
+  position: relative;
+}
+
+.document-card > .inline-actions:first-child {
+  float: right;
+  margin: 0 0 10px 12px;
+}
+
+.session-section {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.session-section-header {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.68);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.session-section-header h3 {
+  color: #f8fafc;
+  font-size: 15px;
+  margin: 0 0 3px;
+}
+
+.session-section-header small,
+.empty-inline {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.session-section-header span {
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 999px;
+  color: #bfdbfe;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+
+.empty-inline {
+  border: 1px dashed #334155;
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.session-controls {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.session-controls label,
+.inline-editor label {
+  color: #cbd5e1;
+  display: grid;
+  font-size: 12px;
+  gap: 6px;
+}
+
+.session-controls select,
+.inline-editor input,
+.inline-editor textarea,
+.inline-editor select {
+  border: 1px solid #334155;
+  border-radius: 12px;
+  background: #020617;
+  color: #e5e7eb;
+  font: inherit;
+  min-height: 40px;
+  padding: 9px 11px;
+  width: 100%;
+}
+
+.inline-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.inline-editor textarea {
+  resize: vertical;
+}
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .data-card.bordered {
@@ -753,6 +894,128 @@
   color: #a7f3d0;
 }
 
+.project-files-panel,
+.saved-diagram-panel {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.78);
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.artifact-file-list {
+  display: grid;
+  gap: 8px;
+  max-height: 620px;
+  overflow: auto;
+}
+
+.artifact-file-list button {
+  align-items: center;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  background: #020617;
+  color: #cbd5e1;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 28px minmax(0, 1fr);
+  min-height: 58px;
+  padding: 10px;
+  text-align: left;
+}
+
+.artifact-file-list button.active {
+  border-color: rgba(59, 130, 246, 0.55);
+  background: rgba(37, 99, 235, 0.16);
+}
+
+.artifact-file-list b,
+.saved-diagram-list strong {
+  color: #f8fafc;
+  display: block;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.artifact-file-list small,
+.saved-diagram-list small {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.project-file-manager {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(240px, 330px) minmax(0, 1fr);
+}
+
+.project-file-preview {
+  border: 1px solid #1e293b;
+  border-radius: 16px;
+  background: #020617;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.file-editor-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.file-editor-grid label {
+  color: #cbd5e1;
+  display: grid;
+  font-size: 12px;
+  gap: 6px;
+}
+
+.file-editor-grid input {
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #e5e7eb;
+  min-height: 36px;
+  padding: 7px 9px;
+}
+
+.project-file-editor {
+  border: 1px solid #334155;
+  border-radius: 14px;
+  background: #030712;
+  color: #dbeafe;
+  font: 12px/1.55 "Cascadia Code", Consolas, monospace;
+  min-height: 430px;
+  padding: 14px;
+  resize: vertical;
+  white-space: pre;
+  width: 100%;
+}
+
+.file-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.file-action-row button {
+  border: 1px solid #334155;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
 .modeling-shell {
   display: grid;
   gap: 14px;
@@ -760,18 +1023,32 @@
 
 .diagram-toolbar {
   border: 1px solid var(--line);
-  border-radius: 18px;
-  background: rgba(15, 23, 42, 0.86);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.9);
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px;
+  gap: 10px;
+  padding: 8px;
+}
+
+.toolbar-group {
+  align-items: center;
+  border-right: 1px solid rgba(51, 65, 85, 0.7);
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-right: 10px;
+}
+
+.toolbar-group:last-child {
+  border-right: 0;
+  padding-right: 0;
 }
 
 .diagram-toolbar button {
   align-items: center;
   border: 1px solid #1e293b;
-  border-radius: 999px;
+  border-radius: 8px;
   background: #020617;
   color: #cbd5e1;
   cursor: pointer;
@@ -781,6 +1058,12 @@
   gap: 6px;
   min-height: 34px;
   padding: 0 11px;
+}
+
+.shape-palette button {
+  justify-content: center;
+  padding: 0;
+  width: 36px;
 }
 
 .diagram-toolbar button.active {
@@ -796,13 +1079,13 @@
 .diagram-workbench {
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-columns: minmax(0, 1fr) 280px;
 }
 
 .diagram-canvas,
 .diagram-properties {
   border: 1px solid var(--line);
-  border-radius: 22px;
+  border-radius: 12px;
   background: rgba(15, 23, 42, 0.86);
 }
 
@@ -813,10 +1096,12 @@
 
 .diagram-canvas svg {
   background:
-    linear-gradient(rgba(30, 41, 59, 0.32) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(30, 41, 59, 0.32) 1px, transparent 1px),
+    linear-gradient(rgba(51, 65, 85, 0.28) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(51, 65, 85, 0.28) 1px, transparent 1px),
+    linear-gradient(rgba(30, 41, 59, 0.2) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 41, 59, 0.2) 1px, transparent 1px),
     #020617;
-  background-size: 32px 32px;
+  background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
   height: 100%;
   min-height: 520px;
   width: 100%;
@@ -834,6 +1119,16 @@
   stroke-width: 3;
 }
 
+.diagram-edge.edge-include line,
+.diagram-edge.edge-extend line,
+.diagram-edge.edge-dependency line {
+  stroke-dasharray: 8 6;
+}
+
+.diagram-edge.edge-inheritance line {
+  stroke-width: 3;
+}
+
 .diagram-edge path,
 .diagram-canvas marker path {
   fill: #64748b;
@@ -847,6 +1142,11 @@
 
 .diagram-node {
   cursor: grab;
+}
+
+.diagram-node.connecting rect,
+.diagram-node.connecting ellipse {
+  stroke: #fbbf24;
 }
 
 .diagram-node rect,
@@ -883,6 +1183,42 @@
   fill: #64748b;
   font-size: 9px;
   text-transform: uppercase;
+}
+
+.diagram-node-controls {
+  pointer-events: all;
+}
+
+.connection-port {
+  cursor: crosshair;
+  fill: #38bdf8;
+  opacity: 0.92;
+  stroke: #020617;
+  stroke-width: 2;
+}
+
+.connection-port:hover {
+  fill: #fbbf24;
+}
+
+.resize-handle {
+  cursor: nwse-resize;
+  fill: #f8fafc;
+  stroke: #2563eb;
+  stroke-width: 2;
+}
+
+.resize-handle[data-handle="ne"],
+.resize-handle[data-handle="sw"] {
+  cursor: nesw-resize;
+}
+
+.resize-handle[data-handle="e"] {
+  cursor: ew-resize;
+}
+
+.resize-handle[data-handle="s"] {
+  cursor: ns-resize;
 }
 
 .node-actor rect {
@@ -950,13 +1286,20 @@
   gap: 7px;
 }
 
-.diagram-properties input {
+.diagram-properties input,
+.diagram-properties select {
   border: 1px solid #334155;
   border-radius: 12px;
   background: #020617;
   color: #e5e7eb;
   min-height: 38px;
   padding: 8px 10px;
+}
+
+.property-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .diagram-properties p,
@@ -970,9 +1313,52 @@
   max-height: 420px;
 }
 
+.saved-diagram-list {
+  display: grid;
+  gap: 8px;
+}
+
+.saved-diagram-list article {
+  align-items: center;
+  border: 1px solid #1e293b;
+  border-radius: 14px;
+  background: #020617;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 10px;
+}
+
+.saved-diagram-list article.active {
+  border-color: rgba(59, 130, 246, 0.55);
+  background: rgba(37, 99, 235, 0.14);
+}
+
+.saved-diagram-list article > div:last-child {
+  display: flex;
+  gap: 6px;
+}
+
+.saved-diagram-list button {
+  border: 1px solid #334155;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  min-height: 30px;
+  padding: 0 10px;
+}
+
 .pick-list {
   display: grid;
   gap: 8px;
+}
+
+.pick-list.compact {
+  max-height: 220px;
+  overflow: auto;
 }
 
 .pick-list button {
@@ -989,6 +1375,53 @@
   border-color: #3b82f6;
   background: rgba(37, 99, 235, 0.18);
   color: #bfdbfe;
+}
+
+.survey-builder,
+.question-builder {
+  display: grid;
+  gap: 12px;
+}
+
+.ai-question-box {
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 16px;
+  background: rgba(37, 99, 235, 0.1);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1fr) auto;
+  padding: 14px;
+}
+
+.ai-question-box strong {
+  color: #f8fafc;
+  display: block;
+  font-size: 13px;
+}
+
+.ai-question-box span {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.question-builder {
+  border: 1px solid #1e293b;
+  border-radius: 16px;
+  background: #020617;
+  padding: 14px;
+}
+
+.secondary-action {
+  border: 1px solid #334155;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #bfdbfe;
+  cursor: pointer;
+  font-weight: 800;
+  min-height: 36px;
+  padding: 0 13px;
 }
 
 .trace-card {
@@ -1199,8 +1632,15 @@
   .form-grid.two,
   .module-cards,
   .card-grid,
+  .handoff-panel,
+  .agent-profile-grid,
+  .diagram-design-board,
   .trace-chain,
+  .project-file-manager,
+  .file-editor-grid,
+  .ai-question-box,
   .diagram-workbench {
     grid-template-columns: 1fr;
   }
+
 }

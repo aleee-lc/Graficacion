@@ -19,7 +19,7 @@ export class App {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly isLanding = signal(this.isLandingUrl(this.router.url));
-  protected readonly title = signal('graficacion');
+  protected readonly title = signal('specora');
 
   constructor() {
     this.router.events
