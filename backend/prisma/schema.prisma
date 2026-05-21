@@ -78,12 +78,26 @@ model Project {
   startDate           DateTime?             @map("start_date") @db.Date
   endDate             DateTime?             @map("end_date") @db.Date
   classes             classes[]
+  implementationInputs ProjectImplementationInputs?
   processes           processes[]
   projectUsers        ProjectUser[]
   requirements        requirements[]
   technique_evidences technique_evidences[]
 
   @@map("projects")
+}
+
+model ProjectImplementationInputs {
+  projectId                Int      @id @map("project_id")
+  targetStack              Json     @default("{}") @map("target_stack")
+  implementationContracts  Json     @default("[]") @map("implementation_contracts")
+  dataEntities             Json     @default("[]") @map("data_entities")
+  targetRoles              Json     @default("[]") @map("target_roles")
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  project                  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("project_implementation_inputs")
 }
 
 model ProjectUser {

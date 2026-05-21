@@ -83,6 +83,38 @@ export class ProjectsService {
     });
   }
 
+  removeProjectUser(projectId: number, userId: number) {
+    return this.http.delete<{ message: string }>(`${API_BASE_URL}/projects/${projectId}/users/${userId}`);
+  }
+
+  getProjectImplementationInputs(projectId: number) {
+    return this.http.get<{
+      targetStack: Record<string, unknown>;
+      implementationContracts: Array<Record<string, unknown>>;
+      dataEntities: Array<Record<string, unknown>>;
+      targetRoles: Array<Record<string, unknown>>;
+      updatedAt: string | null;
+    }>(`${API_BASE_URL}/projects/${projectId}/implementation-inputs`);
+  }
+
+  saveProjectImplementationInputs(
+    projectId: number,
+    payload: {
+      targetStack: Record<string, unknown>;
+      implementationContracts: Array<Record<string, unknown>>;
+      dataEntities: Array<Record<string, unknown>>;
+      targetRoles: Array<Record<string, unknown>>;
+    }
+  ) {
+    return this.http.put<{
+      targetStack: Record<string, unknown>;
+      implementationContracts: Array<Record<string, unknown>>;
+      dataEntities: Array<Record<string, unknown>>;
+      targetRoles: Array<Record<string, unknown>>;
+      updatedAt: string | null;
+    }>(`${API_BASE_URL}/projects/${projectId}/implementation-inputs`, payload);
+  }
+
   createProject(payload: CreateProjectPayload) {
     return this.http.post<{ id: number }>(`${API_BASE_URL}/projects`, payload);
   }

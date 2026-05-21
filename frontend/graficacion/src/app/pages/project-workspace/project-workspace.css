@@ -453,6 +453,14 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.form-grid.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.form-grid.five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .primary-action {
   border: 0;
   border-radius: 999px;
@@ -1145,15 +1153,25 @@
 }
 
 .diagram-node.connecting rect,
-.diagram-node.connecting ellipse {
+.diagram-node.connecting ellipse,
+.diagram-node.connecting polygon,
+.diagram-node.connecting path {
   stroke: #fbbf24;
 }
 
 .diagram-node rect,
-.diagram-node ellipse {
-  fill: #0f172a;
-  stroke: #334155;
+.diagram-node ellipse,
+.diagram-node polygon,
+.diagram-node path {
+  fill: var(--node-fill, #0f172a);
+  stroke: var(--node-stroke, #334155);
   stroke-width: 2;
+}
+
+.diagram-node .hidden-shape {
+  fill: transparent;
+  stroke: transparent;
+  pointer-events: none;
 }
 
 .diagram-node .package-tab {
@@ -1167,13 +1185,15 @@
 }
 
 .diagram-node.selected rect,
-.diagram-node.selected ellipse {
+.diagram-node.selected ellipse,
+.diagram-node.selected polygon,
+.diagram-node.selected path {
   filter: drop-shadow(0 0 16px rgba(59, 130, 246, 0.34));
   stroke: #60a5fa;
 }
 
 .diagram-node text {
-  fill: #e5e7eb;
+  fill: var(--node-text, #e5e7eb);
   font-size: 12px;
   font-weight: 850;
   pointer-events: none;
@@ -1629,6 +1649,8 @@
 
   .stats-grid,
   .form-grid.three,
+  .form-grid.four,
+  .form-grid.five,
   .form-grid.two,
   .module-cards,
   .card-grid,
@@ -1643,4 +1665,778 @@
     grid-template-columns: 1fr;
   }
 
+}
+
+/* Industrial Minimalism layer
+   Keeps existing workspace behavior while aligning surfaces, borders and density
+   with the Specora Industrial Logic design spec. */
+.workspace-page {
+  background: var(--surface);
+  color: var(--on-surface);
+  --muted: #565e74;
+  --line: #e2e8f0;
+}
+
+.workspace-topbar {
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom-color: var(--line);
+  padding: 10px 24px;
+}
+
+.brand-icon {
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+
+.brand-title,
+.module-heading h2,
+.overview-main h3,
+.data-card h3,
+.workspace-form h3,
+.spec-section strong,
+.risk-item strong,
+.session-section-header h3,
+.drawer-header h2 {
+  color: var(--on-surface);
+}
+
+.brand-subtitle,
+.project-command p,
+.overview-main p,
+.data-card p,
+.data-card small,
+.empty-state small,
+.session-section-header small,
+.empty-inline,
+.spec-section span,
+.risk-item span,
+.drawer-body small,
+.agent-profile-grid span,
+.agent-profile-grid small {
+  color: var(--muted);
+}
+
+.workspace-main {
+  max-width: 1280px;
+  padding: 24px 24px 56px;
+}
+
+.back-link,
+.next-action,
+.primary-action,
+.secondary-action,
+.module-link,
+.trace-tabs button,
+.draft-actions button,
+.risk-item button,
+.generate-diagram-actions button {
+  border-radius: var(--radius);
+  min-height: 34px;
+}
+
+.next-action,
+.primary-action,
+.generate-diagram-actions button {
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: none;
+}
+
+.secondary-action,
+.back-link,
+.risk-item button,
+.draft-actions button,
+.generate-diagram-actions button + button {
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--on-surface);
+}
+
+.project-command {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  color: var(--on-surface);
+  grid-template-columns: minmax(0, 1fr) 190px;
+  padding: 20px;
+}
+
+.project-command h1 {
+  color: var(--on-surface);
+  font-size: clamp(22px, 3vw, 28px);
+  letter-spacing: -0.02em;
+}
+
+.health-card,
+.overview-main,
+.data-card,
+.workspace-form,
+.empty-state,
+.module-sidebar,
+.module-action-bar,
+.mini-module-card,
+.stat-card,
+.handoff-panel article,
+.spec-section,
+.story-box,
+.session-section-header,
+.trace-matrix,
+.risk-item,
+.ai-question-box,
+.drawer-close,
+.agent-profile-grid button {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.health-card span,
+.stat-card strong {
+  color: var(--on-surface);
+}
+
+.module-sidebar {
+  padding: 8px;
+  top: 72px;
+}
+
+.nav-group + .nav-group {
+  border-top-color: var(--line);
+}
+
+.nav-group p,
+.hero-kicker,
+.eyebrow,
+.card-topline {
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.module-link {
+  color: var(--on-surface-variant);
+  border-radius: var(--radius);
+  padding: 9px 10px;
+}
+
+.module-link:hover {
+  background: var(--surface-container-low);
+}
+
+.module-link.active {
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+  outline: 0;
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+
+.module-content,
+.workspace-grid {
+  gap: 16px;
+}
+
+.workspace-form label,
+.session-controls label,
+.inline-editor label {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.workspace-form input,
+.workspace-form textarea,
+.workspace-form select,
+.session-controls select,
+.inline-editor input,
+.inline-editor textarea,
+.inline-editor select,
+.file-import-label,
+.diagram-title-input {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--on-surface);
+  min-height: 36px;
+}
+
+.workspace-form input:focus,
+.workspace-form textarea:focus,
+.workspace-form select:focus,
+.session-controls select:focus,
+.inline-editor input:focus,
+.inline-editor textarea:focus,
+.inline-editor select:focus {
+  border-color: var(--outline);
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.08);
+  outline: 0;
+}
+
+.matrix-head {
+  background: var(--surface-container-low);
+  color: var(--muted);
+}
+
+.matrix-row {
+  border-top-color: var(--line);
+  color: var(--on-surface-variant);
+}
+
+.trace-tabs {
+  border: 1px solid var(--line);
+  background: var(--surface-container-low);
+}
+
+.trace-tabs button {
+  color: var(--muted);
+}
+
+.trace-tabs button.active {
+  background: #ffffff;
+  color: var(--on-surface);
+}
+
+.health-chip {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.health-chip[data-status="complete"] {
+  border-color: #bbf7d0;
+  color: #047857;
+}
+
+.health-chip[data-status^="missing"] {
+  border-color: #fde68a;
+  color: #b45309;
+}
+
+.alert {
+  border-radius: var(--radius);
+}
+
+.alert-error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.alert-success {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #047857;
+}
+
+.documentation-drawer {
+  border-left-color: var(--line);
+  background: #ffffff;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.08);
+  color: var(--on-surface);
+}
+
+.drawer-header,
+.drawer-actions {
+  border-color: var(--line);
+}
+
+.drawer-close {
+  color: var(--on-surface);
+}
+
+/* Diagram workbench redesign */
+.modeling-shell {
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.diagram-workbench-topbar {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  min-height: 56px;
+  padding: 10px 14px 10px 16px;
+}
+
+.diagram-workbench-topbar h3 {
+  color: var(--on-surface);
+  font-size: 15px;
+  line-height: 20px;
+  margin: 2px 0 0;
+}
+
+.diagram-breadcrumb,
+.diagram-status-strip span,
+.diagram-shape-library small,
+.diagram-trace-mini span,
+.selected-element-card small,
+.selected-element-card span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.diagram-status-strip {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.diagram-status-strip span {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-container-low);
+  padding: 4px 7px;
+  text-transform: none;
+}
+
+.diagram-top-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.diagram-top-actions button {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--on-surface);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 650;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.diagram-top-actions button:last-child {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+.diagram-top-actions .material-icons {
+  font-size: 15px;
+}
+
+.diagram-toolbar {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--surface-container-lowest);
+  gap: 0;
+  min-height: 42px;
+  padding: 6px 16px;
+}
+
+.toolbar-group {
+  border-right: 1px solid var(--line);
+  gap: 4px;
+  padding: 0 10px;
+}
+
+.toolbar-group:first-child {
+  padding-left: 0;
+}
+
+.diagram-toolbar button,
+.shape-palette button {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-weight: 600;
+  min-height: 30px;
+}
+
+.diagram-toolbar button:hover {
+  border-color: var(--line);
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+}
+
+.diagram-toolbar button.active {
+  border-color: var(--line);
+  background: var(--surface-container);
+  color: var(--on-surface);
+}
+
+.diagram-workbench {
+  display: grid;
+  gap: 0;
+  grid-template-columns: 238px minmax(0, 1fr) 300px;
+  min-height: 620px;
+}
+
+.diagram-shape-library,
+.diagram-properties {
+  border: 0;
+  border-radius: 0;
+  background: #ffffff;
+}
+
+.diagram-shape-library {
+  border-right: 1px solid var(--line);
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 12px 16px 16px;
+}
+
+.library-search {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.library-search strong {
+  color: var(--on-surface);
+  font-size: 13px;
+}
+
+.library-search .material-icons {
+  color: var(--muted);
+  font-size: 17px;
+}
+
+.diagram-shape-library section {
+  display: grid;
+  gap: 8px;
+}
+
+.shape-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.shape-grid button {
+  align-content: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--on-surface);
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  min-height: 68px;
+  padding: 8px;
+  text-align: center;
+}
+
+.shape-grid button:hover {
+  background: var(--surface-container-low);
+  border-color: var(--outline-variant);
+}
+
+.shape-grid .material-icons {
+  color: var(--on-surface-variant);
+  font-size: 20px;
+  margin: 0 auto;
+}
+
+.shape-grid b {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.diagram-trace-mini {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 6px 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-top: 10px;
+}
+
+.diagram-trace-mini strong {
+  color: var(--on-surface);
+  font-size: 12px;
+}
+
+.diagram-canvas {
+  border: 0;
+  border-radius: 0;
+  background: #f8fafc;
+  min-height: 620px;
+  overflow: auto;
+}
+
+.diagram-canvas svg {
+  background:
+    radial-gradient(circle, #cbd5e1 1px, transparent 1.3px),
+    #f8fafc;
+  background-size: 20px 20px;
+  min-height: 620px;
+}
+
+.diagram-edge line {
+  stroke: #0f172a;
+  stroke-width: 2;
+}
+
+.diagram-edge.selected line {
+  stroke: #2563eb;
+  stroke-width: 3;
+}
+
+.diagram-edge path,
+.diagram-canvas marker path {
+  fill: #0f172a;
+}
+
+.diagram-edge text {
+  fill: var(--on-surface);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.diagram-node rect,
+.diagram-node ellipse,
+.diagram-node polygon,
+.diagram-node path {
+  fill: var(--node-fill, #ffffff);
+  stroke: var(--node-stroke, #0f172a);
+  stroke-width: 1.5;
+}
+
+.diagram-node.selected rect,
+.diagram-node.selected ellipse,
+.diagram-node.selected polygon,
+.diagram-node.selected path {
+  filter: none;
+  stroke: #2563eb;
+  stroke-width: 2;
+}
+
+.diagram-node.connecting rect,
+.diagram-node.connecting ellipse,
+.diagram-node.connecting polygon,
+.diagram-node.connecting path {
+  stroke: var(--warning);
+}
+
+.diagram-node text {
+  fill: var(--node-text, var(--on-surface));
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.diagram-node .node-type {
+  fill: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.03em;
+}
+
+.node-actor rect,
+.node-use_case ellipse,
+.node-requirement rect,
+.node-spec rect,
+.node-package rect,
+.node-component rect,
+.node-class rect,
+.node-lifeline rect,
+.node-boundary rect {
+  fill: var(--node-fill, #ffffff);
+  stroke: var(--node-stroke, #0f172a);
+}
+
+.node-note rect {
+  fill: var(--node-fill, #fff7ed);
+  stroke: var(--node-stroke, #fed7aa);
+}
+
+.node-requirement rect {
+  fill: var(--node-fill, #fffbeb);
+  stroke: var(--node-stroke, #f59e0b);
+}
+
+.node-spec rect {
+  fill: var(--node-fill, #ecfdf5);
+  stroke: var(--node-stroke, #10b981);
+}
+
+.node-use_case ellipse {
+  fill: var(--node-fill, #eff6ff);
+  stroke: var(--node-stroke, #2563eb);
+}
+
+.node-class rect,
+.node-package rect,
+.node-component rect {
+  fill: var(--node-fill, #f8fafc);
+}
+
+.diagram-node .package-tab {
+  fill: #e2e8f0;
+}
+
+.diagram-node .lifeline-stem {
+  stroke: #64748b;
+}
+
+.connection-port {
+  fill: #ffffff;
+  stroke: #2563eb;
+}
+
+.resize-handle {
+  fill: #ffffff;
+  stroke: #2563eb;
+}
+
+.diagram-properties {
+  border-left: 1px solid var(--line);
+  padding: 16px;
+}
+
+.diagram-properties-header {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 8px;
+  margin: -16px -16px 14px;
+  min-height: 42px;
+  padding: 0 16px;
+}
+
+.diagram-properties-header .material-icons {
+  color: var(--muted);
+  font-size: 17px;
+}
+
+.diagram-properties-header strong,
+.diagram-properties h3 {
+  color: var(--on-surface);
+  font-size: 13px;
+  margin: 0;
+}
+
+.diagram-properties label {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.diagram-properties input,
+.diagram-properties select {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--on-surface);
+  min-height: 34px;
+}
+
+.selected-element-card,
+.linked-requirement-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-container-low);
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.selected-element-card strong {
+  color: var(--on-surface);
+  font-size: 13px;
+}
+
+.linked-requirement-card {
+  align-items: start;
+  grid-template-columns: 18px minmax(0, 1fr);
+}
+
+.linked-requirement-card .material-icons {
+  color: var(--secondary);
+  font-size: 17px;
+}
+
+.linked-requirement-card strong {
+  color: var(--on-surface);
+  display: block;
+  font-size: 12px;
+}
+
+.linked-requirement-card small {
+  color: var(--muted);
+  display: -webkit-box;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.saved-diagram-panel {
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: #ffffff;
+  padding: 14px 16px;
+}
+
+.saved-diagram-list {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.saved-diagram-list article {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.saved-diagram-list article.active {
+  border-color: #0f172a;
+  background: var(--surface-container-low);
+}
+
+.saved-diagram-list strong {
+  color: var(--on-surface);
+}
+
+.saved-diagram-list button {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--on-surface);
+}
+
+@media (max-width: 1180px) {
+  .diagram-workbench {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+
+  .diagram-properties {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 820px) {
+  .diagram-workbench-topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .diagram-status-strip,
+  .diagram-top-actions {
+    justify-content: flex-start;
+  }
+
+  .diagram-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .diagram-shape-library {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
 }

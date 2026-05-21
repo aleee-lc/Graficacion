@@ -171,11 +171,16 @@
             <div class="generate-diagram-actions">
               <button type="button" (click)="addProjectTextFile()">Nuevo archivo</button>
               <button type="button" (click)="projectFolderInput.click()">Importar</button>
+              <button type="button" (click)="projectFolderInput.click()">Importar diseño Stitch (.md)</button>
               <button type="button" (click)="downloadProjectBundleJson()">JSON</button>
               <button type="button" (click)="exportImplementationSpecsZip()">Exportar specs implementables</button>
               <button type="button" (click)="exportProjectZip()">Descargar ZIP</button>
-              <input #projectFolderInput type="file" multiple accept=".zip,.json,.md,.txt,.mmd,.drawio-lite,.png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" hidden (change)="importProjectFolderFile($event)" />
+              <input #projectFolderInput type="file" multiple accept=".zip,.json,.md,.markdown,.txt,.mmd,.drawio-lite,.png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" hidden (change)="importProjectFolderFile($event)" />
             </div>
+          </div>
+
+          <div class="inline-warning" *ngIf="designInputFiles().length > 0">
+            {{ designInputFiles().length }} archivo(s) de diseño importado(s) alimentarán `07_DESIGN.md` al exportar specs implementables.
           </div>
 
           <div class="project-files-panel">
@@ -257,6 +262,80 @@
             </div>
             <button class="primary-action" type="submit" [disabled]="saving()">Guardar Contexto</button>
           </form>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'techTeam'">
+          <div class="module-action-bar">
+            <div>
+              <strong>Equipo Tecnico del Proyecto</strong>
+              <span>Asigna usuarios tecnicos registrados para que participen en tareas, entrevistas y seguimiento.</span>
+            </div>
+          </div>
+
+          <div *ngIf="techMembers().length === 0" class="empty-state">
+            <span class="material-icons">engineering</span>
+            <p>No hay usuarios tecnicos asignados</p>
+            <small>Busca y asigna tecnicos registrados para que trabajen en el proyecto.</small>
+          </div>
+
+          <div class="card-grid" *ngIf="techMembers().length > 0">
+            <article *ngFor="let member of techMembers()" class="data-card bordered">
+              <div class="avatar">{{ member.name.charAt(0) }}</div>
+              <div>
+                <h3>{{ member.name }}</h3>
+                <p>{{ member.email }}</p>
+                <small>{{ member.mobile || 'Sin contacto' }}</small>
+              </div>
+              <div class="inline-actions">
+                <button type="button" class="secondary-action" (click)="removeTechMember(member.id)" [disabled]="saving()">
+                  Remover
+                </button>
+              </div>
+            </article>
+          </div>
+
+          <div class="workspace-form" style="margin-top: 2rem;">
+            <h3>Asignar Tecnico Existente</h3>
+            <div class="form-grid two">
+              <label>Buscar por nombre o correo
+                <input
+                  type="text"
+                  [value]="techSearchQuery()"
+                  (input)="setTechSearchQuery($any($event.target).value)"
+                  placeholder="Ej: Juan Perez, juan@example.com"
+                />
+              </label>
+              <label></label>
+            </div>
+            <button type="button" class="primary-action" [disabled]="saving()" (click)="searchTechUsers()">
+              Buscar Tecnicos
+            </button>
+
+            <div *ngIf="techSearchResults().length > 0" class="card-grid" style="margin-top: 1.5rem;">
+              <article *ngFor="let user of techSearchResults()" class="data-card bordered">
+                <div class="avatar">{{ user.name.charAt(0) }}</div>
+                <div>
+                  <h3>{{ user.name }}</h3>
+                  <p class="text-sm text-slate-400">{{ user.email }}</p>
+                  <small>{{ user.mobile || 'Sin contacto' }}</small>
+                </div>
+                <button
+                  type="button"
+                  class="secondary-action"
+                  (click)="assignTechMember(user.id)"
+                  [disabled]="saving() || isTechMemberAlreadyAssigned(user.id)"
+                >
+                  {{ isTechMemberAlreadyAssigned(user.id) ? 'Asignado' : 'Asignar' }}
+                </button>
+              </article>
+            </div>
+
+            <div *ngIf="techSearchQuery() && techSearchResults().length === 0" class="empty-state">
+              <span class="material-icons">search</span>
+              <p>Sin resultados</p>
+              <small>No se encontraron tecnicos con esos criterios de busqueda.</small>
+            </div>
+          </div>
         </ng-container>
 
         <ng-container *ngIf="activeModule() === 'stakeholders'">
@@ -348,6 +427,54 @@
               </button>
             </div>
           </article>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'targetStack'">
+          <div class="module-action-bar">
+            <div>
+              <strong>Stack objetivo</strong>
+              <span>Define el stack del sistema que se va a implementar. Specora conserva su stack actual.</span>
+            </div>
+          </div>
+          <form class="workspace-form" [formGroup]="targetStackForm" (ngSubmit)="saveTargetStack()">
+            <h3>Arquitectura objetivo</h3>
+            <div class="form-grid three">
+              <label>Tipo de arquitectura *
+                <select formControlName="architectureType">
+                  <option>SPA + API REST</option>
+                  <option>REST API</option>
+                  <option>Monolito</option>
+                  <option>Fullstack separado</option>
+                  <option>API-first</option>
+                </select>
+              </label>
+              <label>Modo de ejecucion<input formControlName="runMode" /></label>
+              <label>Seed admin<input formControlName="seedAdmin" /></label>
+            </div>
+            <div class="form-grid four">
+              <label>Backend framework *<input formControlName="backendFramework" /></label>
+              <label>Lenguaje backend *<input formControlName="backendLanguage" /></label>
+              <label>ORM<input formControlName="backendOrm" /></label>
+              <label>Base de datos *<input formControlName="backendDatabase" /></label>
+              <label>Migraciones<input formControlName="backendMigrations" /></label>
+              <label>Auth<input formControlName="backendAuth" /></label>
+              <label>Testing backend<input formControlName="backendTesting" /></label>
+            </div>
+            <div class="form-grid four">
+              <label>Frontend framework *<input formControlName="frontendFramework" /></label>
+              <label>Lenguaje frontend *<input formControlName="frontendLanguage" /></label>
+              <label>UI library<input formControlName="frontendUi" /></label>
+              <label>Routing<input formControlName="frontendRouting" /></label>
+              <label>Data fetching<input formControlName="frontendDataFetching" /></label>
+              <label>State management<input formControlName="frontendState" /></label>
+              <label>Testing frontend<input formControlName="frontendTesting" /></label>
+            </div>
+            <div class="form-grid two">
+              <label>Variables de entorno<textarea formControlName="envVars" rows="4"></textarea></label>
+              <label>Comandos esperados<textarea formControlName="commands" rows="4"></textarea></label>
+            </div>
+            <button class="primary-action" type="submit">Guardar stack objetivo</button>
+          </form>
         </ng-container>
 
         <ng-container *ngIf="activeModule() === 'techniques'">
@@ -997,6 +1124,156 @@
           </div>
         </ng-container>
 
+        <ng-container *ngIf="activeModule() === 'technicalContracts'">
+          <div class="module-action-bar">
+            <div>
+              <strong>Contratos tecnicos</strong>
+              <span>Convierte requisitos en endpoints, payloads, reglas, errores y pruebas verificables.</span>
+            </div>
+          </div>
+          <form class="workspace-form" [formGroup]="contractForm" (ngSubmit)="saveImplementationContract()">
+            <h3>Contrato por requisito</h3>
+            <div class="form-grid four">
+              <label>Requisito *
+                <select formControlName="requirementId">
+                  <option [ngValue]="null">Selecciona requisito</option>
+                  <option *ngFor="let requirement of requirements()" [ngValue]="requirement.id">{{ requirement.code }} - {{ requirement.description }}</option>
+                </select>
+              </label>
+              <label>Pantalla sugerida<input formControlName="screenName" placeholder="Agenda de citas" /></label>
+              <label>Ruta UI<input formControlName="routePath" placeholder="/appointments/new" /></label>
+              <label>Metodo
+                <select formControlName="endpointMethod">
+                  <option *ngFor="let method of endpointMethods" [value]="method">{{ method }}</option>
+                </select>
+              </label>
+            </div>
+            <label>Endpoint<input formControlName="endpointPath" placeholder="/api/appointments" /></label>
+            <div class="form-grid two">
+              <label>Request fields<textarea formControlName="requestFieldsText" rows="5" placeholder="patient_id:number:required:Paciente que agenda&#10;start_at:datetime:required:Inicio de la cita"></textarea></label>
+              <label>Response fields<textarea formControlName="responseFieldsText" rows="5" placeholder="id:number:required:Identificador&#10;status:string:required:Estado final"></textarea></label>
+              <label>Reglas de negocio<textarea formControlName="businessRulesText" rows="4" placeholder="start_at debe ser menor que end_at"></textarea></label>
+              <label>Validaciones<textarea formControlName="validationsText" rows="4" placeholder="doctor_id debe existir"></textarea></label>
+              <label>Errores esperados<textarea formControlName="expectedErrorsText" rows="4" placeholder="401 | Sin token | Usuario no autenticado&#10;409 | Horario solapado | El doctor no esta disponible"></textarea></label>
+              <label>Permisos<textarea formControlName="permissionsText" rows="4" placeholder="Paciente puede crear sus citas&#10;Admin puede gestionar todas"></textarea></label>
+              <label>Checks de aceptacion<textarea formControlName="acceptanceChecksText" rows="4" placeholder="Crear cita retorna 201"></textarea></label>
+              <label>Pruebas esperadas<textarea formControlName="testCasesText" rows="4" placeholder="Debe rechazar solapamientos por doctor"></textarea></label>
+            </div>
+            <button class="primary-action blue" type="submit">Guardar contrato tecnico</button>
+          </form>
+          <div class="card-grid">
+            <article *ngFor="let contract of implementationContracts()" class="data-card spec-card">
+              <div class="card-topline">
+                <span>{{ requirementLabel(contract.requirementId) }}</span>
+                <small>{{ contract.endpointMethod || 'METHOD' }} {{ contract.endpointPath || 'sin endpoint' }}</small>
+              </div>
+              <p>{{ contract.screenName || 'Sin pantalla sugerida' }} {{ contract.routePath || '' }}</p>
+              <div class="spec-section">
+                <strong>Validaciones</strong>
+                <span *ngFor="let validation of contract.validations">{{ validation }}</span>
+              </div>
+              <div class="inline-actions">
+                <button type="button" class="secondary-action" (click)="editImplementationContract(contract)">Editar</button>
+                <button type="button" class="secondary-action" (click)="deleteImplementationContract(contract.requirementId)">Eliminar</button>
+              </div>
+            </article>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'dataModel'">
+          <div class="module-action-bar">
+            <div>
+              <strong>Modelo de datos</strong>
+              <span>Define entidades, campos, relaciones e integridad del sistema objetivo.</span>
+            </div>
+          </div>
+          <form class="workspace-form" [formGroup]="dataEntityForm" (ngSubmit)="saveDataEntity()">
+            <h3>Entidad del dominio</h3>
+            <div class="form-grid five">
+              <label>Nombre *<input formControlName="name" placeholder="Cita" /></label>
+              <label>Tabla sugerida<input formControlName="tableName" placeholder="appointments" /></label>
+              <label>Origen
+                <select formControlName="source">
+                  <option value="manual">Capturada manualmente</option>
+                  <option value="inferred">Inferida</option>
+                  <option value="validated">Validada</option>
+                </select>
+              </label>
+              <label>Confianza
+                <select formControlName="confidence">
+                  <option value="alta">Alta</option>
+                  <option value="media">Media</option>
+                  <option value="baja">Baja</option>
+                </select>
+              </label>
+            </div>
+            <label>Descripcion<textarea formControlName="description" rows="2"></textarea></label>
+            <div class="form-grid two">
+              <label>Campos<textarea formControlName="fieldsText" rows="6" placeholder="id:number:required:unique::&#10;doctor_id:number:required::::FK doctor&#10;start_at:datetime:required::::Inicio"></textarea></label>
+              <label>Relaciones<textarea formControlName="relationshipsText" rows="6" placeholder="Cita | many-to-one | Doctor | doctor_id | restrict | La cita pertenece a doctor"></textarea></label>
+              <label>Reglas de integridad<textarea formControlName="integrityRulesText" rows="4" placeholder="start_at < end_at&#10;no overlap by doctor_id"></textarea></label>
+            </div>
+            <button class="primary-action cyan" type="submit">Guardar entidad</button>
+          </form>
+          <div class="card-grid">
+            <article *ngFor="let entity of dataEntities()" class="data-card spec-card">
+              <div class="card-topline">
+                <span>{{ entity.name }}</span>
+                <small>{{ entity.tableName }} - {{ entity.confidence }}</small>
+              </div>
+              <p>{{ entity.description || 'Sin descripcion' }}</p>
+              <div class="spec-section">
+                <strong>Campos</strong>
+                <span *ngFor="let field of entity.fields">{{ field.name }}: {{ field.type }} {{ field.required ? '(req)' : '(opt)' }}</span>
+              </div>
+              <div class="inline-actions">
+                <button type="button" class="secondary-action" (click)="editDataEntity(entity)">Editar</button>
+                <button type="button" class="secondary-action" (click)="deleteDataEntity(entity.id)">Eliminar</button>
+              </div>
+            </article>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="activeModule() === 'roles'">
+          <div class="module-action-bar">
+            <div>
+              <strong>Roles y permisos</strong>
+              <span>Define quien puede usar cada pantalla, endpoint y accion del sistema objetivo.</span>
+            </div>
+          </div>
+          <form class="workspace-form" [formGroup]="targetRoleForm" (ngSubmit)="saveTargetRole()">
+            <h3>Rol del sistema objetivo</h3>
+            <div class="form-grid three">
+              <label>Nombre *<input formControlName="name" placeholder="Admin" /></label>
+              <label>Tipo de usuario<input formControlName="userType" placeholder="interno / externo / paciente" /></label>
+              <label>Descripcion<input formControlName="description" /></label>
+            </div>
+            <div class="form-grid three">
+              <label>Permisos<textarea formControlName="permissionsText" rows="5" placeholder="Gestionar usuarios&#10;Crear citas"></textarea></label>
+              <label>Pantallas accesibles<textarea formControlName="screensText" rows="5" placeholder="/admin/users&#10;/appointments"></textarea></label>
+              <label>Endpoints accesibles<textarea formControlName="endpointsText" rows="5" placeholder="GET /api/users&#10;POST /api/appointments"></textarea></label>
+            </div>
+            <button class="primary-action slate" type="submit">Guardar rol</button>
+          </form>
+          <div class="card-grid">
+            <article *ngFor="let role of targetRoles()" class="data-card spec-card">
+              <div class="card-topline">
+                <span>{{ role.name }}</span>
+                <small>{{ role.userType || 'sin tipo' }}</small>
+              </div>
+              <p>{{ role.description || 'Sin descripcion' }}</p>
+              <div class="spec-section">
+                <strong>Permisos</strong>
+                <span *ngFor="let permission of role.permissions">{{ permission }}</span>
+              </div>
+              <div class="inline-actions">
+                <button type="button" class="secondary-action" (click)="editTargetRole(role)">Editar</button>
+                <button type="button" class="secondary-action" (click)="deleteTargetRole(role.id)">Eliminar</button>
+              </div>
+            </article>
+          </div>
+        </ng-container>
+
         <ng-container *ngIf="activeModule() === 'specs'">
           <div class="module-action-bar">
             <div>
@@ -1030,6 +1307,31 @@
                 <p>Contexto, requisito, historia, criterios, pruebas, hallazgos y diagramas.</p>
               </div>
             </article>
+            <article>
+              <span class="material-icons">account_tree</span>
+              <div>
+                <strong>Stack objetivo</strong>
+                <p>{{ targetStack().backendFramework }} + {{ targetStack().frontendFramework }} / {{ targetStack().backendDatabase }}</p>
+              </div>
+            </article>
+          </div>
+
+          <div class="module-action-bar">
+            <div>
+              <strong>Previsualizacion del paquete 01-08</strong>
+              <span>Se recalcula en vivo con Stack objetivo, contratos tecnicos, modelo de datos, roles, diseno y trazabilidad.</span>
+            </div>
+            <small>{{ implementationSpecPreviewFiles().length }} archivo(s)</small>
+          </div>
+
+          <div class="card-grid">
+            <article *ngFor="let file of implementationSpecPreviewFiles()" class="data-card spec-card">
+              <div class="card-topline">
+                <span>{{ file.path }}</span>
+                <small>{{ file.content.length }} caracteres</small>
+              </div>
+              <pre class="spec-preview">{{ file.content }}</pre>
+            </article>
           </div>
 
           <div *ngIf="specArtifacts().length === 0" class="empty-state">
@@ -1058,8 +1360,8 @@
         <ng-container *ngIf="activeModule() === 'modeling'">
           <div class="module-action-bar">
             <div>
-              <strong>Diseno de diagramas</strong>
-              <span>Primero genera una base desde requisitos, despues ajusta el canvas y guarda el editable.</span>
+              <strong>Mapa de arquitectura y requisitos</strong>
+              <span>Modela procesos, casos de uso, clases y componentes como evidencia visual revisable.</span>
             </div>
             <div class="generate-diagram-actions">
               <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('use_case')">Casos de uso</button>
@@ -1067,7 +1369,6 @@
               <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('sequence')">Secuencia</button>
               <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('package')">Paquetes</button>
               <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('component')">Componentes</button>
-              <button type="button" (click)="exportProjectBundle()">Paquete proyecto</button>
             </div>
           </div>
 
@@ -1097,6 +1398,23 @@
           </div>
 
           <div *ngIf="diagram() as model" class="modeling-shell">
+            <div class="diagram-workbench-topbar">
+              <div>
+                <span class="diagram-breadcrumb">Proyecto / Diagramas / {{ diagramKindLabel(model.type) }}</span>
+                <h3>{{ model.title }}</h3>
+              </div>
+              <div class="diagram-status-strip">
+                <span>{{ model.nodes.length }} nodos</span>
+                <span>{{ model.edges.length }} conexiones</span>
+                <span>{{ model.sourceRequirementIds.length }} requisitos</span>
+                <span>{{ selectedSavedDiagramId() ? 'Guardado' : 'Borrador local' }}</span>
+              </div>
+              <div class="diagram-top-actions">
+                <button type="button" (click)="saveCurrentDiagram()"><span class="material-icons">save</span> Guardar borrador</button>
+                <button type="button" (click)="exportProjectBundle()"><span class="material-icons">publish</span> Publicar paquete</button>
+              </div>
+            </div>
+
             <div class="diagram-toolbar">
               <div class="toolbar-group">
                 <button type="button" title="Seleccionar y mover" [class.active]="diagramMode() === 'select'" (click)="setDiagramMode('select')">
@@ -1111,9 +1429,14 @@
               <div class="toolbar-group shape-palette">
                 <button type="button" title="Actor" (click)="addDiagramNode('actor')"><span class="material-icons">person</span></button>
                 <button type="button" title="Caso de uso" (click)="addDiagramNode('use_case')"><span class="material-icons">radio_button_unchecked</span></button>
+                <button type="button" title="Proceso" (click)="addDiagramNode('process')"><span class="material-icons">crop_16_9</span></button>
+                <button type="button" title="Decision" (click)="addDiagramNode('decision')"><span class="material-icons">change_history</span></button>
                 <button type="button" title="Clase" (click)="addDiagramNode('class')"><span class="material-icons">table_rows</span></button>
                 <button type="button" title="Paquete" (click)="addDiagramNode('package')"><span class="material-icons">inventory_2</span></button>
                 <button type="button" title="Componente" (click)="addDiagramNode('component')"><span class="material-icons">deployed_code</span></button>
+                <button type="button" title="Base de datos" (click)="addDiagramNode('database')"><span class="material-icons">database</span></button>
+                <button type="button" title="Pantalla" (click)="addDiagramNode('screen')"><span class="material-icons">web_asset</span></button>
+                <button type="button" title="API" (click)="addDiagramNode('api')"><span class="material-icons">api</span></button>
                 <button type="button" title="Lifeline" (click)="addDiagramNode('lifeline')"><span class="material-icons">view_timeline</span></button>
                 <button type="button" title="Nota" (click)="addDiagramNode('note')"><span class="material-icons">sticky_note_2</span></button>
               </div>
@@ -1124,6 +1447,7 @@
               <div class="toolbar-group">
                 <button type="button" title="Guardar diagrama" (click)="saveCurrentDiagram()"><span class="material-icons">save</span><span>Guardar</span></button>
                 <button type="button" title="Descargar JSON editable" (click)="downloadCurrentDiagramJson()"><span class="material-icons">download</span></button>
+                <button type="button" title="Descargar .drawio para diagrams.net" (click)="downloadCurrentDiagramDrawio()"><span class="material-icons">account_tree</span></button>
                 <button type="button" title="Importar JSON editable" (click)="diagramFileInput.click()"><span class="material-icons">upload_file</span></button>
                 <button type="button" title="Ver JSON" (click)="exportDiagramJson()"><span class="material-icons">data_object</span></button>
               </div>
@@ -1131,6 +1455,44 @@
             </div>
 
             <div class="diagram-workbench">
+              <aside class="diagram-shape-library">
+                <div class="library-search">
+                  <strong>Biblioteca</strong>
+                  <span class="material-icons">search</span>
+                </div>
+                <section>
+                  <small>LOGICA Y FLUJO</small>
+                  <div class="shape-grid">
+                    <button type="button" (click)="addDiagramNode('process')"><span class="material-icons">crop_16_9</span><b>Proceso</b></button>
+                    <button type="button" (click)="addDiagramNode('decision')"><span class="material-icons">change_history</span><b>Decision</b></button>
+                    <button type="button" (click)="addDiagramNode('actor')"><span class="material-icons">radio_button_unchecked</span><b>Actor</b></button>
+                    <button type="button" (click)="addDiagramNode('note')"><span class="material-icons">sticky_note_2</span><b>Nota</b></button>
+                  </div>
+                </section>
+                <section>
+                  <small>ARQUITECTURA</small>
+                  <div class="shape-grid">
+                    <button type="button" (click)="addDiagramNode('component')"><span class="material-icons">deployed_code</span><b>Componente</b></button>
+                    <button type="button" (click)="addDiagramNode('package')"><span class="material-icons">inventory_2</span><b>Paquete</b></button>
+                    <button type="button" (click)="addDiagramNode('class')"><span class="material-icons">table_rows</span><b>Clase</b></button>
+                    <button type="button" (click)="addDiagramNode('lifeline')"><span class="material-icons">view_timeline</span><b>Lifeline</b></button>
+                    <button type="button" (click)="addDiagramNode('database')"><span class="material-icons">database</span><b>BD</b></button>
+                    <button type="button" (click)="addDiagramNode('service')"><span class="material-icons">cloud</span><b>Servicio</b></button>
+                    <button type="button" (click)="addDiagramNode('screen')"><span class="material-icons">web_asset</span><b>Pantalla</b></button>
+                    <button type="button" (click)="addDiagramNode('api')"><span class="material-icons">api</span><b>API</b></button>
+                  </div>
+                </section>
+                <section>
+                  <small>TRAZABILIDAD</small>
+                  <div class="diagram-trace-mini">
+                    <span>Requisitos fuente</span>
+                    <strong>{{ model.sourceRequirementIds.length || 0 }}</strong>
+                    <span>Specs fuente</span>
+                    <strong>{{ model.sourceSpecIds.length || 0 }}</strong>
+                  </div>
+                </section>
+              </aside>
+
               <div class="diagram-canvas">
                 <svg
                   viewBox="0 0 960 560"
@@ -1169,6 +1531,9 @@
                     *ngFor="let node of model.nodes"
                     [attr.class]="diagramNodeClass(node)"
                     [attr.transform]="'translate(' + node.x + ',' + node.y + ')'"
+                    [style.--node-fill]="node.fill || null"
+                    [style.--node-stroke]="node.stroke || null"
+                    [style.--node-text]="node.textColor || null"
                     (pointerdown)="onDiagramNodePointerDown($event, node.id)"
                   >
                     <ellipse
@@ -1178,6 +1543,14 @@
                       [attr.rx]="node.width / 2"
                       [attr.ry]="node.height / 2"
                     ></ellipse>
+                    <polygon
+                      *ngIf="node.type === 'decision'"
+                      [attr.points]="(node.width / 2) + ',0 ' + node.width + ',' + (node.height / 2) + ' ' + (node.width / 2) + ',' + node.height + ' 0,' + (node.height / 2)"
+                    ></polygon>
+                    <path
+                      *ngIf="node.type === 'database'"
+                      [attr.d]="'M0 16 C0 5, ' + node.width + ' 5, ' + node.width + ' 16 L' + node.width + ' ' + (node.height - 16) + ' C' + node.width + ' ' + (node.height - 5) + ', 0 ' + (node.height - 5) + ', 0 ' + (node.height - 16) + ' Z M0 16 C0 28, ' + node.width + ' 28, ' + node.width + ' 16'"
+                    ></path>
                     <line
                       *ngIf="node.type === 'lifeline'"
                       [attr.x1]="node.width / 2"
@@ -1197,6 +1570,7 @@
                     ></rect>
                     <rect
                       *ngIf="node.type !== 'use_case'"
+                      [class.hidden-shape]="node.type === 'decision' || node.type === 'database'"
                       [attr.width]="node.width"
                       [attr.height]="node.height"
                       rx="12"
@@ -1239,17 +1613,46 @@
               </div>
 
               <aside class="diagram-properties">
+                <div class="diagram-properties-header">
+                  <span class="material-icons">tune</span>
+                  <strong>Propiedades</strong>
+                </div>
                 <div class="card-topline">
-                  <span>{{ model.title }}</span>
+                  <span>Diagrama</span>
                   <small>{{ selectedSavedDiagramId() ? 'Guardado' : (model.derived ? 'Derivado local' : 'Local') }}</small>
                 </div>
                 <label>Titulo
                   <input [value]="model.title" (input)="updateDiagramTitle($any($event.target).value)" />
                 </label>
                 <ng-container *ngIf="selectedDiagramNode() as node">
-                  <h3>Propiedades del nodo</h3>
+                  <div class="selected-element-card">
+                    <small>Elemento seleccionado</small>
+                    <strong>{{ node.label }}</strong>
+                    <span>{{ diagramNodeTypeLabel(node.type) }}</span>
+                  </div>
                   <label>Etiqueta
                     <input [value]="node.label" (input)="updateSelectedDiagramNodeLabel($any($event.target).value)" />
+                  </label>
+                  <label>Tipo
+                    <select [value]="node.type" (change)="updateSelectedDiagramNodeType($any($event.target).value)">
+                      <option value="actor">Actor</option>
+                      <option value="use_case">Caso de uso</option>
+                      <option value="process">Proceso</option>
+                      <option value="decision">Decision</option>
+                      <option value="class">Clase</option>
+                      <option value="package">Paquete</option>
+                      <option value="component">Componente</option>
+                      <option value="database">Base de datos</option>
+                      <option value="service">Servicio</option>
+                      <option value="screen">Pantalla</option>
+                      <option value="api">API</option>
+                      <option value="queue">Cola</option>
+                      <option value="requirement">Requisito</option>
+                      <option value="spec">Spec</option>
+                      <option value="note">Nota</option>
+                      <option value="lifeline">Lifeline</option>
+                      <option value="boundary">Limite / sistema</option>
+                    </select>
                   </label>
                   <div class="property-grid" *ngIf="selectedDiagramNodePosition() as box">
                     <label>Ancho
@@ -1259,11 +1662,38 @@
                       <input type="number" min="56" [value]="box.height" (input)="updateSelectedDiagramNodeSize('height', $any($event.target).value)" />
                     </label>
                   </div>
-                  <p>Tipo: {{ node.type }} - Posicion {{ selectedDiagramNodePosition()?.x }}, {{ selectedDiagramNodePosition()?.y }}</p>
-                  <p *ngIf="node.requirementId">Requisito vinculado: {{ node.requirementId }}</p>
+                  <div class="property-grid">
+                    <label>Fill
+                      <input [value]="node.fill || ''" placeholder="#FFFFFF" (input)="updateSelectedDiagramNodeProperty('fill', $any($event.target).value)" />
+                    </label>
+                    <label>Stroke
+                      <input [value]="node.stroke || ''" placeholder="#0F172A" (input)="updateSelectedDiagramNodeProperty('stroke', $any($event.target).value)" />
+                    </label>
+                  </div>
+                  <label>Requisito vinculado
+                    <select [value]="node.requirementId || ''" (change)="updateSelectedDiagramNodeRequirement($any($event.target).value)">
+                      <option value="">Sin vinculo</option>
+                      <option *ngFor="let requirement of requirements()" [value]="requirement.id">{{ requirement.code }}</option>
+                    </select>
+                  </label>
+                  <label>Notas
+                    <input [value]="node.notes || ''" placeholder="Decision, regla, payload o contexto" (input)="updateSelectedDiagramNodeProperty('notes', $any($event.target).value)" />
+                  </label>
+                  <p>Posicion {{ selectedDiagramNodePosition()?.x }}, {{ selectedDiagramNodePosition()?.y }}</p>
+                  <div *ngIf="diagramNodeRequirement(node) as requirement" class="linked-requirement-card">
+                    <span class="material-icons">assignment</span>
+                    <div>
+                      <strong>{{ requirement.code }}</strong>
+                      <small>{{ requirement.description }}</small>
+                    </div>
+                  </div>
                 </ng-container>
                 <ng-container *ngIf="selectedDiagramEdge() as edge">
-                  <h3>Propiedades de conexion</h3>
+                  <div class="selected-element-card">
+                    <small>Conexion seleccionada</small>
+                    <strong>{{ diagramEdgeTypeLabel(edge.type) }}</strong>
+                    <span>{{ edge.sourceNodeId }} -> {{ edge.targetNodeId }}</span>
+                  </div>
                   <label>Etiqueta
                     <input [value]="edge.label || ''" (input)="updateSelectedDiagramEdgeLabel($any($event.target).value)" />
                   </label>
@@ -1274,12 +1704,18 @@
                       <option value="extend">Extend</option>
                       <option value="dependency">Dependencia</option>
                       <option value="inheritance">Herencia</option>
+                      <option value="composition">Composicion</option>
+                      <option value="aggregation">Agregacion</option>
+                      <option value="message">Mensaje</option>
+                      <option value="data_flow">Flujo de datos</option>
                     </select>
                   </label>
-                  <p>{{ edge.sourceNodeId }} -> {{ edge.targetNodeId }}</p>
+                  <label>Notas
+                    <input [value]="edge.notes || ''" (input)="updateSelectedDiagramEdgeNotes($any($event.target).value)" />
+                  </label>
                 </ng-container>
                 <div *ngIf="!selectedDiagramNode() && !selectedDiagramEdge()" class="diagram-hint">
-                  Selecciona un nodo o conexion para editar sus propiedades.
+                  Selecciona un nodo o conexion para editar propiedades, vinculos y trazabilidad.
                 </div>
                 <div *ngIf="connectSourceNodeId()" class="inline-warning">
                   Modo conectar activo. Selecciona el nodo destino.

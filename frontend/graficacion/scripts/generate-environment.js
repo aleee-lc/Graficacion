@@ -28,7 +28,12 @@ function parseEnv(content) {
 }
 
 const env = existsSync(envFile) ? parseEnv(readFileSync(envFile, 'utf8')) : {};
-const apiBaseUrl = env.API_BASE_URL || 'http://localhost:4000';
+const devApiBaseUrl = env.API_BASE_URL || env.VITE_API_BASE_URL || 'http://localhost:4000';
+const prodApiBaseUrl =
+  env.API_BASE_URL_PROD ||
+  env.VITE_API_BASE_URL_PROD ||
+  env.VERCEL_API_BASE_URL ||
+  'https://graficacion-production-52f2.up.railway.app';
 
 if (!existsSync(outDir)) {
   mkdirSync(outDir, { recursive: true });
@@ -36,13 +41,13 @@ if (!existsSync(outDir)) {
 
 const devContent = `export const environment = {
   production: false,
-  apiBaseUrl: ${JSON.stringify(apiBaseUrl)}
+  apiBaseUrl: ${JSON.stringify(devApiBaseUrl)}
 };
 `;
 
 const prodContent = `export const environment = {
   production: true,
-  apiBaseUrl: ${JSON.stringify(apiBaseUrl)}
+  apiBaseUrl: ${JSON.stringify(prodApiBaseUrl)}
 };
 `;
 

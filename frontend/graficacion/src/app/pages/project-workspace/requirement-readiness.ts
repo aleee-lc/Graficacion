@@ -1,7 +1,17 @@
 import type { Process } from '../../services/processes.service';
 import type { Project } from '../../services/projects.service';
 import type { Finding, Requirement, Session, Stakeholder } from '../../services/traceability.service';
-import type { DerivedDiagram, DerivedSpec, DerivedUseCase, ModuleKey, SavedDiagramEntry } from './project-workspace.models';
+import type {
+  DataEntitySpec,
+  DerivedDiagram,
+  DerivedSpec,
+  DerivedUseCase,
+  ImplementationContract,
+  ModuleKey,
+  SavedDiagramEntry,
+  TargetRoleSpec,
+  TargetStack
+} from './project-workspace.models';
 
 export type ReadinessStatus = 'incompleto' | 'analizable' | 'documentado' | 'implementable' | 'listo_para_entrega';
 
@@ -33,6 +43,10 @@ export type RequirementReadinessInput = {
   specs: DerivedSpec[];
   diagrams: DerivedDiagram[];
   savedDiagrams: SavedDiagramEntry[];
+  targetStack?: TargetStack;
+  implementationContracts?: ImplementationContract[];
+  dataEntities?: DataEntitySpec[];
+  targetRoles?: TargetRoleSpec[];
 };
 
 const issue = (
@@ -80,6 +94,15 @@ export const buildRequirementReadiness = (input: RequirementReadinessInput): Req
   const diagramCount = input.diagrams.length + input.savedDiagrams.length;
   const transactionSessions = input.sessions.filter(isTransactionSession);
   const processIdsWithTransaction = new Set(transactionSessions.map((session) => session.process_id).filter((id): id is number => typeof id === 'number'));
+  const contracts = input.implementationContracts ?? [];
+  const contractRequirementIds = new Set(contracts.map((contract) => contract.requirementId));
+  const requirementsWithoutContract = input.requirements.filter((requirement) => !contractRequirementIds.has(requirement.id)).length;
+  const contractsWithoutEndpoint = contracts.filter((contract) => !contract.endpointPath).length;
+  const contractsWithoutValidations = contracts.filter((contract) => contract.validations.length === 0).length;
+  const contractsWithoutErrors = contracts.filter((contract) => contract.expectedErrors.length === 0).length;
+  const entities = input.dataEntities ?? [];
+  const roles = input.targetRoles ?? [];
+  const stack = input.targetStack;
 
   if (!input.project?.name || !(input.project.objective || input.project.description)) {
     errors.push(issue('error', 'PROJECT_CONTEXT_MISSING', 'Contexto incompleto', 'Falta nombre, objetivo o descripcion suficiente del proyecto.', 'context', 'Completar contexto'));
@@ -146,6 +169,33 @@ export const buildRequirementReadiness = (input: RequirementReadinessInput): Req
   if (diagramCount === 0) {
     warnings.push(issue('warning', 'NO_DIAGRAMS', 'Sin diagramas', 'El paquete no incluye diagramas revisables o derivados.', 'modeling', 'Crear diagrama'));
   }
+  if (!stack?.backendFramework || !stack?.frontendFramework || !stack?.backendDatabase || !stack?.backendAuth) {
+    warnings.push(issue('warning', 'TARGET_STACK_INCOMPLETE', 'Stack objetivo incompleto', 'Define backend, frontend, base de datos y auth del sistema a implementar.', 'targetStack', 'Completar stack'));
+  }
+  if (requirementsWithoutContract > 0) {
+    warnings.push(issue('warning', 'REQUIREMENTS_WITHOUT_CONTRACT', 'Requisitos sin contrato tecnico', `${requirementsWithoutContract} requisito(s) no tienen endpoint, payload, reglas y pruebas capturadas.`, 'technicalContracts', 'Crear contratos'));
+  }
+  if (contractsWithoutEndpoint > 0) {
+    warnings.push(issue('warning', 'CONTRACTS_WITHOUT_ENDPOINT', 'Contratos sin endpoint', `${contractsWithoutEndpoint} contrato(s) no tienen endpoint sugerido.`, 'technicalContracts', 'Completar endpoints'));
+  }
+  if (contractsWithoutValidations > 0) {
+    warnings.push(issue('warning', 'CONTRACTS_WITHOUT_VALIDATIONS', 'Contratos sin validaciones', `${contractsWithoutValidations} contrato(s) no tienen validaciones.`, 'technicalContracts', 'Agregar validaciones'));
+  }
+  if (contractsWithoutErrors > 0) {
+    warnings.push(issue('warning', 'CONTRACTS_WITHOUT_ERRORS', 'Contratos sin errores esperados', `${contractsWithoutErrors} contrato(s) no documentan errores esperados.`, 'technicalContracts', 'Agregar errores'));
+  }
+  if (entities.length === 0) {
+    warnings.push(issue('warning', 'NO_DATA_MODEL', 'Sin modelo de datos manual', 'No hay entidades, campos, relaciones e integridad capturadas manualmente.', 'dataModel', 'Crear modelo'));
+  }
+  if (entities.some((entity) => entity.fields.length === 0)) {
+    warnings.push(issue('warning', 'ENTITY_WITHOUT_FIELDS', 'Entidad sin campos', 'Hay entidades del modelo sin campos definidos.', 'dataModel', 'Agregar campos'));
+  }
+  if (roles.length === 0) {
+    warnings.push(issue('warning', 'NO_TARGET_ROLES', 'Sin roles objetivo', 'No hay roles/permisos del sistema objetivo.', 'roles', 'Crear roles'));
+  }
+  if (roles.some((role) => role.permissions.length === 0)) {
+    warnings.push(issue('warning', 'ROLE_WITHOUT_PERMISSIONS', 'Rol sin permisos', 'Hay roles sin permisos accionables.', 'roles', 'Agregar permisos'));
+  }
 
   suggestions.push(issue('suggestion', 'MANUAL_REVIEW', 'Revision manual final', 'Antes de entregar, revisa inferencias del modelo de clases y flujos derivados.', 'validation', 'Abrir validacion'));
   if (input.requirements.length > 0) {
@@ -169,6 +219,13 @@ export const buildRequirementReadiness = (input: RequirementReadinessInput): Req
     input.useCases.length > 0 && useCasesWithoutCriteria === 0,
     input.specs.length > 0,
     diagramCount > 0,
+    Boolean(stack?.backendFramework && stack?.frontendFramework && stack?.backendDatabase && stack?.backendAuth),
+    input.requirements.length === 0 || requirementsWithoutContract === 0,
+    contracts.length === 0 || contractsWithoutEndpoint === 0,
+    contracts.length === 0 || contractsWithoutValidations === 0,
+    contracts.length === 0 || contractsWithoutErrors === 0,
+    entities.length > 0 && entities.every((entity) => entity.fields.length > 0),
+    roles.length > 0 && roles.every((role) => role.permissions.length > 0),
     errors.length === 0 && warnings.length <= 2
   ];
   const score = Math.round((checks.filter(Boolean).length / checks.length) * 100);

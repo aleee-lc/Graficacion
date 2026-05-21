@@ -3,13 +3,43 @@
 @import "tailwindcss";
 
 :root {
-  --ink: #0b1f4b;
-  --navy: #0a1a3a;
-  --blue: #0b5ed7;
-  --cyan: #10b8ff;
-  --aqua: #7ad9ff;
-  --mist: #e6eefc;
-  --ice: #f5f8ff;
+  --surface: #f7f9fb;
+  --surface-dim: #d8dadc;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f2f4f6;
+  --surface-container: #eceef0;
+  --surface-container-high: #e6e8ea;
+  --surface-container-highest: #e0e3e5;
+  --on-surface: #191c1e;
+  --on-surface-variant: #45464d;
+  --outline: #76777d;
+  --outline-variant: #c6c6cd;
+  --line: #e2e8f0;
+  --muted: #565e74;
+  --primary: #0f172a;
+  --primary-hover: #1e293b;
+  --on-primary: #ffffff;
+  --secondary: #505f76;
+  --error: #ba1a1a;
+  --success: #047857;
+  --warning: #b45309;
+  --info: #1d4ed8;
+  --radius-sm: 2px;
+  --radius: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --shadow-sm: 0 4px 6px -1px rgba(15, 23, 42, 0.08);
+  --ink: var(--on-surface);
+  --navy: var(--primary);
+  --blue: var(--primary);
+  --cyan: var(--secondary);
+  --aqua: #bec6e0;
+  --mist: var(--outline-variant);
+  --ice: var(--surface);
 }
 
 html {
@@ -17,13 +47,15 @@ html {
 }
 
 body {
-  font-family: 'Manrope', system-ui, -apple-system, sans-serif;
-  background: var(--ice);
-  color: var(--ink);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--surface);
+  color: var(--on-surface);
+  font-size: 14px;
+  letter-spacing: 0;
 }
 
 .font-display {
-  font-family: 'Sora', 'Segoe UI', sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 @keyframes fadeUp {
@@ -188,4 +220,138 @@ body {
   .agent-profile-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* App-wide Industrial Minimalism compatibility layer.
+   Several legacy pages still use Tailwind dark-dashboard utilities directly.
+   These overrides keep behavior intact while normalizing the whole app to the
+   DESIGN.md surface, border, radius and density rules. */
+body,
+[class*="bg-slate-950"],
+[class*="bg-slate-900"] {
+  background-color: var(--surface) !important;
+}
+
+[class*="bg-slate-950/"],
+[class*="bg-slate-900/"] {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+}
+
+[class*="text-slate-100"],
+[class*="text-white"],
+[class*="text-slate-300"] {
+  color: var(--on-surface) !important;
+}
+
+[class*="text-slate-400"],
+[class*="text-slate-500"],
+[class*="text-slate-600"] {
+  color: var(--muted) !important;
+}
+
+[class*="text-blue-400"],
+[class*="text-blue-700"] {
+  color: var(--secondary) !important;
+}
+
+[class*="bg-blue-600"],
+[class*="bg-blue-500"],
+[class*="bg-slate-800"] {
+  background-color: var(--primary) !important;
+  color: var(--on-primary) !important;
+}
+
+[class*="bg-blue-500/"],
+[class*="bg-blue-600/"],
+[class*="bg-emerald-500/"] {
+  background-color: var(--surface-container-low) !important;
+  color: var(--on-surface) !important;
+}
+
+[class*="border-slate-800"],
+[class*="border-slate-700"],
+[class*="border-blue-500"],
+[class*="border-blue-500/"] {
+  border-color: var(--line) !important;
+}
+
+[class*="rounded-3xl"],
+[class*="rounded-2xl"],
+[class*="rounded-xl"],
+[class*="rounded-lg"],
+[class*="rounded-full"] {
+  border-radius: var(--radius-lg) !important;
+}
+
+[class*="shadow-"],
+[class*="shadow_"],
+[class*="shadow["] {
+  box-shadow: none !important;
+}
+
+[class*="bg-[radial-gradient"],
+[class*="bg-[linear-gradient"] {
+  background-image: none !important;
+  background-color: var(--surface) !important;
+}
+
+header,
+aside,
+main section,
+article,
+form,
+.wizard-modal,
+.member-modal,
+.user-modal,
+.survey-card {
+  letter-spacing: 0 !important;
+}
+
+input,
+textarea,
+select {
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius) !important;
+  background: #ffffff !important;
+  color: var(--on-surface) !important;
+  min-height: 36px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #8b95a1 !important;
+}
+
+button,
+a[class*="bg-"],
+.add-trigger,
+.add-link,
+.member-add-btn,
+.create-user-btn,
+.submit-button {
+  border-radius: var(--radius) !important;
+  box-shadow: none !important;
+}
+
+.wizard-modal,
+.member-modal,
+.user-modal,
+.survey-card,
+[class*="border"][class*="bg-white"],
+[class*="border"][class*="bg-slate"] {
+  border: 1px solid var(--line) !important;
+  background: #ffffff !important;
+  color: var(--on-surface) !important;
+}
+
+.wizard-modal__header,
+.member-modal__header,
+.user-modal__header {
+  border-bottom-color: var(--line) !important;
+}
+
+.wizard-overlay__backdrop,
+.member-modal-overlay__backdrop,
+.user-modal-overlay__backdrop {
+  background: rgba(15, 23, 42, 0.35) !important;
 }

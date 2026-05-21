@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getUserTypeIdByCode } from '../db/catalogs';
 import { pool } from '../db/pool';
+import { ensureImplementationInputsSchema } from '../lib/implementation-inputs-schema';
 import {
   ensureTraceabilityWorkspaceSchema,
   type DiscoveryType,
@@ -167,6 +168,14 @@ type UseCaseRow = {
   benefit: string;
   acceptance_criteria: string | null;
   created_at: string;
+  updated_at: string;
+};
+
+type ImplementationInputsRow = {
+  target_stack: Record<string, unknown>;
+  implementation_contracts: Array<Record<string, unknown>>;
+  data_entities: Array<Record<string, unknown>>;
+  target_roles: Array<Record<string, unknown>>;
   updated_at: string;
 };
 
@@ -351,6 +360,13 @@ const updateUseCaseSchema = z.object({
     value.acceptance_criteria !== undefined,
   { message: 'At least one field is required' }
 );
+
+const implementationInputsSchema = z.object({
+  targetStack: z.record(z.unknown()).default({}),
+  implementationContracts: z.array(z.record(z.unknown())).default([]),
+  dataEntities: z.array(z.record(z.unknown())).default([]),
+  targetRoles: z.array(z.record(z.unknown())).default([])
+});
 
 const hasProjectAccess = async (projectId: number, userId: number) => {
   const rows = await pool.query(
@@ -945,6 +961,122 @@ router.get('/:id', async (req: AuthRequest, res) => {
   }
 
   res.json({ project: rows.rows[0] });
+});
+
+router.get('/:id/implementation-inputs', async (req: AuthRequest, res) => {
+  const userId = req.user?.sub;
+  const projectId = Number(req.params.id);
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (Number.isNaN(projectId)) {
+    res.status(400).json({ message: 'Invalid project id' });
+    return;
+  }
+
+  const hasAccess = await hasProjectAccess(projectId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Project not found' });
+    return;
+  }
+
+  await ensureImplementationInputsSchema();
+  const rows = await pool.query<ImplementationInputsRow>(
+    `SELECT target_stack,
+            implementation_contracts,
+            data_entities,
+            target_roles,
+            updated_at::text
+       FROM project_implementation_inputs
+      WHERE project_id = $1
+      LIMIT 1`,
+    [projectId]
+  );
+
+  if (rows.rows.length === 0) {
+    res.json({
+      targetStack: {},
+      implementationContracts: [],
+      dataEntities: [],
+      targetRoles: [],
+      updatedAt: null
+    });
+    return;
+  }
+
+  const row = rows.rows[0];
+  res.json({
+    targetStack: row.target_stack ?? {},
+    implementationContracts: row.implementation_contracts ?? [],
+    dataEntities: row.data_entities ?? [],
+    targetRoles: row.target_roles ?? [],
+    updatedAt: row.updated_at
+  });
+});
+
+router.put('/:id/implementation-inputs', async (req: AuthRequest, res) => {
+  const userId = req.user?.sub;
+  const projectId = Number(req.params.id);
+  if (!userId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (Number.isNaN(projectId)) {
+    res.status(400).json({ message: 'Invalid project id' });
+    return;
+  }
+
+  const hasAccess = await hasProjectAccess(projectId, userId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Project not found' });
+    return;
+  }
+
+  const parsed = implementationInputsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: 'Invalid request', errors: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  await ensureImplementationInputsSchema();
+  const result = await pool.query<ImplementationInputsRow>(
+    `INSERT INTO project_implementation_inputs (
+       project_id,
+       target_stack,
+       implementation_contracts,
+       data_entities,
+       target_roles
+     )
+     VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, $5::jsonb)
+     ON CONFLICT (project_id)
+     DO UPDATE SET
+       target_stack = EXCLUDED.target_stack,
+       implementation_contracts = EXCLUDED.implementation_contracts,
+       data_entities = EXCLUDED.data_entities,
+       target_roles = EXCLUDED.target_roles
+     RETURNING target_stack,
+               implementation_contracts,
+               data_entities,
+               target_roles,
+               updated_at::text`,
+    [
+      projectId,
+      JSON.stringify(parsed.data.targetStack),
+      JSON.stringify(parsed.data.implementationContracts),
+      JSON.stringify(parsed.data.dataEntities),
+      JSON.stringify(parsed.data.targetRoles)
+    ]
+  );
+
+  const row = result.rows[0];
+  res.json({
+    targetStack: row.target_stack ?? {},
+    implementationContracts: row.implementation_contracts ?? [],
+    dataEntities: row.data_entities ?? [],
+    targetRoles: row.target_roles ?? [],
+    updatedAt: row.updated_at
+  });
 });
 
 router.get('/:id/flow-status', async (req: AuthRequest, res) => {
@@ -2382,6 +2514,43 @@ router.post('/:id/users', async (req: AuthRequest, res) => {
   );
 
   res.status(201).json({ message: 'User added to project' });
+});
+
+router.delete('/:id/users/:userId', async (req: AuthRequest, res) => {
+  const actorUserId = req.user?.sub;
+  const projectId = Number(req.params.id);
+  const targetUserId = Number(req.params.userId);
+  if (!actorUserId) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  if (Number.isNaN(projectId) || Number.isNaN(targetUserId)) {
+    res.status(400).json({ message: 'Invalid project or user id' });
+    return;
+  }
+
+  const hasAccess = await hasProjectAccess(projectId, actorUserId);
+  if (!hasAccess) {
+    res.status(404).json({ message: 'Project not found' });
+    return;
+  }
+
+  if (actorUserId === targetUserId) {
+    res.status(400).json({ message: 'You cannot remove yourself from the project' });
+    return;
+  }
+
+  const result = await pool.query('DELETE FROM project_users WHERE project_id = $1 AND user_id = $2', [
+    projectId,
+    targetUserId
+  ]);
+
+  if (result.rowCount === 0) {
+    res.status(404).json({ message: 'Project user not found' });
+    return;
+  }
+
+  res.json({ message: 'User removed from project' });
 });
 
 router.put('/:id', async (req: AuthRequest, res) => {

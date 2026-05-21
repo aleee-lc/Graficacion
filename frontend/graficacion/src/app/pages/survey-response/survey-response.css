@@ -1,16 +1,16 @@
 .survey-response-page {
   min-height: 100vh;
-  background: #020617;
-  color: #e5e7eb;
+  background: var(--surface);
+  color: var(--on-surface);
   display: grid;
   place-items: start center;
   padding: 40px 18px;
 }
 
 .survey-card {
-  border: 1px solid #1e293b;
-  border-radius: 20px;
-  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #ffffff;
   display: grid;
   gap: 16px;
   max-width: 560px;
@@ -23,26 +23,27 @@
 }
 
 .survey-card header p {
-  color: #60a5fa;
+  color: var(--muted);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   margin: 0;
   text-transform: uppercase;
 }
 
 .survey-card h1 {
-  color: #fff;
+  color: var(--on-surface);
   margin: 4px 0 8px;
 }
 
 .survey-card header span,
 .survey-card p,
 .survey-card small {
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .survey-card label {
-  color: #cbd5e1;
+  color: var(--on-surface-variant);
   display: grid;
   font-size: 13px;
   gap: 7px;
@@ -51,10 +52,10 @@
 .survey-card input,
 .survey-card textarea,
 .survey-card select {
-  border: 1px solid #334155;
-  border-radius: 12px;
-  background: #020617;
-  color: #e5e7eb;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--on-surface);
   min-height: 40px;
   padding: 9px 11px;
 }
@@ -66,16 +67,16 @@
 }
 
 .question-card {
-  border: 1px solid #1e293b;
-  border-radius: 16px;
-  background: #020617;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-low);
   display: grid;
   gap: 12px;
   padding: 16px;
 }
 
 .question-card strong {
-  color: #f8fafc;
+  color: var(--on-surface);
 }
 
 .option-list {
@@ -91,12 +92,12 @@
 
 .submit-button,
 .survey-card a {
-  border: 0;
-  border-radius: 999px;
-  background: #2563eb;
-  color: #fff;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--on-primary);
   cursor: pointer;
-  font-weight: 900;
+  font-weight: 700;
   min-height: 42px;
   padding: 0 16px;
   text-align: center;
@@ -104,15 +105,15 @@
 }
 
 .inline-error {
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  border-radius: 12px;
-  background: rgba(127, 29, 29, 0.25);
-  color: #fecaca;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius);
+  background: #fef2f2;
+  color: #991b1b;
   padding: 10px 12px;
 }
 
 .success {
-  color: #34d399;
+  color: var(--success);
 }
 
 @media (max-width: 720px) {

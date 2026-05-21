@@ -1,7 +1,16 @@
 import type { Process } from '../../services/processes.service';
 import type { Project } from '../../services/projects.service';
 import type { Finding, Requirement, Session, Stakeholder } from '../../services/traceability.service';
-import type { DerivedDiagram, DerivedUseCase, SavedDiagramEntry } from './project-workspace.models';
+import type {
+  DataEntitySpec,
+  DerivedDiagram,
+  DerivedUseCase,
+  ImplementationContract,
+  ProjectArtifactFile,
+  SavedDiagramEntry,
+  TargetRoleSpec,
+  TargetStack
+} from './project-workspace.models';
 import type { RequirementReadiness } from './requirement-readiness';
 import { buildRequirementReadiness } from './requirement-readiness';
 
@@ -21,6 +30,11 @@ export type ImplementationSpecExportInput = {
   useCases: DerivedUseCase[];
   diagrams: DerivedDiagram[];
   savedDiagrams: SavedDiagramEntry[];
+  targetStack?: TargetStack;
+  implementationContracts?: ImplementationContract[];
+  dataEntities?: DataEntitySpec[];
+  targetRoles?: TargetRoleSpec[];
+  designInputs?: ProjectArtifactFile[];
   readiness?: RequirementReadiness;
   generatedAt?: string;
 };
@@ -273,6 +287,40 @@ const useCasesFor = (input: ImplementationSpecExportInput) =>
         sourceFindings: [] as Finding[]
       }));
 
+const contractFor = (input: ImplementationSpecExportInput, requirementId: number) =>
+  input.implementationContracts?.find((contract) => contract.requirementId === requirementId) ?? null;
+
+const targetStackFor = (input: ImplementationSpecExportInput): TargetStack => input.targetStack ?? {
+  architectureType: 'SPA + API REST',
+  backendFramework: 'FastAPI',
+  backendLanguage: 'Python',
+  backendOrm: 'SQLModel',
+  backendDatabase: 'SQLite',
+  backendMigrations: 'Alembic',
+  backendAuth: 'JWT',
+  backendTesting: 'pytest',
+  frontendFramework: 'React + Vite',
+  frontendLanguage: 'TypeScript',
+  frontendUi: 'Bootstrap 5',
+  frontendRouting: 'React Router',
+  frontendDataFetching: 'TanStack Query + Axios',
+  frontendState: 'Zustand',
+  frontendTesting: 'Vitest / pruebas UI basicas',
+  runMode: 'Local development',
+  envVars: ['DATABASE_URL', 'JWT_SECRET_KEY', 'CORS_ORIGINS'],
+  seedAdmin: 'admin@example.com / cambiar password',
+  commands: ['backend: uvicorn app.main:app --reload', 'frontend: npm run dev', 'migraciones: alembic upgrade head']
+};
+
+const fieldRows = (fields: { name: string; type: string; required?: boolean; description?: string; example?: string }[]) =>
+  fields.map((field) => [
+    field.name,
+    field.type,
+    field.required ? 'Si' : 'No',
+    field.description || '-',
+    field.example || '-'
+  ]);
+
 const collectValidationIssues = (input: ImplementationSpecExportInput, entities = inferEntities(input)) => {
   const useCases = useCasesFor(input);
   const errors: ValidationIssue[] = [];
@@ -312,6 +360,47 @@ const collectValidationIssues = (input: ImplementationSpecExportInput, entities 
 
   if (!input.diagrams.length && !input.savedDiagrams.length) {
     warnings.push({ code: 'MISSING_DIAGRAMS', message: 'No hay diagramas guardados o derivados en el paquete.' });
+  }
+
+  const contracts = input.implementationContracts ?? [];
+  for (const requirement of input.requirements) {
+    const contract = contractFor(input, requirement.id);
+    if (!contract) {
+      warnings.push({ code: 'REQUIREMENT_WITHOUT_CONTRACT', message: `${requirement.code}: falta contrato tecnico implementable.` });
+      continue;
+    }
+    if (!contract.endpointPath) {
+      warnings.push({ code: 'CONTRACT_WITHOUT_ENDPOINT', message: `${requirement.code}: contrato sin endpoint.` });
+    }
+    if (!contract.validations.length) {
+      warnings.push({ code: 'CONTRACT_WITHOUT_VALIDATIONS', message: `${requirement.code}: contrato sin validaciones.` });
+    }
+    if (!contract.expectedErrors.length) {
+      warnings.push({ code: 'CONTRACT_WITHOUT_EXPECTED_ERRORS', message: `${requirement.code}: contrato sin errores esperados.` });
+    }
+  }
+  if (!(input.dataEntities ?? []).length) {
+    warnings.push({ code: 'NO_MANUAL_DATA_MODEL', message: 'No hay entidades manuales del modelo de datos; se usaran inferencias.' });
+  }
+  for (const entity of input.dataEntities ?? []) {
+    if (!entity.fields.length) {
+      warnings.push({ code: 'ENTITY_WITHOUT_FIELDS', message: `${entity.name}: entidad sin campos definidos.` });
+    }
+    if (entity.relationships.some((relationship) => !relationship.foreignKey && relationship.type !== 'many-to-many')) {
+      warnings.push({ code: 'RELATION_WITHOUT_FK', message: `${entity.name}: relacion sin FK sugerida.` });
+    }
+  }
+  if (!(input.targetRoles ?? []).length) {
+    warnings.push({ code: 'NO_TARGET_ROLES', message: 'No hay roles/permisos definidos para el sistema objetivo.' });
+  }
+  for (const role of input.targetRoles ?? []) {
+    if (!role.permissions.length) {
+      warnings.push({ code: 'ROLE_WITHOUT_PERMISSIONS', message: `${role.name}: rol sin permisos.` });
+    }
+  }
+  const stack = targetStackFor(input);
+  if (!stack.backendFramework || !stack.frontendFramework || !stack.backendDatabase || !stack.backendAuth) {
+    warnings.push({ code: 'TARGET_STACK_INCOMPLETE', message: 'Stack objetivo incompleto: backend/frontend/base de datos/auth deben estar definidos.' });
   }
 
   for (const entity of entities.filter((entity) => entity.confidence === 'LOW')) {
@@ -381,6 +470,7 @@ export const buildAgentInstructionsMarkdown = (input: ImplementationSpecExportIn
 export const buildRequirementsMarkdown = (input: ImplementationSpecExportInput) => {
   const useCases = useCasesFor(input);
   const entities = inferEntities(input);
+  const roles = input.targetRoles ?? [];
   return [
     '# Requisitos del sistema',
     '',
@@ -392,9 +482,36 @@ export const buildRequirementsMarkdown = (input: ImplementationSpecExportInput) 
     '',
     text(input.project?.description ?? input.project?.objective, 'Descripcion inferida desde el proyecto en Specora.'),
     '',
+    '## Problema que resuelve',
+    '',
+    text(input.project?.objective, 'Pendiente de documentar con claridad en el contexto del proyecto.'),
+    '',
+    '## Alcance incluido',
+    '',
+    text(input.project?.scope, 'Pendiente de separar funcionalidades obligatorias y opcionales.'),
+    '',
+    '## Fuera de alcance',
+    '',
+    'No especificado. El equipo debe confirmar que funcionalidades quedan fuera antes de implementar.',
+    '',
     '## Actores',
     '',
     bulletList(actorsFor(input)),
+    '',
+    '## Roles y permisos objetivo',
+    '',
+    roles.length
+      ? markdownTable(
+          ['Rol', 'Tipo', 'Permisos', 'Pantallas', 'Endpoints'],
+          roles.map((role) => [
+            role.name,
+            role.userType || '-',
+            role.permissions.join('<br>') || '-',
+            role.screens.join('<br>') || '-',
+            role.endpoints.join('<br>') || '-'
+          ])
+        )
+      : '- No hay roles objetivo capturados. Definir Admin/Usuario/etc. antes de cerrar implementacion.',
     '',
     '## Casos de uso detallados',
     '',
@@ -427,19 +544,56 @@ export const buildRequirementsMarkdown = (input: ImplementationSpecExportInput) 
             return `${finding.statement} -> ${useCase.requirement.code}${process ? ` -> proceso ${process.name}` : ''}${transaction}`;
           }),
           '- Sin hallazgos/evidencias vinculadas.'
-        )
+        ),
+        '',
+        '#### Contrato tecnico',
+        '',
+        (() => {
+          const contract = contractFor(input, useCase.requirement.id);
+          return contract
+            ? [
+                `- Pantalla: ${text(contract.screenName, 'No especificada')}`,
+                `- Ruta UI: ${text(contract.routePath, 'No especificada')}`,
+                `- Endpoint: ${text(`${contract.endpointMethod ?? ''} ${contract.endpointPath ?? ''}`.trim(), 'No especificado')}`,
+                '',
+                '##### Request fields',
+                markdownTable(['Campo', 'Tipo', 'Requerido', 'Descripcion', 'Ejemplo'], fieldRows(contract.requestFields)),
+                '',
+                '##### Response fields',
+                markdownTable(['Campo', 'Tipo', 'Requerido', 'Descripcion', 'Ejemplo'], fieldRows(contract.responseFields)),
+                '',
+                '##### Reglas de negocio',
+                bulletList(contract.businessRules, '- Pendiente'),
+                '',
+                '##### Validaciones',
+                bulletList(contract.validations, '- Pendiente'),
+                '',
+                '##### Errores esperados',
+                markdownTable(
+                  ['HTTP', 'Condicion', 'Mensaje'],
+                  contract.expectedErrors.map((error) => [String(error.statusCode), error.condition, error.message])
+                ),
+                '',
+                '##### Permisos',
+                bulletList(contract.permissions, '- Pendiente'),
+                '',
+                '##### Pruebas',
+                bulletList(contract.testCases, '- Pendiente')
+              ].join('\n')
+            : '_Warning: falta contrato tecnico manual para este requisito._';
+        })()
       ].join('\n')
     ),
     '',
     '## Matriz de relaciones entre casos de uso',
     '',
     markdownTable(
-      ['Caso de uso', 'Depende de', 'Relacionado con', 'Base de trazabilidad'],
+      ['Caso de uso', 'Requisito', 'Evidencia', 'Contrato tecnico'],
       useCases.map((useCase, index) => [
         `CU-${index + 1}`,
-        index === 0 ? 'Autenticacion / sesion valida' : `CU-${Math.max(1, index)}`,
-        useCase.sourceFindings.length ? 'Hallazgos vinculados' : 'Inferido desde requisito',
-        useCase.requirement.code
+        useCase.requirement.code,
+        useCase.sourceFindings.length ? `${useCase.sourceFindings.length} hallazgo(s)` : 'Sin evidencia',
+        contractFor(input, useCase.requirement.id)?.endpointPath ?? 'Sin contrato'
       ])
     ),
     '',
@@ -454,6 +608,82 @@ export const buildRequirementsMarkdown = (input: ImplementationSpecExportInput) 
 
 export const buildClassModelMarkdown = (input: ImplementationSpecExportInput) => {
   const entities = inferEntities(input);
+  const manualEntities = input.dataEntities ?? [];
+  if (manualEntities.length > 0) {
+    return [
+      '# Modelo de clases y datos',
+      '',
+      'Este modelo prioriza entidades capturadas manualmente en Specora. Las relaciones y reglas aqui descritas deben implementarse en modelos, migraciones y servicios.',
+      '',
+      '## Resumen de entidades manuales',
+      '',
+      markdownTable(
+        ['Entidad', 'Tabla', 'Origen', 'Confianza', 'Campos', 'Relaciones'],
+        manualEntities.map((entity) => [
+          entity.name,
+          entity.tableName,
+          entity.source,
+          entity.confidence,
+          String(entity.fields.length),
+          String(entity.relationships.length)
+        ])
+      ),
+      '',
+      ...manualEntities.map((entity) =>
+        [
+          `## ${entity.name}`,
+          '',
+          `- Tabla: \`${entity.tableName}\``,
+          `- Origen: ${entity.source}`,
+          `- Confianza: ${entity.confidence}`,
+          `- Descripcion: ${text(entity.description, 'No especificada')}`,
+          '',
+          '### Campos',
+          '',
+          markdownTable(
+            ['Campo', 'Tipo', 'Requerido', 'Unico', 'Nullable', 'Default', 'Ejemplo', 'Descripcion'],
+            entity.fields.map((field) => [
+              field.name,
+              field.type,
+              field.required ? 'Si' : 'No',
+              field.unique ? 'Si' : 'No',
+              field.nullable ? 'Si' : 'No',
+              field.defaultValue || '-',
+              field.example || '-',
+              field.description || '-'
+            ])
+          ),
+          '',
+          '### Relaciones',
+          '',
+          markdownTable(
+            ['Origen', 'Tipo', 'Destino', 'FK sugerida', 'On delete', 'Descripcion'],
+            entity.relationships.map((relationship) => [
+              relationship.fromEntity,
+              relationship.type,
+              relationship.toEntity,
+              relationship.foreignKey || '-',
+              relationship.onDelete || '-',
+              relationship.description || '-'
+            ])
+          ),
+          '',
+          '### Integridad',
+          '',
+          bulletList(entity.integrityRules, '- Sin reglas de integridad capturadas.')
+        ].join('\n')
+      ),
+      '',
+      '## Entidades inferidas adicionales',
+      '',
+      markdownTable(
+        ['Entidad', 'Tabla', 'Confianza', 'Origen'],
+        entities
+          .filter((entity) => !manualEntities.some((manual) => normalize(manual.name) === normalize(entity.name)))
+          .map((entity) => [entity.name, entity.tableName, entity.confidence, entity.source])
+      )
+    ].join('\n');
+  }
   return [
     '# Modelo de clases',
     '',
@@ -508,19 +738,24 @@ export const buildClassModelMarkdown = (input: ImplementationSpecExportInput) =>
   ].join('\n');
 };
 
-export const buildArchitectureMarkdown = (input: ImplementationSpecExportInput) => [
-  '# Arquitectura objetivo',
-  '',
-  `Sistema: ${projectName(input)}`,
-  '',
-  '## Backend',
-  '',
-  '- Framework: FastAPI.',
-  '- ORM: SQLModel.',
-  '- Migraciones: Alembic.',
-  '- Base de datos local: SQLite.',
-  '- Auth: JWT con access token, password hashing y dependencia `get_current_user`.',
-  '- Capas: routers, schemas, services, repositories simples cuando agreguen claridad, models y core.',
+export const buildArchitectureMarkdown = (input: ImplementationSpecExportInput) => {
+  const stack = targetStackFor(input);
+  return [
+    '# Arquitectura objetivo',
+    '',
+    `Sistema: ${projectName(input)}`,
+    `Tipo de arquitectura: ${stack.architectureType}`,
+    '',
+    '## Backend target',
+    '',
+    `- Framework: ${stack.backendFramework}.`,
+    `- Lenguaje: ${stack.backendLanguage}.`,
+    `- ORM: ${stack.backendOrm || 'No especificado'}.`,
+    `- Migraciones: ${stack.backendMigrations || 'No especificadas'}.`,
+    `- Base de datos: ${stack.backendDatabase}.`,
+    `- Auth: ${stack.backendAuth || 'No especificado'}.`,
+    `- Testing: ${stack.backendTesting || 'No especificado'}.`,
+    '- Capas: routers, schemas, services, repositories simples cuando agreguen claridad, models y core.',
   '',
   '### Estructura sugerida',
   '',
@@ -540,14 +775,15 @@ export const buildArchitectureMarkdown = (input: ImplementationSpecExportInput) 
   '  tests/',
   '```',
   '',
-  '## Frontend',
+  '## Frontend target',
   '',
-  '- Build: Vite.',
-  '- UI: React + TypeScript + Bootstrap 5.',
-  '- Data fetching: TanStack Query.',
-  '- HTTP: Axios con interceptor JWT.',
-  '- Estado ligero: Zustand para sesion, preferencias y contexto activo.',
-  '- Routing: React Router v6.',
+  `- Framework/build: ${stack.frontendFramework}.`,
+  `- Lenguaje: ${stack.frontendLanguage}.`,
+  `- UI library: ${stack.frontendUi || 'No especificada'}.`,
+  `- Routing: ${stack.frontendRouting || 'No especificado'}.`,
+  `- Data fetching: ${stack.frontendDataFetching || 'No especificado'}.`,
+  `- Estado: ${stack.frontendState || 'No especificado'}.`,
+  `- Testing: ${stack.frontendTesting || 'No especificado'}.`,
   '',
   '### Estructura sugerida',
   '',
@@ -570,8 +806,22 @@ export const buildArchitectureMarkdown = (input: ImplementationSpecExportInput) 
   '- Los errores de validacion deben responder con HTTP 400/422 y mensajes accionables.',
   '- Las pantallas no deben exponer tablas CRUD crudas como experiencia principal; usar workflows, filtros, estados vacios y paneles de detalle.',
   '- El frontend debe centralizar loading, error y empty state.',
-  '- Cada caso de uso importante debe tener ruta o accion visible.'
+  '- Cada caso de uso importante debe tener ruta o accion visible.',
+  '',
+  '## Ejecucion local e infraestructura',
+  '',
+  `- Modo: ${stack.runMode || 'No especificado'}`,
+  `- Seed admin: ${stack.seedAdmin || 'No especificado'}`,
+  '',
+  '### Variables de entorno',
+  '',
+  bulletList(stack.envVars.map((item) => `\`${item}\``), '- Pendiente'),
+  '',
+  '### Comandos esperados',
+  '',
+  bulletList(stack.commands.map((item) => `\`${item}\``), '- Pendiente')
 ].join('\n');
+};
 
 export const buildProcessMarkdown = (input: ImplementationSpecExportInput) => {
   const useCases = useCasesFor(input);
@@ -726,42 +976,70 @@ export const buildExecutionMarkdown = () => [
   '- Validar que cada caso de uso tenga accion visible y persistencia real.'
 ].join('\n');
 
-export const buildDesignMarkdown = () => [
-  '# Design system y experiencia',
-  '',
-  'La interfaz debe sentirse cercana a Vercel, Figma, Linear, Raycast y Stripe: sobria, rapida, precisa y profesional.',
-  '',
-  '## Paleta',
-  '',
-  '- Base: zinc/neutra (`#09090b`, `#18181b`, `#27272a`, `#71717a`, `#e4e4e7`, `#fafafa`).',
-  '- Acento principal: azul o indigo sobrio para acciones primarias.',
-  '- Estados: verde para exito, amber para advertencia, rojo para error.',
-  '- Evitar interfaces saturadas con un solo color dominante.',
-  '',
-  '## Componentes',
-  '',
-  '- `PageHeader`: titulo, descripcion corta y acciones principales.',
-  '- `Card`: radio maximo 8px, borde sutil, padding consistente.',
-  '- `Button`: variantes primary, secondary, ghost y danger; con icono cuando aplique.',
-  '- `Input`: label visible, ayuda corta, error inline.',
-  '- `Badge`: estado compacto con contraste suficiente.',
-  '- `EmptyState`: mensaje breve, accion siguiente y sin ilustraciones decorativas pesadas.',
-  '- `DataToolbar`: busqueda, filtros y ordenamiento.',
-  '',
-  '## Layout',
-  '',
-  '- Sidebar estable para modulos principales.',
-  '- Contenido max-width controlado, pero tablas y workbenches pueden usar ancho completo.',
-  '- Responsive desde mobile: formularios en una columna, acciones agrupadas.',
-  '- Densidad empresarial: menos hero, mas informacion escaneable.',
-  '',
-  '## Reglas de calidad visual',
-  '',
-  '- No crear CRUD feo: cada lista debe tener busqueda, filtros, estado, accion principal y detalle.',
-  '- No meter cards dentro de cards.',
-  '- Los textos no deben desbordar botones, badges ni tablas.',
-  '- Cada pantalla debe mostrar claramente que se puede hacer despues.'
-].join('\n');
+const designInputContent = (input: ImplementationSpecExportInput) =>
+  (input.designInputs ?? [])
+    .filter((file) => file.encoding === 'text' && /\.(md|markdown|txt)$/i.test(file.name))
+    .map((file) => ({
+      path: `${file.folder ? `${file.folder}/` : ''}${file.name}`,
+      content: file.content.trim()
+    }))
+    .filter((file) => file.content.length > 0);
+
+export const buildDesignMarkdown = (input: ImplementationSpecExportInput) => {
+  const inputs = designInputContent(input);
+  return [
+    '# Design system y experiencia',
+    '',
+    'La interfaz debe sentirse cercana a Vercel, Figma, Linear, Raycast y Stripe: sobria, rapida, precisa y profesional.',
+    '',
+    '## Instrucciones de diseno importadas',
+    '',
+    inputs.length > 0
+      ? 'Esta seccion incluye lineamientos manuales importados a Specora, por ejemplo archivos `.md` generados por Stitch. El equipo implementador debe tratarlos como referencia prioritaria, validando que no contradigan requisitos funcionales, accesibilidad ni alcance.'
+      : 'No se importaron archivos de diseno. Usa las reglas base de este documento y valida visualmente las pantallas principales.',
+    '',
+    ...inputs.flatMap((file, index) => [
+      `### Fuente ${index + 1}: ${file.path}`,
+      '',
+      '```md',
+      file.content.slice(0, 12000),
+      file.content.length > 12000 ? '\n<!-- Contenido recortado por longitud. Revisar archivo fuente completo en el paquete del proyecto. -->' : '',
+      '```',
+      ''
+    ]),
+    '## Paleta base',
+    '',
+    '- Base: zinc/neutra (`#09090b`, `#18181b`, `#27272a`, `#71717a`, `#e4e4e7`, `#fafafa`).',
+    '- Acento principal: azul o indigo sobrio para acciones primarias.',
+    '- Estados: verde para exito, amber para advertencia, rojo para error.',
+    '- Si el archivo importado define tokens visuales distintos, usarlos solo cuando mantengan contraste y consistencia.',
+    '',
+    '## Componentes',
+    '',
+    '- `PageHeader`: titulo, descripcion corta y acciones principales.',
+    '- `Card`: radio maximo 8px, borde sutil, padding consistente.',
+    '- `Button`: variantes primary, secondary, ghost y danger; con icono cuando aplique.',
+    '- `Input`: label visible, ayuda corta, error inline.',
+    '- `Badge`: estado compacto con contraste suficiente.',
+    '- `EmptyState`: mensaje breve, accion siguiente y sin ilustraciones decorativas pesadas.',
+    '- `DataToolbar`: busqueda, filtros y ordenamiento.',
+    '',
+    '## Layout',
+    '',
+    '- Sidebar estable para modulos principales.',
+    '- Contenido max-width controlado, pero tablas y workbenches pueden usar ancho completo.',
+    '- Responsive desde mobile: formularios en una columna, acciones agrupadas.',
+    '- Densidad empresarial: menos hero, mas informacion escaneable.',
+    '',
+    '## Reglas de calidad visual',
+    '',
+    '- No crear CRUD feo: cada lista debe tener busqueda, filtros, estado, accion principal y detalle.',
+    '- No meter cards dentro de cards.',
+    '- Los textos no deben desbordar botones, badges ni tablas.',
+    '- Cada pantalla debe mostrar claramente que se puede hacer despues.',
+    '- Las referencias importadas desde Stitch son guia visual; la implementacion final debe seguir criterios de accesibilidad, responsive y validacion manual.'
+  ].join('\n');
+};
 
 export const buildValidationReportMarkdown = (input: ImplementationSpecExportInput) => {
   const entities = inferEntities(input);
@@ -827,10 +1105,27 @@ export const buildValidationReportMarkdown = (input: ImplementationSpecExportInp
         ['Hallazgos', String(input.findings.length)],
         ['Requisitos', String(input.requirements.length)],
         ['Casos de uso', String(useCasesFor(input).length)],
+        ['Contratos tecnicos', String(input.implementationContracts?.length ?? 0)],
+        ['Entidades manuales', String(input.dataEntities?.length ?? 0)],
+        ['Roles objetivo', String(input.targetRoles?.length ?? 0)],
+        ['Insumos de diseno importados', String(input.designInputs?.length ?? 0)],
         ['Diagramas derivados', String(input.diagrams.length)],
         ['Diagramas guardados', String(input.savedDiagrams.length)]
       ]
-    )
+    ),
+    '',
+    '## Checklist evaluable',
+    '',
+    bulletList([
+      'Backend corre localmente con comandos documentados.',
+      'Frontend corre localmente con comandos documentados.',
+      'Login/autenticacion funciona si el sistema requiere roles.',
+      'CRUD principal completo para entidades centrales.',
+      'Validaciones de negocio implementadas en backend.',
+      'Errores 400/401/403/404/409/422 documentados donde aplique.',
+      'README con pasos de instalacion, seed y ejemplos de uso.',
+      'Pruebas basicas de API y flujo principal.'
+    ])
   ].join('\n');
 };
 
@@ -841,6 +1136,6 @@ export const buildImplementationSpecFiles = (input: ImplementationSpecExportInpu
   { path: '04_ARCHITECTURE.md', content: buildArchitectureMarkdown(input) },
   { path: '05_PROCESS.md', content: buildProcessMarkdown(input) },
   { path: '06_EXECUTION.md', content: buildExecutionMarkdown() },
-  { path: '07_DESIGN.md', content: buildDesignMarkdown() },
+  { path: '07_DESIGN.md', content: buildDesignMarkdown(input) },
   { path: '08_VALIDATION_REPORT.md', content: buildValidationReportMarkdown(input) }
 ];

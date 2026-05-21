@@ -5,6 +5,8 @@ export const WORKSPACE_MODULES: WorkspaceModule[] = [
   { key: 'summary', label: 'Resumen', icon: 'dashboard', tone: 'blue' },
   { key: 'context', label: 'Contexto del Proyecto', icon: 'article', tone: 'blue' },
   { key: 'projectFiles', label: 'Carpeta del Proyecto', icon: 'folder_open', tone: 'amber' },
+  { key: 'techTeam', label: 'Tech Team', icon: 'engineering', tone: 'indigo' },
+  { key: 'targetStack', label: 'Stack Objetivo', icon: 'account_tree', tone: 'slate' },
   { key: 'stakeholders', label: 'Stakeholders', icon: 'group', tone: 'cyan' },
   { key: 'processes', label: 'Procesos', icon: 'account_tree', tone: 'emerald' },
   { key: 'techniques', label: 'Tecnicas', icon: 'psychology_alt', tone: 'blue' },
@@ -12,7 +14,10 @@ export const WORKSPACE_MODULES: WorkspaceModule[] = [
   { key: 'findings', label: 'Hallazgos', icon: 'search', tone: 'slate' },
   { key: 'requirements', label: 'Requisitos', icon: 'fact_check', tone: 'violet' },
   { key: 'useCases', label: 'Historias / Casos', icon: 'menu_book', tone: 'indigo' },
+  { key: 'technicalContracts', label: 'Contratos Tecnicos', icon: 'data_object', tone: 'blue' },
   { key: 'specs', label: 'Specs', icon: 'description', tone: 'blue' },
+  { key: 'dataModel', label: 'Modelo de Datos', icon: 'table_chart', tone: 'cyan' },
+  { key: 'roles', label: 'Roles y Permisos', icon: 'admin_panel_settings', tone: 'slate' },
   { key: 'modeling', label: 'Modelado', icon: 'schema', tone: 'cyan' },
   { key: 'validation', label: 'Validacion', icon: 'rule', tone: 'amber' },
   { key: 'traceability', label: 'Trazabilidad', icon: 'hub', tone: 'purple' }
@@ -33,9 +38,9 @@ const group = (label: string, keys: ModuleKey[]): NavigationGroup => ({
 });
 
 export const WORKSPACE_NAVIGATION_GROUPS: NavigationGroup[] = [
-  group('Fundacion', ['summary', 'context', 'projectFiles', 'stakeholders', 'processes']),
+  group('Fundacion', ['summary', 'context', 'targetStack', 'projectFiles', 'techTeam', 'stakeholders', 'processes']),
   group('Discovery', ['techniques', 'evidences']),
   group('Analisis', ['findings', 'requirements']),
-  group('Sintesis', ['useCases', 'specs', 'modeling']),
+  group('Sintesis', ['useCases', 'technicalContracts', 'dataModel', 'roles', 'specs', 'modeling']),
   group('Entrega', ['validation', 'traceability', 'projectFiles'])
 ];

@@ -5,6 +5,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ProcessesService, type Process, type Subprocess } from '../../services/processes.service';
 import { ProjectsService, type Project, type ProjectUser } from '../../services/projects.service';
+import { UsersService } from '../../services/users.service';
 import {
   TraceabilityService,
   type AIDraftFinding,
@@ -33,7 +34,7 @@ import {
   slugify,
   tryReadBundleFiles
 } from './project-file-utils';
-import { buildImplementationSpecFiles } from './implementation-spec-export';
+import { buildImplementationSpecFiles, type ImplementationSpecFile } from './implementation-spec-export';
 import { TECHNIQUE_MODULES, WORKSPACE_MODULES, WORKSPACE_NAVIGATION_GROUPS } from './project-workspace-navigation';
 import { buildLocalQuestionnaireSuggestions } from './questionnaire-suggestions';
 import { buildRequirementReadiness } from './requirement-readiness';
@@ -55,12 +56,22 @@ import type {
   DiagramNodeType,
   DiagramResizeHandle,
   DomainEntity,
+  DataEntitySpec,
+  DataFieldSpec,
+  DataRelationshipSpec,
+  EndpointMethod,
+  ExpectedError,
+  FieldSpec,
+  FieldSpecType,
+  ImplementationContract,
   ModuleKey,
   NavigationGroup,
   ProjectArtifactFile,
   ProjectFileDraft,
   SavedDiagramEntry,
   SurveyQuestionDraft,
+  TargetRoleSpec,
+  TargetStack,
   TraceAuditRow,
   TraceViewKey,
   WorkspaceModule
@@ -117,6 +128,31 @@ type TransactionTrackingMetrics = {
   informalApprovalCount?: number | null;
   notes?: string | null;
 };
+
+const DEFAULT_TARGET_STACK: TargetStack = {
+  architectureType: 'SPA + API REST',
+  backendFramework: 'FastAPI',
+  backendLanguage: 'Python',
+  backendOrm: 'SQLModel',
+  backendDatabase: 'SQLite',
+  backendMigrations: 'Alembic',
+  backendAuth: 'JWT',
+  backendTesting: 'pytest',
+  frontendFramework: 'React + Vite',
+  frontendLanguage: 'TypeScript',
+  frontendUi: 'Bootstrap 5',
+  frontendRouting: 'React Router',
+  frontendDataFetching: 'TanStack Query + Axios',
+  frontendState: 'Zustand',
+  frontendTesting: 'Vitest / pruebas UI basicas',
+  runMode: 'Local development',
+  envVars: ['DATABASE_URL', 'JWT_SECRET_KEY', 'CORS_ORIGINS'],
+  seedAdmin: 'admin@example.com / cambiar password en primer acceso',
+  commands: ['backend: uvicorn app.main:app --reload', 'frontend: npm run dev', 'migraciones: alembic upgrade head']
+};
+
+const FIELD_TYPES: FieldSpecType[] = ['string', 'number', 'boolean', 'date', 'datetime', 'enum', 'object', 'array'];
+const ENDPOINT_METHODS: EndpointMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
 const AGENT_PROFILES: AgentProfile[] = [
   {
@@ -184,6 +220,10 @@ export class ProjectWorkspace {
   readonly deletedGeneratedProjectFileIds = signal<string[]>([]);
   readonly selectedProjectFileId = signal<string | null>(null);
   readonly projectFileDraft = signal<ProjectFileDraft | null>(null);
+  readonly targetStack = signal<TargetStack>({ ...DEFAULT_TARGET_STACK });
+  readonly implementationContracts = signal<ImplementationContract[]>([]);
+  readonly dataEntities = signal<DataEntitySpec[]>([]);
+  readonly targetRoles = signal<TargetRoleSpec[]>([]);
   readonly draggingNode = signal<{ nodeId: string; offsetX: number; offsetY: number } | null>(null);
   readonly resizingNode = signal<{
     nodeId: string;
@@ -207,6 +247,8 @@ export class ProjectWorkspace {
   readonly stakeholders = signal<Stakeholder[]>([]);
   readonly techUsers = signal<ProjectUser[]>([]);
   readonly clientUsers = signal<ProjectUser[]>([]);
+  readonly techSearchQuery = signal('');
+  readonly techSearchResults = signal<ProjectUser[]>([]);
   readonly processes = signal<Process[]>([]);
   readonly subprocesses = signal<Subprocess[]>([]);
   readonly sessions = signal<Session[]>([]);
@@ -258,6 +300,8 @@ export class ProjectWorkspace {
   readonly activeAgentProfile = computed(
     () => this.agentProfiles.find((profile) => profile.key === this.selectedAgentProfile()) ?? this.agentProfiles[0]
   );
+  readonly fieldTypes = FIELD_TYPES;
+  readonly endpointMethods = ENDPOINT_METHODS;
 
   // Forms are intentionally close to the page because each one maps to a visible workspace panel.
   readonly stakeholderForm = this.fb.group({
@@ -396,7 +440,67 @@ export class ProjectWorkspace {
     finding_ids: this.fb.control<number[]>([], [Validators.required])
   });
 
+  readonly targetStackForm = this.fb.group({
+    architectureType: [DEFAULT_TARGET_STACK.architectureType, [Validators.required]],
+    backendFramework: [DEFAULT_TARGET_STACK.backendFramework, [Validators.required]],
+    backendLanguage: [DEFAULT_TARGET_STACK.backendLanguage, [Validators.required]],
+    backendOrm: [DEFAULT_TARGET_STACK.backendOrm],
+    backendDatabase: [DEFAULT_TARGET_STACK.backendDatabase, [Validators.required]],
+    backendMigrations: [DEFAULT_TARGET_STACK.backendMigrations],
+    backendAuth: [DEFAULT_TARGET_STACK.backendAuth],
+    backendTesting: [DEFAULT_TARGET_STACK.backendTesting],
+    frontendFramework: [DEFAULT_TARGET_STACK.frontendFramework, [Validators.required]],
+    frontendLanguage: [DEFAULT_TARGET_STACK.frontendLanguage, [Validators.required]],
+    frontendUi: [DEFAULT_TARGET_STACK.frontendUi],
+    frontendRouting: [DEFAULT_TARGET_STACK.frontendRouting],
+    frontendDataFetching: [DEFAULT_TARGET_STACK.frontendDataFetching],
+    frontendState: [DEFAULT_TARGET_STACK.frontendState],
+    frontendTesting: [DEFAULT_TARGET_STACK.frontendTesting],
+    runMode: [DEFAULT_TARGET_STACK.runMode],
+    envVars: [DEFAULT_TARGET_STACK.envVars.join('\n')],
+    seedAdmin: [DEFAULT_TARGET_STACK.seedAdmin],
+    commands: [DEFAULT_TARGET_STACK.commands.join('\n')]
+  });
+
+  readonly contractForm = this.fb.group({
+    requirementId: [null as number | null, [Validators.required]],
+    screenName: [''],
+    routePath: [''],
+    endpointMethod: ['POST' as EndpointMethod],
+    endpointPath: [''],
+    requestFieldsText: [''],
+    responseFieldsText: [''],
+    businessRulesText: [''],
+    validationsText: [''],
+    expectedErrorsText: [''],
+    permissionsText: [''],
+    acceptanceChecksText: [''],
+    testCasesText: ['']
+  });
+
+  readonly dataEntityForm = this.fb.group({
+    name: ['', [Validators.required, Validators.minLength(2)]],
+    tableName: [''],
+    description: [''],
+    source: ['manual' as DataEntitySpec['source']],
+    confidence: ['alta' as DataEntitySpec['confidence']],
+    fieldsText: [''],
+    relationshipsText: [''],
+    integrityRulesText: ['']
+  });
+
+  readonly targetRoleForm = this.fb.group({
+    name: ['', [Validators.required, Validators.minLength(2)]],
+    description: [''],
+    userType: [''],
+    permissionsText: [''],
+    screensText: [''],
+    endpointsText: ['']
+  });
+
   readonly captureModules = computed(() => this.techniqueModules);
+
+  readonly techMembers = computed(() => this.techUsers());
 
   // Derived dashboard state. This is where I turn traceability data into things the UI can scan quickly.
   readonly activeModuleInfo = computed(
@@ -427,8 +531,41 @@ export class ProjectWorkspace {
       useCases: this.useCaseArtifacts(),
       specs: this.specArtifacts(),
       diagrams: this.diagramArtifacts(),
-      savedDiagrams: this.savedDiagrams()
+      savedDiagrams: this.savedDiagrams(),
+      targetStack: this.targetStack(),
+      implementationContracts: this.implementationContracts(),
+      dataEntities: this.dataEntities(),
+      targetRoles: this.targetRoles()
     })
+  );
+
+  readonly implementationSpecPreviewFiles = computed<ImplementationSpecFile[]>(() =>
+    buildImplementationSpecFiles({
+      project: this.project(),
+      projectId: this.projectId(),
+      stakeholders: this.stakeholders(),
+      processes: this.processes(),
+      sessions: this.sessions(),
+      findings: this.findings(),
+      requirements: this.requirements(),
+      useCases: this.useCaseArtifacts(),
+      diagrams: this.diagramArtifacts(),
+      savedDiagrams: this.savedDiagrams(),
+      targetStack: this.targetStack(),
+      implementationContracts: this.implementationContracts(),
+      dataEntities: this.dataEntities(),
+      targetRoles: this.targetRoles(),
+      designInputs: this.designInputFiles(),
+      readiness: this.requirementReadiness()
+    })
+  );
+
+  readonly architectureSpecPreview = computed(() =>
+    this.implementationSpecPreviewFiles().find((file) => file.path === '04_ARCHITECTURE.md')?.content ?? ''
+  );
+
+  readonly designSpecPreview = computed(() =>
+    this.implementationSpecPreviewFiles().find((file) => file.path === '07_DESIGN.md')?.content ?? ''
   );
 
   readonly readinessIssues = computed(() => {
@@ -860,6 +997,15 @@ export class ProjectWorkspace {
         encoding: 'text',
         content: JSON.stringify(entry.diagram, null, 2)
       });
+      files.push({
+        id: `drawio-${entry.id}`,
+        folder: '06_DIAGRAMS/drawio',
+        name: `${slugify(entry.title)}.drawio`,
+        kind: 'Diagrams.net',
+        source: 'generated',
+        encoding: 'text',
+        content: this.buildDrawioXml(entry.diagram)
+      });
     });
 
     return files;
@@ -1270,7 +1416,8 @@ export class ProjectWorkspace {
     private readonly route: ActivatedRoute,
     private readonly projectsService: ProjectsService,
     private readonly processesService: ProcessesService,
-    private readonly traceabilityService: TraceabilityService
+    private readonly traceabilityService: TraceabilityService,
+    private readonly usersService: UsersService
   ) {
     this.route.paramMap.subscribe((params) => {
       const id = Number(params.get('id'));
@@ -1282,6 +1429,7 @@ export class ProjectWorkspace {
       this.projectId.set(id);
       this.loadSavedDiagrams(id);
       this.loadManagedProjectFiles(id);
+      this.loadImplementationInputs(id);
       this.refresh(id);
     });
   }
@@ -1439,14 +1587,16 @@ export class ProjectWorkspace {
   addDiagramNode(type: DiagramNodeType) {
     const current = this.ensureDiagram();
     const count = current.nodes.length + 1;
+    const defaults = this.diagramNodeVisualDefaults(type);
     const node: DiagramNode = {
       id: `node-${Date.now()}-${count}`,
       type,
       label: this.defaultDiagramNodeLabel(type, count),
       x: 90 + (count % 4) * 150,
       y: 80 + Math.floor(count / 4) * 110,
-      width: type === 'actor' ? 96 : type === 'lifeline' ? 130 : 150,
-      height: type === 'actor' ? 64 : type === 'lifeline' ? 360 : 68
+      width: type === 'actor' ? 96 : type === 'lifeline' ? 130 : type === 'decision' ? 96 : 150,
+      height: type === 'actor' ? 64 : type === 'lifeline' ? 360 : type === 'decision' ? 96 : 68,
+      ...defaults
     };
     this.diagram.set({ ...current, nodes: [...current.nodes, node] });
     this.selectedDiagramNodeId.set(node.id);
@@ -1597,6 +1747,18 @@ export class ProjectWorkspace {
     });
   }
 
+  updateSelectedDiagramEdgeNotes(value: string) {
+    const edge = this.selectedDiagramEdge();
+    const current = this.diagram();
+    if (!edge || !current) {
+      return;
+    }
+    this.diagram.set({
+      ...current,
+      edges: current.edges.map((item) => (item.id === edge.id ? { ...item, notes: value || undefined } : item))
+    });
+  }
+
   updateSelectedDiagramNodeSize(field: 'width' | 'height', value: string) {
     const node = this.selectedDiagramNode();
     const current = this.diagram();
@@ -1612,6 +1774,59 @@ export class ProjectWorkspace {
       ...current,
       nodes: current.nodes.map((item) =>
         item.id === node.id ? { ...item, [field]: Math.max(minimum[field], Math.round(parsed)) } : item
+      )
+    });
+  }
+
+  updateSelectedDiagramNodeType(type: DiagramNodeType) {
+    const node = this.selectedDiagramNode();
+    const current = this.diagram();
+    if (!node || !current) {
+      return;
+    }
+    const defaults = this.diagramNodeVisualDefaults(type);
+    const minimum = this.diagramNodeMinimumSize(type);
+    this.diagram.set({
+      ...current,
+      nodes: current.nodes.map((item) =>
+        item.id === node.id
+          ? {
+              ...item,
+              type,
+              width: Math.max(item.width, minimum.width),
+              height: Math.max(item.height, minimum.height),
+              ...defaults
+            }
+          : item
+      )
+    });
+  }
+
+  updateSelectedDiagramNodeProperty(field: 'fill' | 'stroke' | 'textColor' | 'layer' | 'notes' | 'specId', value: string) {
+    const node = this.selectedDiagramNode();
+    const current = this.diagram();
+    if (!node || !current) {
+      return;
+    }
+    this.diagram.set({
+      ...current,
+      nodes: current.nodes.map((item) => (item.id === node.id ? { ...item, [field]: value || undefined } : item))
+    });
+  }
+
+  updateSelectedDiagramNodeRequirement(value: string) {
+    const node = this.selectedDiagramNode();
+    const current = this.diagram();
+    const requirementId = Number(value);
+    if (!node || !current) {
+      return;
+    }
+    this.diagram.set({
+      ...current,
+      nodes: current.nodes.map((item) =>
+        item.id === node.id
+          ? { ...item, requirementId: Number.isFinite(requirementId) && requirementId > 0 ? requirementId : undefined }
+          : item
       )
     });
   }
@@ -1734,6 +1949,16 @@ export class ProjectWorkspace {
     this.downloadText(`${slugify(current.title)}.drawio-lite.json`, JSON.stringify(current, null, 2), 'application/json');
   }
 
+  downloadCurrentDiagramDrawio() {
+    const current = this.diagram();
+    if (!current) {
+      this.error.set('No hay diagrama para descargar.');
+      return;
+    }
+    this.downloadText(`${slugify(current.title)}.drawio`, this.buildDrawioXml(current), 'application/xml;charset=utf-8');
+    this.success.set('Diagrama .drawio descargado para abrirlo en diagrams.net.');
+  }
+
   importDiagramFile(event: Event) {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -1836,6 +2061,11 @@ export class ProjectWorkspace {
       useCases: this.useCaseArtifacts(),
       diagrams: this.diagramArtifacts(),
       savedDiagrams: this.savedDiagrams(),
+      targetStack: this.targetStack(),
+      implementationContracts: this.implementationContracts(),
+      dataEntities: this.dataEntities(),
+      targetRoles: this.targetRoles(),
+      designInputs: this.designInputFiles(),
       readiness
     });
     const blob = createZipBlob(files);
@@ -2006,11 +2236,12 @@ export class ProjectWorkspace {
             continue;
           }
         }
+        const isDesignInput = this.isDesignIdeaFileName(file.name);
         imported.push({
           id: `imported-${Date.now()}-${imported.length}`,
-          folder: this.isDesignIdeaFileName(file.name) ? '07_DESIGN_IDEAS' : '04-importados',
+          folder: isDesignInput ? '07_DESIGN_IDEAS' : '04-importados',
           name: cleanProjectFilePart(file.name),
-          kind: this.isDesignIdeaFileName(file.name) ? 'Idea de diseno' : 'Importado',
+          kind: isDesignInput ? 'Insumo de diseno para 07_DESIGN' : 'Importado',
           content,
           encoding: 'text',
           mime_type: file.type || 'text/plain',
@@ -2078,6 +2309,60 @@ export class ProjectWorkspace {
       .split('\n')
       .flatMap((line) => (line.length > maxLength ? [`${line.slice(0, maxLength - 3)}...`] : [line]))
       .slice(0, node.type === 'class' ? 7 : 3);
+  }
+
+  diagramKindLabel(kind: DiagramKind) {
+    const labels: Record<DiagramKind, string> = {
+      use_case: 'Casos de uso',
+      class: 'Modelo de clases',
+      sequence: 'Secuencia',
+      package: 'Paquetes',
+      component: 'Componentes',
+      free: 'Canvas libre'
+    };
+    return labels[kind] ?? kind;
+  }
+
+  diagramNodeTypeLabel(type: DiagramNodeType) {
+    const labels: Record<DiagramNodeType, string> = {
+      actor: 'Actor',
+      use_case: 'Proceso / caso de uso',
+      class: 'Clase',
+      package: 'Paquete',
+      component: 'Componente',
+      process: 'Proceso',
+      decision: 'Decision',
+      database: 'Base de datos',
+      service: 'Servicio',
+      screen: 'Pantalla',
+      api: 'API',
+      queue: 'Cola / mensajeria',
+      requirement: 'Requisito',
+      spec: 'Spec',
+      note: 'Nota',
+      lifeline: 'Lifeline',
+      boundary: 'Limite / sistema'
+    };
+    return labels[type] ?? type;
+  }
+
+  diagramEdgeTypeLabel(type: DiagramEdgeType) {
+    const labels: Record<DiagramEdgeType, string> = {
+      association: 'Asociacion',
+      include: 'Include',
+      extend: 'Extend',
+      dependency: 'Dependencia',
+      inheritance: 'Herencia',
+      composition: 'Composicion',
+      aggregation: 'Agregacion',
+      message: 'Mensaje',
+      data_flow: 'Flujo de datos'
+    };
+    return labels[type] ?? type;
+  }
+
+  diagramNodeRequirement(node: DiagramNode) {
+    return node.requirementId ? this.requirements().find((requirement) => requirement.id === node.requirementId) ?? null : null;
   }
 
   moduleSessions(module: CaptureModuleKey) {
@@ -2652,6 +2937,247 @@ export class ProjectWorkspace {
         },
         error: (err) => this.fail(err, 'No se pudo agregar el stakeholder.')
       });
+  }
+
+  setTechSearchQuery(query: string) {
+    this.techSearchQuery.set(query);
+  }
+
+  searchTechUsers() {
+    const query = this.techSearchQuery().trim();
+    if (!query) {
+      this.techSearchResults.set([]);
+      return;
+    }
+    this.setSavingState();
+    this.usersService.searchUsers('TECH', query).subscribe({
+      next: (response) => {
+        this.techSearchResults.set(response.users ?? []);
+        this.saving.set(false);
+      },
+      error: (err) => {
+        this.fail(err, 'No se pudieron buscar usuarios tecnicos.');
+        this.techSearchResults.set([]);
+      }
+    });
+  }
+
+  assignTechMember(userId: number) {
+    const projectId = this.projectId();
+    if (!projectId) return;
+    this.setSavingState();
+    this.projectsService.addProjectUser(projectId, userId).subscribe({
+      next: () => {
+        this.success.set('Tecnico asignado al proyecto.');
+        this.techSearchQuery.set('');
+        this.techSearchResults.set([]);
+        this.loadProjectUsers(projectId);
+      },
+      error: (err) => this.fail(err, 'No se pudo asignar el tecnico.')
+    });
+  }
+
+  removeTechMember(userId: number) {
+    const projectId = this.projectId();
+    if (!projectId) return;
+    this.setSavingState();
+    this.projectsService.removeProjectUser(projectId, userId).subscribe({
+      next: () => {
+        this.success.set('Tecnico removido del proyecto.');
+        this.loadProjectUsers(projectId);
+      },
+      error: (err) => this.fail(err, 'No se pudo remover el tecnico.')
+    });
+  }
+
+  isTechMemberAlreadyAssigned(userId: number): boolean {
+    return this.techMembers().some((member) => member.id === userId);
+  }
+
+  saveTargetStack() {
+    const projectId = this.projectId();
+    if (!projectId || this.targetStackForm.invalid) {
+      this.error.set('Completa al menos arquitectura, backend, frontend y base de datos del stack objetivo.');
+      return;
+    }
+    const value = this.targetStackForm.getRawValue();
+    this.targetStack.set({
+      architectureType: value.architectureType || DEFAULT_TARGET_STACK.architectureType,
+      backendFramework: value.backendFramework || DEFAULT_TARGET_STACK.backendFramework,
+      backendLanguage: value.backendLanguage || DEFAULT_TARGET_STACK.backendLanguage,
+      backendOrm: value.backendOrm || '',
+      backendDatabase: value.backendDatabase || DEFAULT_TARGET_STACK.backendDatabase,
+      backendMigrations: value.backendMigrations || '',
+      backendAuth: value.backendAuth || '',
+      backendTesting: value.backendTesting || '',
+      frontendFramework: value.frontendFramework || DEFAULT_TARGET_STACK.frontendFramework,
+      frontendLanguage: value.frontendLanguage || DEFAULT_TARGET_STACK.frontendLanguage,
+      frontendUi: value.frontendUi || '',
+      frontendRouting: value.frontendRouting || '',
+      frontendDataFetching: value.frontendDataFetching || '',
+      frontendState: value.frontendState || '',
+      frontendTesting: value.frontendTesting || '',
+      runMode: value.runMode || '',
+      envVars: this.lines(value.envVars),
+      seedAdmin: value.seedAdmin || '',
+      commands: this.lines(value.commands)
+    });
+    this.persistImplementationInputs(projectId);
+    this.success.set('Stack objetivo guardado para el paquete implementable.');
+  }
+
+  saveImplementationContract() {
+    const projectId = this.projectId();
+    const value = this.contractForm.getRawValue();
+    if (!projectId || !value.requirementId) {
+      this.error.set('Selecciona un requisito para crear el contrato tecnico.');
+      return;
+    }
+    const persistedUseCase = this.useCaseArtifacts().find((useCase) => useCase.requirement.id === value.requirementId)?.persistedId ?? null;
+    const contract: ImplementationContract = {
+      requirementId: value.requirementId,
+      useCaseId: persistedUseCase,
+      screenName: value.screenName || '',
+      routePath: value.routePath || '',
+      endpointMethod: value.endpointMethod || 'POST',
+      endpointPath: value.endpointPath || '',
+      requestFields: this.parseFieldSpecs(value.requestFieldsText),
+      responseFields: this.parseFieldSpecs(value.responseFieldsText),
+      businessRules: this.lines(value.businessRulesText),
+      validations: this.lines(value.validationsText),
+      expectedErrors: this.parseExpectedErrors(value.expectedErrorsText),
+      permissions: this.lines(value.permissionsText),
+      acceptanceChecks: this.lines(value.acceptanceChecksText),
+      testCases: this.lines(value.testCasesText)
+    };
+    this.implementationContracts.update((contracts) => [
+      contract,
+      ...contracts.filter((item) => item.requirementId !== contract.requirementId)
+    ]);
+    this.persistImplementationInputs(projectId);
+    this.success.set('Contrato tecnico guardado.');
+  }
+
+  editImplementationContract(contract: ImplementationContract) {
+    this.contractForm.patchValue({
+      requirementId: contract.requirementId,
+      screenName: contract.screenName ?? '',
+      routePath: contract.routePath ?? '',
+      endpointMethod: contract.endpointMethod ?? 'POST',
+      endpointPath: contract.endpointPath ?? '',
+      requestFieldsText: this.formatFieldSpecs(contract.requestFields),
+      responseFieldsText: this.formatFieldSpecs(contract.responseFields),
+      businessRulesText: contract.businessRules.join('\n'),
+      validationsText: contract.validations.join('\n'),
+      expectedErrorsText: contract.expectedErrors.map((item) => `${item.statusCode} | ${item.condition} | ${item.message}`).join('\n'),
+      permissionsText: contract.permissions.join('\n'),
+      acceptanceChecksText: contract.acceptanceChecks.join('\n'),
+      testCasesText: contract.testCases.join('\n')
+    });
+  }
+
+  deleteImplementationContract(requirementId: number) {
+    const projectId = this.projectId();
+    if (!projectId) return;
+    this.implementationContracts.update((contracts) => contracts.filter((contract) => contract.requirementId !== requirementId));
+    this.persistImplementationInputs(projectId);
+    this.success.set('Contrato tecnico eliminado.');
+  }
+
+  saveDataEntity() {
+    const projectId = this.projectId();
+    const value = this.dataEntityForm.getRawValue();
+    if (!projectId || !value.name) {
+      this.error.set('Define el nombre de la entidad.');
+      return;
+    }
+    const name = value.name.trim();
+    const entity: DataEntitySpec = {
+      id: slugify(name),
+      name,
+      tableName: value.tableName?.trim() || slugify(name).replace(/-/g, '_'),
+      description: value.description || '',
+      source: value.source || 'manual',
+      confidence: value.confidence || 'alta',
+      fields: this.parseDataFields(value.fieldsText),
+      relationships: this.parseRelationships(value.relationshipsText, name),
+      integrityRules: this.lines(value.integrityRulesText)
+    };
+    this.dataEntities.update((entities) => [entity, ...entities.filter((item) => item.id !== entity.id)]);
+    this.dataEntityForm.reset({ source: 'manual', confidence: 'alta' });
+    this.persistImplementationInputs(projectId);
+    this.success.set('Entidad del modelo de datos guardada.');
+  }
+
+  editDataEntity(entity: DataEntitySpec) {
+    this.dataEntityForm.patchValue({
+      name: entity.name,
+      tableName: entity.tableName,
+      description: entity.description,
+      source: entity.source,
+      confidence: entity.confidence,
+      fieldsText: entity.fields.map((field) => `${field.name}:${field.type}:${field.required ? 'required' : 'optional'}:${field.unique ? 'unique' : ''}:${field.nullable ? 'nullable' : ''}:${field.defaultValue ?? ''}:${field.example ?? ''}:${field.description ?? ''}`).join('\n'),
+      relationshipsText: entity.relationships.map((rel) => `${rel.fromEntity} | ${rel.type} | ${rel.toEntity} | ${rel.foreignKey ?? ''} | ${rel.onDelete ?? ''} | ${rel.description ?? ''}`).join('\n'),
+      integrityRulesText: entity.integrityRules.join('\n')
+    });
+  }
+
+  deleteDataEntity(entityId: string) {
+    const projectId = this.projectId();
+    if (!projectId) return;
+    this.dataEntities.update((entities) => entities.filter((entity) => entity.id !== entityId));
+    this.persistImplementationInputs(projectId);
+    this.success.set('Entidad eliminada del modelo manual.');
+  }
+
+  saveTargetRole() {
+    const projectId = this.projectId();
+    const value = this.targetRoleForm.getRawValue();
+    if (!projectId || !value.name) {
+      this.error.set('Define el nombre del rol.');
+      return;
+    }
+    const role: TargetRoleSpec = {
+      id: slugify(value.name),
+      name: value.name.trim(),
+      description: value.description || '',
+      userType: value.userType || '',
+      permissions: this.lines(value.permissionsText),
+      screens: this.lines(value.screensText),
+      endpoints: this.lines(value.endpointsText)
+    };
+    this.targetRoles.update((roles) => [role, ...roles.filter((item) => item.id !== role.id)]);
+    this.targetRoleForm.reset();
+    this.persistImplementationInputs(projectId);
+    this.success.set('Rol objetivo guardado.');
+  }
+
+  editTargetRole(role: TargetRoleSpec) {
+    this.targetRoleForm.patchValue({
+      name: role.name,
+      description: role.description,
+      userType: role.userType,
+      permissionsText: role.permissions.join('\n'),
+      screensText: role.screens.join('\n'),
+      endpointsText: role.endpoints.join('\n')
+    });
+  }
+
+  deleteTargetRole(roleId: string) {
+    const projectId = this.projectId();
+    if (!projectId) return;
+    this.targetRoles.update((roles) => roles.filter((role) => role.id !== roleId));
+    this.persistImplementationInputs(projectId);
+    this.success.set('Rol eliminado.');
+  }
+
+  contractForRequirement(requirementId: number) {
+    return this.implementationContracts().find((contract) => contract.requirementId === requirementId) ?? null;
+  }
+
+  requirementLabel(requirementId: number) {
+    const requirement = this.requirements().find((item) => item.id === requirementId);
+    return requirement ? `${requirement.code} - ${requirement.description}` : `Requisito ${requirementId}`;
   }
 
   saveProcess() {
@@ -3704,23 +4230,52 @@ export class ProjectWorkspace {
   }
 
   private buildClassDiagram(projectId: number | null, useCases: DerivedUseCase[]): DiagramModel {
-    const entities = this.inferDomainEntities(useCases);
-    const nodes = entities.map((entity, index) => ({
+    const manualEntities = this.dataEntities();
+    const entities = manualEntities.length > 0
+      ? manualEntities.map((entity) => ({
+          name: this.toPascalCase(entity.name),
+          attributes: entity.fields.length > 0
+            ? entity.fields.map((field) => `${field.name}: ${field.type}${field.required ? '' : '?'}`)
+            : ['id: number'],
+          operations: entity.integrityRules.slice(0, 3).map((rule) => `validar ${rule.slice(0, 18)}...()`)
+        }))
+      : this.inferDomainEntities(useCases);
+    const nodes: DiagramNode[] = entities.map((entity, index) => ({
       id: `class-${entity.name}`,
       type: 'class' as const,
       label: `${entity.name}\n${entity.attributes.map((attr) => `- ${attr}`).join('\n')}\n${entity.operations.map((op) => `+ ${op}`).join('\n')}`,
       x: 70 + (index % 3) * 280,
       y: 70 + Math.floor(index / 3) * 180,
       width: 210,
-      height: 145
+      height: 145,
+      ...this.diagramNodeVisualDefaults('class')
     }));
-    const edges = entities.slice(1).map((entity, index) => ({
-      id: `class-edge-${index}`,
-      sourceNodeId: `class-${entities[0].name}`,
-      targetNodeId: `class-${entity.name}`,
-      type: 'association' as const,
-      label: index === 0 ? 'gestiona' : 'relaciona'
-    }));
+    const manualRelationships = manualEntities.flatMap((entity) => entity.relationships);
+    const edges: DiagramEdge[] = manualRelationships.length > 0
+      ? manualRelationships
+          .map((relationship, index) => {
+            const sourceNodeId = `class-${this.toPascalCase(relationship.fromEntity)}`;
+            const targetNodeId = `class-${this.toPascalCase(relationship.toEntity)}`;
+            if (!nodes.some((node) => node.id === sourceNodeId) || !nodes.some((node) => node.id === targetNodeId)) {
+              return null;
+            }
+            return {
+              id: `class-edge-${index}`,
+              sourceNodeId,
+              targetNodeId,
+              type: relationship.type === 'one-to-many' ? 'aggregation' : 'association',
+              label: relationship.foreignKey || relationship.type,
+              notes: relationship.description
+            } as DiagramEdge;
+          })
+          .filter((edge): edge is DiagramEdge => Boolean(edge))
+      : entities.slice(1).map((entity, index) => ({
+          id: `class-edge-${index}`,
+          sourceNodeId: `class-${entities[0].name}`,
+          targetNodeId: `class-${entity.name}`,
+          type: 'association' as const,
+          label: index === 0 ? 'gestiona' : 'relaciona'
+        }));
     return this.diagramModel(projectId, 'class', 'Diagrama UML de clases', nodes, edges, useCases);
   }
 
@@ -3728,17 +4283,18 @@ export class ProjectWorkspace {
     const first = useCases[0];
     const entities = this.inferDomainEntities(useCases);
     const mainEntity = entities[0]?.name ?? 'Entidad';
+    const contract = this.implementationContracts().find((item) => item.requirementId === first?.requirement.id) ?? this.implementationContracts()[0];
     const action = first?.action ?? 'ejecutar caso de uso';
     const nodes: DiagramNode[] = [
       { id: 'seq-actor', type: 'lifeline', label: first?.actor ?? 'Stakeholder', x: 50, y: 40, width: 130, height: 430 },
-      { id: 'seq-ui', type: 'lifeline', label: `Pantalla ${mainEntity}`, x: 250, y: 40, width: 150, height: 430 },
+      { id: 'seq-ui', type: 'lifeline', label: contract?.screenName || `Pantalla ${mainEntity}`, x: 250, y: 40, width: 150, height: 430 },
       { id: 'seq-service', type: 'lifeline', label: `${mainEntity}Service`, x: 470, y: 40, width: 150, height: 430 },
-      { id: 'seq-repo', type: 'lifeline', label: `${mainEntity}Repository`, x: 700, y: 40, width: 150, height: 430 }
+      { id: 'seq-repo', type: 'lifeline', label: this.targetStack().backendDatabase || `${mainEntity}Repository`, x: 700, y: 40, width: 150, height: 430 }
     ];
     const edges: DiagramEdge[] = [
       { id: 'seq-edge-1', sourceNodeId: 'seq-actor', targetNodeId: 'seq-ui', type: 'association', label: `1. ${action}` },
-      { id: 'seq-edge-2', sourceNodeId: 'seq-ui', targetNodeId: 'seq-service', type: 'association', label: `2. validar ${mainEntity}` },
-      { id: 'seq-edge-3', sourceNodeId: 'seq-service', targetNodeId: 'seq-repo', type: 'association', label: `3. guardar/consultar ${mainEntity}` },
+      { id: 'seq-edge-2', sourceNodeId: 'seq-ui', targetNodeId: 'seq-service', type: 'message', label: contract?.endpointPath ? `2. ${contract.endpointMethod ?? 'GET'} ${contract.endpointPath}` : `2. validar ${mainEntity}` },
+      { id: 'seq-edge-3', sourceNodeId: 'seq-service', targetNodeId: 'seq-repo', type: 'data_flow', label: `3. guardar/consultar ${mainEntity}` },
       { id: 'seq-edge-4', sourceNodeId: 'seq-repo', targetNodeId: 'seq-service', type: 'dependency', label: '4. resultado' },
       { id: 'seq-edge-5', sourceNodeId: 'seq-service', targetNodeId: 'seq-ui', type: 'dependency', label: '5. confirmar operacion' }
     ];
@@ -3767,17 +4323,19 @@ export class ProjectWorkspace {
   private buildComponentDiagram(projectId: number | null, useCases: DerivedUseCase[]): DiagramModel {
     const entities = this.inferDomainEntities(useCases);
     const mainEntity = entities[0]?.name ?? 'Dominio';
+    const stack = this.targetStack();
+    const firstContract = this.implementationContracts()[0];
     const nodes: DiagramNode[] = [
-      { id: 'cmp-ui', type: 'component', label: `${mainEntity} UI`, x: 90, y: 100, width: 180, height: 80 },
-      { id: 'cmp-api', type: 'component', label: `${mainEntity} API`, x: 370, y: 100, width: 170, height: 80 },
-      { id: 'cmp-service', type: 'component', label: `${mainEntity}Service`, x: 650, y: 100, width: 180, height: 80 },
-      { id: 'cmp-db', type: 'component', label: `${mainEntity} DB`, x: 650, y: 300, width: 170, height: 80 },
-      { id: 'cmp-auth', type: 'component', label: 'Auth/Roles', x: 370, y: 300, width: 160, height: 80 }
+      { id: 'cmp-ui', type: 'screen', label: `${stack.frontendFramework || mainEntity}\n${firstContract?.screenName || 'UI'}`, x: 70, y: 90, width: 190, height: 82, ...this.diagramNodeVisualDefaults('screen') },
+      { id: 'cmp-api', type: 'api', label: `${stack.backendFramework || mainEntity} API\n${firstContract?.endpointPath || 'REST'}`, x: 340, y: 90, width: 190, height: 82, ...this.diagramNodeVisualDefaults('api') },
+      { id: 'cmp-service', type: 'service', label: `${mainEntity}Service`, x: 610, y: 90, width: 190, height: 82, ...this.diagramNodeVisualDefaults('service') },
+      { id: 'cmp-db', type: 'database', label: stack.backendDatabase || `${mainEntity} DB`, x: 610, y: 300, width: 170, height: 90, ...this.diagramNodeVisualDefaults('database') },
+      { id: 'cmp-auth', type: 'component', label: stack.backendAuth || 'Auth/Roles', x: 340, y: 300, width: 170, height: 82, ...this.diagramNodeVisualDefaults('component') }
     ];
     const edges: DiagramEdge[] = [
-      { id: 'cmp-edge-1', sourceNodeId: 'cmp-ui', targetNodeId: 'cmp-api', type: 'dependency', label: 'REST' },
+      { id: 'cmp-edge-1', sourceNodeId: 'cmp-ui', targetNodeId: 'cmp-api', type: 'data_flow', label: firstContract?.endpointMethod || 'REST' },
       { id: 'cmp-edge-2', sourceNodeId: 'cmp-api', targetNodeId: 'cmp-service', type: 'dependency', label: 'orquesta' },
-      { id: 'cmp-edge-3', sourceNodeId: 'cmp-service', targetNodeId: 'cmp-db', type: 'dependency', label: 'persistencia' },
+      { id: 'cmp-edge-3', sourceNodeId: 'cmp-service', targetNodeId: 'cmp-db', type: 'data_flow', label: stack.backendOrm || 'persistencia' },
       { id: 'cmp-edge-4', sourceNodeId: 'cmp-api', targetNodeId: 'cmp-auth', type: 'dependency', label: 'autorizacion' }
     ];
     return this.diagramModel(projectId, 'component', 'Diagrama de componentes', nodes, edges, useCases);
@@ -3850,6 +4408,92 @@ export class ProjectWorkspace {
     return `graficacion:project:${projectId}:diagrams`;
   }
 
+  private loadImplementationInputs(projectId: number) {
+    this.projectsService.getProjectImplementationInputs(projectId).subscribe({
+      next: (response) => {
+        const hasBackendData =
+          Object.keys(response.targetStack ?? {}).length > 0 ||
+          response.implementationContracts.length > 0 ||
+          response.dataEntities.length > 0 ||
+          response.targetRoles.length > 0;
+        if (!hasBackendData && this.restoreImplementationInputsFromLocalBackup(projectId)) {
+          this.persistImplementationInputs(projectId);
+          return;
+        }
+        this.applyImplementationInputs({
+          targetStack: response.targetStack,
+          implementationContracts: response.implementationContracts,
+          dataEntities: response.dataEntities,
+          targetRoles: response.targetRoles
+        });
+      },
+      error: () => {
+        if (!this.restoreImplementationInputsFromLocalBackup(projectId)) {
+          this.applyImplementationInputs({});
+        }
+      }
+    });
+  }
+
+  private persistImplementationInputs(projectId: number) {
+    const payload = {
+      targetStack: this.targetStack() as unknown as Record<string, unknown>,
+      implementationContracts: this.implementationContracts() as unknown as Array<Record<string, unknown>>,
+      dataEntities: this.dataEntities() as unknown as Array<Record<string, unknown>>,
+      targetRoles: this.targetRoles() as unknown as Array<Record<string, unknown>>
+    };
+    localStorage.setItem(this.implementationInputsStorageKey(projectId), JSON.stringify(payload));
+    this.projectsService.saveProjectImplementationInputs(projectId, payload).subscribe({
+      next: (response) => {
+        this.applyImplementationInputs({
+          targetStack: response.targetStack,
+          implementationContracts: response.implementationContracts,
+          dataEntities: response.dataEntities,
+          targetRoles: response.targetRoles
+        });
+      },
+      error: () => {
+        this.error.set('No se pudo sincronizar la documentacion implementable con el backend. Se conservo respaldo local.');
+      }
+    });
+  }
+
+  private applyImplementationInputs(value: Partial<{
+    targetStack: Record<string, unknown>;
+    implementationContracts: Array<Record<string, unknown>>;
+    dataEntities: Array<Record<string, unknown>>;
+    targetRoles: Array<Record<string, unknown>>;
+  }>) {
+    const stack = { ...DEFAULT_TARGET_STACK, ...(value.targetStack ?? {}) } as TargetStack;
+    this.targetStack.set(stack);
+    this.targetStackForm.patchValue({
+      ...stack,
+      envVars: Array.isArray(stack.envVars) ? stack.envVars.join('\n') : '',
+      commands: Array.isArray(stack.commands) ? stack.commands.join('\n') : ''
+    });
+    this.implementationContracts.set(Array.isArray(value.implementationContracts) ? value.implementationContracts as unknown as ImplementationContract[] : []);
+    this.dataEntities.set(Array.isArray(value.dataEntities) ? value.dataEntities as unknown as DataEntitySpec[] : []);
+    this.targetRoles.set(Array.isArray(value.targetRoles) ? value.targetRoles as unknown as TargetRoleSpec[] : []);
+  }
+
+  private restoreImplementationInputsFromLocalBackup(projectId: number) {
+    try {
+      const raw = localStorage.getItem(this.implementationInputsStorageKey(projectId));
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed) {
+        return false;
+      }
+      this.applyImplementationInputs(parsed);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private implementationInputsStorageKey(projectId: number) {
+    return `graficacion:project:${projectId}:implementation-inputs`;
+  }
+
   private loadManagedProjectFiles(projectId: number) {
     try {
       const raw = localStorage.getItem(this.projectFilesStorageKey(projectId));
@@ -3902,7 +4546,7 @@ export class ProjectWorkspace {
   }
 
   private isDesignIdeaFileName(fileName: string) {
-    return /\.(md|txt|png|jpe?g|webp|svg)$/i.test(fileName);
+    return /\.(md|markdown|txt|png|jpe?g|webp|svg)$/i.test(fileName);
   }
 
   private isDesignInputFile(file: ProjectArtifactFile) {
@@ -3987,7 +4631,25 @@ export class ProjectWorkspace {
 
   private normalizeDiagramNode(value: unknown, index: number): DiagramNode {
     const node = value as Partial<DiagramNode>;
-    const allowedTypes: DiagramNodeType[] = ['actor', 'use_case', 'class', 'package', 'component', 'requirement', 'spec', 'note', 'lifeline', 'boundary'];
+    const allowedTypes: DiagramNodeType[] = [
+      'actor',
+      'use_case',
+      'class',
+      'package',
+      'component',
+      'process',
+      'decision',
+      'database',
+      'service',
+      'screen',
+      'api',
+      'queue',
+      'requirement',
+      'spec',
+      'note',
+      'lifeline',
+      'boundary'
+    ];
     const type = allowedTypes.includes(node.type as DiagramNodeType) ? (node.type as DiagramNodeType) : 'note';
     return {
       id: String(node.id || `node-${Date.now()}-${index}`),
@@ -3997,6 +4659,11 @@ export class ProjectWorkspace {
       y: Number.isFinite(Number(node.y)) ? Number(node.y) : 80 + index * 24,
       width: Number.isFinite(Number(node.width)) ? Number(node.width) : 150,
       height: Number.isFinite(Number(node.height)) ? Number(node.height) : 68,
+      fill: node.fill ? String(node.fill) : this.diagramNodeVisualDefaults(type).fill,
+      stroke: node.stroke ? String(node.stroke) : this.diagramNodeVisualDefaults(type).stroke,
+      textColor: node.textColor ? String(node.textColor) : this.diagramNodeVisualDefaults(type).textColor,
+      layer: node.layer ? String(node.layer) : undefined,
+      notes: node.notes ? String(node.notes) : undefined,
       requirementId: Number.isFinite(Number(node.requirementId)) ? Number(node.requirementId) : undefined,
       specId: node.specId ? String(node.specId) : undefined
     };
@@ -4007,13 +4674,14 @@ export class ProjectWorkspace {
     if (!edge.sourceNodeId || !edge.targetNodeId) {
       return null;
     }
-    const allowedTypes: DiagramEdgeType[] = ['association', 'include', 'extend', 'dependency', 'inheritance'];
+    const allowedTypes: DiagramEdgeType[] = ['association', 'include', 'extend', 'dependency', 'inheritance', 'composition', 'aggregation', 'message', 'data_flow'];
     return {
       id: String(edge.id || `edge-${Date.now()}-${index}`),
       sourceNodeId: String(edge.sourceNodeId),
       targetNodeId: String(edge.targetNodeId),
       type: allowedTypes.includes(edge.type as DiagramEdgeType) ? (edge.type as DiagramEdgeType) : 'association',
-      label: edge.label ? String(edge.label) : ''
+      label: edge.label ? String(edge.label) : '',
+      notes: edge.notes ? String(edge.notes) : undefined
     };
   }
 
@@ -4086,7 +4754,179 @@ export class ProjectWorkspace {
     if (type === 'use_case') {
       return { width: 130, height: 58 };
     }
+    if (type === 'decision') {
+      return { width: 84, height: 84 };
+    }
+    if (type === 'database') {
+      return { width: 110, height: 78 };
+    }
     return { width: 96, height: 56 };
+  }
+
+  private diagramNodeVisualDefaults(type: DiagramNodeType): Pick<DiagramNode, 'fill' | 'stroke' | 'textColor'> {
+    const defaults: Record<DiagramNodeType, Pick<DiagramNode, 'fill' | 'stroke' | 'textColor'>> = {
+      actor: { fill: '#F8FAFC', stroke: '#475569', textColor: '#0F172A' },
+      use_case: { fill: '#EFF6FF', stroke: '#2563EB', textColor: '#0F172A' },
+      class: { fill: '#FFFFFF', stroke: '#334155', textColor: '#0F172A' },
+      package: { fill: '#F8FAFC', stroke: '#64748B', textColor: '#0F172A' },
+      component: { fill: '#F1F5F9', stroke: '#0F172A', textColor: '#0F172A' },
+      process: { fill: '#ECFDF5', stroke: '#059669', textColor: '#064E3B' },
+      decision: { fill: '#FEF3C7', stroke: '#D97706', textColor: '#78350F' },
+      database: { fill: '#EEF2FF', stroke: '#4F46E5', textColor: '#1E1B4B' },
+      service: { fill: '#F0FDFA', stroke: '#0F766E', textColor: '#134E4A' },
+      screen: { fill: '#FDF2F8', stroke: '#DB2777', textColor: '#831843' },
+      api: { fill: '#F5F3FF', stroke: '#7C3AED', textColor: '#2E1065' },
+      queue: { fill: '#FFF7ED', stroke: '#EA580C', textColor: '#7C2D12' },
+      requirement: { fill: '#FFFBEB', stroke: '#F59E0B', textColor: '#78350F' },
+      spec: { fill: '#ECFDF5', stroke: '#10B981', textColor: '#064E3B' },
+      note: { fill: '#FFF7ED', stroke: '#FED7AA', textColor: '#7C2D12' },
+      lifeline: { fill: '#F8FAFC', stroke: '#60A5FA', textColor: '#0F172A' },
+      boundary: { fill: '#FFFFFF', stroke: '#CBD5E1', textColor: '#475569' }
+    };
+    return defaults[type];
+  }
+
+  private lines(value: string | null | undefined) {
+    return String(value ?? '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  private parseFieldSpecs(value: string | null | undefined): FieldSpec[] {
+    return this.lines(value).map((line) => {
+      const [name = '', type = 'string', required = 'required', description = '', example = '', enumValues = ''] = line.split(':').map((part) => part.trim());
+      const fieldType = FIELD_TYPES.includes(type as FieldSpecType) ? type as FieldSpecType : 'string';
+      return {
+        name: name || 'campo',
+        type: fieldType,
+        required: !/optional|false|no/i.test(required),
+        description,
+        example,
+        enumValues: enumValues ? enumValues.split(',').map((item) => item.trim()).filter(Boolean) : undefined
+      };
+    });
+  }
+
+  private formatFieldSpecs(fields: FieldSpec[]) {
+    return fields.map((field) => `${field.name}:${field.type}:${field.required ? 'required' : 'optional'}:${field.description ?? ''}:${field.example ?? ''}:${field.enumValues?.join(',') ?? ''}`).join('\n');
+  }
+
+  private parseExpectedErrors(value: string | null | undefined): ExpectedError[] {
+    return this.lines(value).map((line) => {
+      const [status = '400', condition = '', message = 'Error esperado'] = line.split('|').map((part) => part.trim());
+      const statusCode = Number(status);
+      const allowed: ExpectedError['statusCode'][] = [400, 401, 403, 404, 409, 422, 500];
+      return {
+        statusCode: allowed.includes(statusCode as ExpectedError['statusCode']) ? statusCode as ExpectedError['statusCode'] : 400,
+        condition: condition || 'Condicion no especificada',
+        message
+      };
+    });
+  }
+
+  private parseDataFields(value: string | null | undefined): DataFieldSpec[] {
+    return this.lines(value).map((line) => {
+      const [name = '', type = 'string', required = 'required', unique = '', nullable = '', defaultValue = '', example = '', description = ''] = line.split(':').map((part) => part.trim());
+      return {
+        name: name || 'campo',
+        type: FIELD_TYPES.includes(type as FieldSpecType) ? type as FieldSpecType : 'string',
+        required: !/optional|false|no/i.test(required),
+        unique: /unique|si|true/i.test(unique),
+        nullable: /nullable|si|true/i.test(nullable),
+        defaultValue,
+        example,
+        description
+      };
+    });
+  }
+
+  private parseRelationships(value: string | null | undefined, fallbackEntity: string): DataRelationshipSpec[] {
+    return this.lines(value).map((line) => {
+      const [fromEntity = fallbackEntity, type = 'many-to-one', toEntity = '', foreignKey = '', onDelete = '', description = ''] = line.split('|').map((part) => part.trim());
+      const allowed: DataRelationshipSpec['type'][] = ['one-to-one', 'one-to-many', 'many-to-one', 'many-to-many'];
+      return {
+        fromEntity: fromEntity || fallbackEntity,
+        type: allowed.includes(type as DataRelationshipSpec['type']) ? type as DataRelationshipSpec['type'] : 'many-to-one',
+        toEntity: toEntity || 'Entidad relacionada',
+        foreignKey,
+        onDelete,
+        description
+      };
+    });
+  }
+
+  private buildDrawioXml(diagram: DiagramModel) {
+    const cells = [
+      '<mxCell id="0" />',
+      '<mxCell id="1" parent="0" />',
+      ...diagram.nodes.map((node) => this.drawioNodeCell(node)),
+      ...diagram.edges.map((edge) => this.drawioEdgeCell(edge))
+    ].join('');
+    const model = `<mxGraphModel dx="960" dy="560" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0"><root>${cells}</root></mxGraphModel>`;
+    return `<mxfile host="Specora" modified="${new Date().toISOString()}" agent="Specora drawio-lite" version="24.0.0" type="device"><diagram id="${this.xmlEscape(diagram.id)}" name="${this.xmlEscape(diagram.title)}">${model}</diagram></mxfile>`;
+  }
+
+  private drawioNodeCell(node: DiagramNode) {
+    const style = this.drawioNodeStyle(node);
+    const value = this.xmlEscape([node.label, node.notes ? `Notas: ${node.notes}` : ''].filter(Boolean).join('\n'));
+    return `<mxCell id="${this.xmlEscape(node.id)}" value="${value}" style="${style}" vertex="1" parent="1"><mxGeometry x="${Math.round(node.x)}" y="${Math.round(node.y)}" width="${Math.round(node.width)}" height="${Math.round(node.height)}" as="geometry" /></mxCell>`;
+  }
+
+  private drawioEdgeCell(edge: DiagramEdge) {
+    const style = this.drawioEdgeStyle(edge.type);
+    const value = this.xmlEscape([edge.label, edge.notes].filter(Boolean).join('\n'));
+    return `<mxCell id="${this.xmlEscape(edge.id)}" value="${value}" style="${style}" edge="1" parent="1" source="${this.xmlEscape(edge.sourceNodeId)}" target="${this.xmlEscape(edge.targetNodeId)}"><mxGeometry relative="1" as="geometry" /></mxCell>`;
+  }
+
+  private drawioNodeStyle(node: DiagramNode) {
+    const fill = (node.fill || this.diagramNodeVisualDefaults(node.type).fill || '#ffffff').replace('#', '');
+    const stroke = (node.stroke || this.diagramNodeVisualDefaults(node.type).stroke || '#0f172a').replace('#', '');
+    const font = (node.textColor || this.diagramNodeVisualDefaults(node.type).textColor || '#0f172a').replace('#', '');
+    const base = `whiteSpace=wrap;html=1;fillColor=#${fill};strokeColor=#${stroke};fontColor=#${font};`;
+    const styles: Record<DiagramNodeType, string> = {
+      actor: 'shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;',
+      use_case: 'ellipse;',
+      class: 'swimlane;childLayout=stackLayout;horizontal=1;startSize=28;',
+      package: 'shape=folder;tabWidth=60;tabHeight=20;',
+      component: 'shape=component;',
+      process: 'rounded=0;',
+      decision: 'rhombus;',
+      database: 'shape=cylinder3d;boundedLbl=1;backgroundOutline=1;size=15;',
+      service: 'shape=cloud;',
+      screen: 'shape=mxgraph.mockup.containers.browserWindow;mainText=;',
+      api: 'rounded=1;arcSize=8;',
+      queue: 'shape=process;',
+      requirement: 'shape=note;size=16;',
+      spec: 'shape=document;',
+      note: 'shape=note;size=16;',
+      lifeline: 'shape=umlLifeline;participant=umlLifeline;',
+      boundary: 'rounded=0;dashed=1;fillColor=none;'
+    };
+    return `${base}${styles[node.type]}`;
+  }
+
+  private drawioEdgeStyle(type: DiagramEdgeType) {
+    const styles: Record<DiagramEdgeType, string> = {
+      association: 'endArrow=block;html=1;rounded=0;',
+      include: 'endArrow=open;html=1;dashed=1;',
+      extend: 'endArrow=open;html=1;dashed=1;',
+      dependency: 'endArrow=open;html=1;dashed=1;',
+      inheritance: 'endArrow=block;endFill=0;html=1;',
+      composition: 'endArrow=diamondThin;endFill=1;html=1;',
+      aggregation: 'endArrow=diamondThin;endFill=0;html=1;',
+      message: 'endArrow=block;html=1;',
+      data_flow: 'endArrow=classic;html=1;dashed=1;'
+    };
+    return styles[type];
+  }
+
+  private xmlEscape(value: string) {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
   private downloadText(fileName: string, content: string, mimeType: string) {
@@ -4110,6 +4950,13 @@ export class ProjectWorkspace {
       class: `Clase ${count}`,
       package: `Paquete ${count}`,
       component: `Componente ${count}`,
+      process: `Proceso ${count}`,
+      decision: `Decision ${count}`,
+      database: `Base de datos ${count}`,
+      service: `Servicio ${count}`,
+      screen: `Pantalla ${count}`,
+      api: `API ${count}`,
+      queue: `Cola ${count}`,
       requirement: `REQ-${count}`,
       spec: `Spec ${count}`,
       note: `Nota ${count}`,

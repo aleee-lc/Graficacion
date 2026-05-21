@@ -10,6 +10,8 @@ export type ModuleKey =
   | 'summary'
   | 'context'
   | 'projectFiles'
+  | 'techTeam'
+  | 'targetStack'
   | 'stakeholders'
   | 'processes'
   | 'techniques'
@@ -23,7 +25,10 @@ export type ModuleKey =
   | 'findings'
   | 'requirements'
   | 'useCases'
+  | 'technicalContracts'
   | 'specs'
+  | 'dataModel'
+  | 'roles'
   | 'modeling'
   | 'agent'
   | 'traceability'
@@ -46,12 +51,19 @@ export type DiagramNodeType =
   | 'class'
   | 'package'
   | 'component'
+  | 'process'
+  | 'decision'
+  | 'database'
+  | 'service'
+  | 'screen'
+  | 'api'
+  | 'queue'
   | 'requirement'
   | 'spec'
   | 'note'
   | 'lifeline'
   | 'boundary';
-export type DiagramEdgeType = 'association' | 'include' | 'extend' | 'dependency' | 'inheritance';
+export type DiagramEdgeType = 'association' | 'include' | 'extend' | 'dependency' | 'inheritance' | 'composition' | 'aggregation' | 'message' | 'data_flow';
 export type DiagramEditorMode = 'select' | 'connect';
 export type DiagramResizeHandle = 'nw' | 'ne' | 'sw' | 'se' | 'e' | 's';
 export type AgentProfileKey = 'gemini' | 'codex' | 'generic';
@@ -125,6 +137,11 @@ export type DiagramNode = {
   y: number;
   width: number;
   height: number;
+  fill?: string;
+  stroke?: string;
+  textColor?: string;
+  layer?: string;
+  notes?: string;
   requirementId?: number;
   specId?: string;
 };
@@ -135,6 +152,7 @@ export type DiagramEdge = {
   targetNodeId: string;
   type: DiagramEdgeType;
   label?: string;
+  notes?: string;
 };
 
 export type DiagramModel = {
@@ -176,6 +194,105 @@ export type ProjectFileDraft = {
   name: string;
   kind: string;
   content: string;
+};
+
+export type FieldSpecType = 'string' | 'number' | 'boolean' | 'date' | 'datetime' | 'enum' | 'object' | 'array';
+export type EndpointMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+export type TargetStack = {
+  architectureType: string;
+  backendFramework: string;
+  backendLanguage: string;
+  backendOrm: string;
+  backendDatabase: string;
+  backendMigrations: string;
+  backendAuth: string;
+  backendTesting: string;
+  frontendFramework: string;
+  frontendLanguage: string;
+  frontendUi: string;
+  frontendRouting: string;
+  frontendDataFetching: string;
+  frontendState: string;
+  frontendTesting: string;
+  runMode: string;
+  envVars: string[];
+  seedAdmin: string;
+  commands: string[];
+};
+
+export type FieldSpec = {
+  name: string;
+  type: FieldSpecType;
+  required: boolean;
+  description?: string;
+  example?: string;
+  enumValues?: string[];
+};
+
+export type ExpectedError = {
+  statusCode: 400 | 401 | 403 | 404 | 409 | 422 | 500;
+  condition: string;
+  message: string;
+};
+
+export type ImplementationContract = {
+  requirementId: number;
+  useCaseId?: number | null;
+  screenName?: string;
+  routePath?: string;
+  endpointMethod?: EndpointMethod;
+  endpointPath?: string;
+  requestFields: FieldSpec[];
+  responseFields: FieldSpec[];
+  businessRules: string[];
+  validations: string[];
+  expectedErrors: ExpectedError[];
+  permissions: string[];
+  acceptanceChecks: string[];
+  testCases: string[];
+};
+
+export type DataFieldSpec = {
+  name: string;
+  type: FieldSpecType;
+  required: boolean;
+  unique: boolean;
+  nullable: boolean;
+  defaultValue?: string;
+  example?: string;
+  description?: string;
+};
+
+export type DataRelationshipSpec = {
+  fromEntity: string;
+  toEntity: string;
+  type: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';
+  foreignKey?: string;
+  onDelete?: string;
+  description?: string;
+};
+
+export type DataEntitySpec = {
+  id: string;
+  name: string;
+  tableName: string;
+  description: string;
+  source: 'manual' | 'inferred' | 'validated';
+  confidence: 'alta' | 'media' | 'baja';
+  fields: DataFieldSpec[];
+  relationships: DataRelationshipSpec[];
+  integrityRules: string[];
+};
+
+export type TargetRoleSpec = {
+  id: string;
+  name: string;
+  description: string;
+  userType: string;
+  permissions: string[];
+  screens: string[];
+  endpoints: string[];
 };
 
 export type SurveyQuestionDraft = {

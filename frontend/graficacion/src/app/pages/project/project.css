@@ -136,3 +136,49 @@
   outline-offset: 2px;
   border-radius: 999px;
 }
+
+/* Industrial Minimalism overrides */
+.member-add-btn {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: none;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.member-modal {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.08);
+  color: var(--on-surface);
+}
+
+.member-modal__header {
+  border-bottom-color: var(--line);
+}
+
+.member-modal__close,
+.mode-toggle {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  box-shadow: none;
+  color: var(--on-surface);
+}
+
+.mode-toggle__thumb {
+  border-radius: var(--radius);
+  background: var(--primary);
+  box-shadow: none;
+}
+
+.mode-toggle__button {
+  color: var(--muted);
+}
+
+.mode-toggle__button--active {
+  color: #ffffff;
+}
