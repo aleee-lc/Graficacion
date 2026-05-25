@@ -70,9 +70,9 @@ const isTransactionSession = (session: Session) =>
   session.technique_code === 'transaction_tracking' ||
   /seguimiento|transaccional|transaction/i.test(`${session.technique} ${session.title}`);
 
-const transactionSteps = (session: Session): Array<{ actorStakeholderId?: number | null; actorRole?: string; issue?: string }> => {
+const transactionSteps = (session: Session): Array<{ actorStakeholderId?: number | null; actorRole?: string; issue?: string; bottleneck?: string }> => {
   const steps = session.metadata?.['steps'];
-  return Array.isArray(steps) ? steps as Array<{ actorStakeholderId?: number | null; actorRole?: string; issue?: string }> : [];
+  return Array.isArray(steps) ? steps as Array<{ actorStakeholderId?: number | null; actorRole?: string; issue?: string; bottleneck?: string }> : [];
 };
 
 export const buildRequirementReadiness = (input: RequirementReadinessInput): RequirementReadiness => {

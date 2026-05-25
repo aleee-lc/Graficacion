@@ -3967,6 +3967,8 @@ export class ProjectWorkspace {
         duration: '',
         waitTime: '',
         issue: '',
+        bottleneck: '',
+        handoffTo: '',
         evidenceRef: '',
         notes: ''
       }]);

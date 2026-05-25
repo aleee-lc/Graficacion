@@ -237,7 +237,7 @@ const targetRoles = [
 ];
 
 const requirements = [
-  req('REQ-0001', 'functional', 'critical', 'El sistema debe permitir registrar, modificar y cancelar reservaciones con fechas de entrada/salida, huesped titular, tipo de habitacion, tarifa aplicada, monto por noche, estado y habitacion asignada.', 'Crear reserva retorna 201; check_in es menor que check_out; no permite solapamientos de habitacion; exige tarifa aplicada; reserva sin habitacion solo si queda en pending_assignment.', 0, {
+  req('REQ-0001', 'functional', 'critical', 'El sistema debe permitir registrar, modificar y cancelar reservaciones con fechas de entrada/salida, huesped titular, tipo de habitacion, tarifa aplicada, monto por noche, estado y habitacion asignada.', 'Crear reserva retorna 201; check_in es menor que check_out; no permite solapamientos de habitacion; exige tarifa aplicada; reserva sin habitacion solo si queda en pending_assignment.', 'tracking-reservation', {
     screenName: 'Reservaciones',
     routePath: '/reservations',
     endpointMethod: 'POST',
@@ -302,9 +302,78 @@ const requirements = [
       'POST /reservations overlap returns 409',
       'POST /reservations without rate_plan returns 422',
       'POST /reservations with pending_assignment returns 201'
+    ],
+    blockingRules: [
+      'No se puede confirmar sin rate_plan_id y nightly_rate > 0.',
+      'No se puede confirmar si existe solapamiento de room_id en reservas activas.',
+      'check_out debe ser estrictamente mayor que check_in.',
+      'room_id puede ser null solo si el estado inicial es pending_assignment.',
+      'Solo Administrador puede cancelar reservas en estado checked_out o closed.'
+    ],
+    stateRules: [
+      'draft -> booked (al confirmar con tarifa y huesped validos).',
+      'booked -> pending_assignment (si room_id es null al confirmar).',
+      'pending_assignment -> booked (al asignar room_id exitosamente).',
+      'booked -> checked_in (por check-in exitoso desde front desk).',
+      'checked_in -> checked_out (por check-out con saldo autorizado).',
+      'booked | pending_assignment -> cancelled (con permisos; libera inventario).',
+      'booked -> no_show (si la fecha de check_in pasa sin check-in registrado).'
+    ],
+    requiredVisibleData: [
+      'reservation_number visible en tarjeta y en el detalle.',
+      'folio_number vinculado generado al confirmar.',
+      'Nombre del huesped titular.',
+      'Tipo de habitacion y numero asignado (si existe).',
+      'Tarifa aplicada (rate_plan_name) y nightly_rate.',
+      'Total estimado de la estancia (noches * nightly_rate).',
+      'Estado actual con badge de color semantico.',
+      'balance_due actual del folio asociado.'
+    ],
+    screenFields: [
+      'Huesped: busqueda por nombre/email o alta rapida inline.',
+      'Tipo de habitacion: selector con disponibilidad en tiempo real.',
+      'Plan de tarifa: selector filtrado por tipo de habitacion seleccionado.',
+      'Tarifa por noche: prellenada desde rate_plan, editable por recepcionista.',
+      'Fecha de entrada (date picker con validacion de disponibilidad).',
+      'Fecha de salida (date picker; min = check_in + 1 dia).',
+      'Adultos (numero, minimo 1).',
+      'Menores (numero, opcional, default 0).',
+      'Canal de reserva (select: direct / phone / walk_in / ota / corporate).',
+      'Notas internas (textarea opcional).'
+    ],
+    visibleColumns: [
+      'Reserva #', 'Folio #', 'Huesped', 'Tipo hab.', 'Hab. #',
+      'Check-in', 'Check-out', 'Estado (badge)', 'Tarifa/noche', 'Total est.', 'Saldo'
+    ],
+    quickActions: [
+      'Ver folio',
+      'Asignar habitacion (visible si status = pending_assignment)',
+      'Check-in (visible si status = booked)',
+      'Cancelar (visible si status = booked | pending_assignment)',
+      'Editar'
+    ],
+    filters: [
+      'Estado (booked | pending_assignment | checked_in | cancelled | no_show)',
+      'Fecha de llegada',
+      'Fecha de salida',
+      'Tipo de habitacion',
+      'Canal de reserva'
+    ],
+    sideEffects: [
+      'Al confirmar: genera reservation_number unico y folio operativo vacio con status=open.',
+      'Al asignar room_id: status de la habitacion pasa a pending_occupation.',
+      'Al cancelar: libera inventario; cierra folio si balance_due = 0.',
+      'Al confirmar sin room_id: estado inicial es pending_assignment, no booked.'
+    ],
+    uiErrorBehavior: [
+      '409 solapamiento: banner rojo "Habitacion ocupada en ese rango" + boton "Ver alternativas disponibles".',
+      '409 tarifa invalida para tipo de habitacion: toast con mensaje del servidor.',
+      '422 fechas invalidas: campos check_in/check_out resaltados en rojo con mensaje inline.',
+      '422 sin rate_plan: dropdown de plan de tarifa resaltado en rojo.',
+      '422 adults < 1: campo adultos en rojo con mensaje "Minimo 1 adulto requerido".'
     ]
   }),
-  req('REQ-0002', 'functional', 'critical', 'El modulo de Front Desk debe mostrar cada reserva activa con reservation number, folio number, huesped, habitacion, fechas, estado, saldo pendiente y acciones rapidas operativas.', 'Front Desk lista llegadas, in-house y salidas; cada fila muestra reservation_number y folio_number; permite abrir folio, check-in, check-out y cambio de habitacion.', 1, {
+  req('REQ-0002', 'functional', 'critical', 'El modulo de Front Desk debe mostrar cada reserva activa con reservation number, folio number, huesped, habitacion, fechas, estado, saldo pendiente y acciones rapidas operativas.', 'Front Desk lista llegadas, in-house y salidas; cada fila muestra reservation_number y folio_number; permite abrir folio, check-in, check-out y cambio de habitacion.', 'tracking-checkin-folio', {
     screenName: 'Front Desk',
     routePath: '/front-desk',
     endpointMethod: 'GET',
@@ -346,9 +415,63 @@ const requirements = [
     testCases: [
       'GET /front-desk/board returns operational cards with folio and balance',
       'GET /front-desk/board filtered by arrivals_today'
+    ],
+    blockingRules: [
+      'Solo usuarios con rol front_desk o manager pueden acceder al tablero operativo.',
+      'La vista solo muestra reservas en estados booked, pending_assignment y checked_in del dia operativo.',
+      'Las reservas con folio sin numero visible son un error de integridad; no deben aparecer en el tablero sin folio_number.'
+    ],
+    stateRules: [
+      'El tablero refleja el estado live de las reservas; los cambios de estado actualizan la fila sin recargar la pagina completa.',
+      'Las acciones rapidas cambian dinamicamente segun el estado actual de cada fila.',
+      'pending_assignment siempre se muestra con indicador visual de riesgo operativo (badge amarillo o rojo).'
+    ],
+    requiredVisibleData: [
+      'reservation_number en cada fila.',
+      'folio_number vinculado (nunca oculto).',
+      'Nombre del huesped titular.',
+      'Numero y tipo de habitacion asignada (o indicador "Sin asignar").',
+      'Estado de la reserva con badge de color.',
+      'Tarifa por noche aplicada.',
+      'Fechas de entrada y salida.',
+      'balance_due del folio (resaltado si > 0).',
+      'Acciones rapidas operativas contextuales al estado.'
+    ],
+    screenFields: [
+      'Selector de vista: Llegadas hoy | In-house | Salidas hoy | Pendientes | Todas.',
+      'Busqueda por nombre de huesped o reservation_number.',
+      'Selector de fecha operativa (business_date).'
+    ],
+    visibleColumns: [
+      'Reserva #', 'Folio #', 'Huesped', 'Hab.', 'Estado',
+      'Check-in', 'Check-out', 'Tarifa/noche', 'Saldo', 'Acciones'
+    ],
+    quickActions: [
+      'Check-in (solo si status = booked)',
+      'Check-out (solo si status = checked_in)',
+      'Abrir folio',
+      'Asignar habitacion (solo si status = pending_assignment)',
+      'Ver detalle de reserva'
+    ],
+    filters: [
+      'Llegadas hoy',
+      'In-house',
+      'Salidas hoy',
+      'Pending assignment (riesgo operativo)',
+      'Todas las activas'
+    ],
+    sideEffects: [
+      'Sin efectos secundarios en la carga del tablero.',
+      'Los filtros se persisten en el estado de sesion del turno (Zustand) pero no en la URL.'
+    ],
+    uiErrorBehavior: [
+      '401: redirigir a login.',
+      '403: toast "Sin permisos para consultar el tablero operativo".',
+      'Sin resultados con filtro activo: empty state con mensaje contextual ("No hay llegadas para hoy", etc.).',
+      'Error de red: banner de advertencia con boton de reintento; no colapsar la vista completa.'
     ]
   }),
-  req('REQ-0003', 'functional', 'critical', 'El sistema debe ejecutar check-in y check-out actualizando estado de reserva, ocupacion, folio y estado de habitacion de forma automatica.', 'Check-in cambia reserva a checked_in y habitacion a occupied; check-out cambia reserva a checked_out y habitacion a vacant_dirty o inspection_pending segun politica; no permite salida con saldo no autorizado.', 2, {
+  req('REQ-0003', 'functional', 'critical', 'El sistema debe ejecutar check-in y check-out actualizando estado de reserva, ocupacion, folio y estado de habitacion de forma automatica.', 'Check-in cambia reserva a checked_in y habitacion a occupied; check-out cambia reserva a checked_out y habitacion a vacant_dirty o inspection_pending segun politica; no permite salida con saldo no autorizado.', 'observation-frontdesk', {
     screenName: 'Front Desk',
     routePath: '/front-desk',
     endpointMethod: 'PATCH',
@@ -397,9 +520,58 @@ const requirements = [
       'PATCH check-in without room assignment returns 422',
       'PATCH check-out happy path',
       'PATCH check-out with pending balance returns 409'
+    ],
+    blockingRules: [
+      'Check-in bloqueado si reservation.status != booked.',
+      'Check-in bloqueado si room_id es null (reserva en pending_assignment).',
+      'Check-in bloqueado si existe saldo vencido no resuelto en el folio.',
+      'Check-out bloqueado si reservation.status != checked_in.',
+      'Check-out bloqueado si folio.balance_due > 0 sin override_reason autorizado.',
+      'No se puede ejecutar check-in dos veces sobre la misma reserva.'
+    ],
+    stateRules: [
+      'Check-in: reservation.status booked -> checked_in.',
+      'Check-in: room.status -> occupied.',
+      'Check-in: folio.status -> open (si no existia, se crea en este momento).',
+      'Check-out: reservation.status checked_in -> checked_out.',
+      'Check-out: room.status -> vacant_dirty (default) o inspection_pending (segun politica hotelera).',
+      'Check-out: folio.status -> closed (si balance_due = 0 o pago completo aplicado).'
+    ],
+    requiredVisibleData: [
+      'En pantalla de check-in: reservation_number, huesped, habitacion, folio_number, balance_due, deposito esperado.',
+      'En pantalla de check-out: folio con desglose de cargos, pagos aplicados y balance_due final.',
+      'Estado actual de la reserva antes de ejecutar la accion.',
+      'Resultado inmediato tras la accion: nuevo estado, room_status y folio_number.'
+    ],
+    screenFields: [
+      'Check-in: confirmacion de balance revisado (checkbox obligatorio).',
+      'Check-in: room_id (obligatorio si reserva en pending_assignment).',
+      'Check-in: deposit_amount (opcional; genera FolioCharge type=deposit + Payment).',
+      'Check-out: override_reason (obligatorio si balance_due > 0; requiere permiso).',
+      'Check-out: metodo de pago final si se aplica cobro en el momento.'
+    ],
+    visibleColumns: [],
+    quickActions: [
+      'Confirmar check-in',
+      'Asignar habitacion (si pending_assignment)',
+      'Registrar deposito',
+      'Confirmar check-out',
+      'Aplicar override de saldo (solo con permiso de gerencia)'
+    ],
+    filters: [],
+    sideEffects: [
+      'Check-in: room.status -> occupied; folio abierto o creado; deposito -> FolioCharge + Payment si deposit_amount > 0.',
+      'Check-out: room.status -> vacant_dirty; folio -> closed si balance_due = 0; dispara notificacion interna a limpieza.',
+      'Ambos: registran timestamp y usuario_id en el log de auditoria.'
+    ],
+    uiErrorBehavior: [
+      '409 saldo vencido en check-in: modal bloqueante con balance_due visible, campo override_reason y boton de cancelar.',
+      '422 sin habitacion en check-in: campo room_id resaltado en rojo con mensaje "Asignacion de habitacion requerida".',
+      '409 estado incorrecto: toast con estado actual y la transicion esperada ("La reserva debe estar booked para hacer check-in").',
+      '409 saldo pendiente en check-out: modal con saldo visible, opcion de pagar ahora o ingresar override con autorizacion.'
     ]
   }),
-  req('REQ-0004', 'functional', 'high', 'El sistema debe administrar habitaciones, tipos y estados operativos para recepcion y limpieza.', 'Alta/edicion/baja logica de habitacion disponible; estados restringidos a vacant_clean, vacant_dirty, occupied, maintenance, blocked e inspection_pending.', 4, {
+  req('REQ-0004', 'functional', 'high', 'El sistema debe administrar habitaciones, tipos y estados operativos para recepcion y limpieza.', 'Alta/edicion/baja logica de habitacion disponible; estados restringidos a vacant_clean, vacant_dirty, occupied, maintenance, blocked e inspection_pending.', 'survey-staff', {
     screenName: 'Habitaciones',
     routePath: '/rooms',
     endpointMethod: 'PATCH',
@@ -433,9 +605,62 @@ const requirements = [
     testCases: [
       'PATCH /rooms/:id/status with housekeeping role',
       'PATCH /rooms/:id/status to blocked requires reason'
+    ],
+    blockingRules: [
+      'No se puede cambiar a occupied sin reserva activa (checked_in) asignada a esa habitacion.',
+      'maintenance y blocked requieren reason no vacio.',
+      'Rol housekeeping no puede asignar status = occupied directamente; solo recepcion via check-in.',
+      'Una habitacion en blocked o maintenance no debe aparecer en el selector de asignacion de reservas.'
+    ],
+    stateRules: [
+      'vacant_clean -> occupied: solo via check-in exitoso (no edicion directa).',
+      'occupied -> vacant_dirty: solo via check-out exitoso.',
+      'vacant_dirty -> inspection_pending: opcional, si la politica hotelera requiere inspeccion antes de limpiar.',
+      'vacant_dirty | inspection_pending -> vacant_clean: limpieza o recepcion con permiso.',
+      'cualquier estado -> maintenance | blocked: con reason; sale del inventario asignable.',
+      'maintenance | blocked -> vacant_dirty: al resolver el motivo y registrar liberacion.'
+    ],
+    requiredVisibleData: [
+      'Numero de habitacion.',
+      'Tipo de habitacion.',
+      'Piso.',
+      'Estado actual con badge de color semantico (verde=clean, amarillo=dirty, rojo=occupied/blocked).',
+      'Reserva activa vinculada si existe (reservation_number + huesped).',
+      'Fecha y usuario de ultima actualizacion de estado.'
+    ],
+    screenFields: [
+      'Estado (select con valores permitidos segun rol).',
+      'Reason (textarea visible solo cuando status = maintenance o blocked).',
+      'Notas internas (opcional).'
+    ],
+    visibleColumns: [
+      'Numero', 'Tipo', 'Piso', 'Estado (badge)', 'Reserva activa', 'Ultima actualizacion', 'Acciones'
+    ],
+    quickActions: [
+      'Cambiar estado',
+      'Ver reserva activa',
+      'Poner en mantenimiento (solo admin)',
+      'Marcar limpia (housekeeping o recepcion)'
+    ],
+    filters: [
+      'Estado',
+      'Tipo de habitacion',
+      'Piso',
+      'Solo disponibles para asignacion (vacant_clean)'
+    ],
+    sideEffects: [
+      'Al marcar vacant_clean: la habitacion aparece disponible en el selector de asignacion de reservas.',
+      'Al marcar blocked o maintenance: desaparece del selector de asignacion; si tenia reserva futura, se genera alerta.',
+      'Al cambiar cualquier estado: se registra en log de auditoria con usuario y timestamp.'
+    ],
+    uiErrorBehavior: [
+      '403 rol sin permiso: toast "Solo el rol correspondiente puede ejecutar este cambio de estado".',
+      '409 no se puede ocupar sin reserva: mensaje "Se requiere una reserva activa para marcar la habitacion como ocupada".',
+      '422 reason faltante para maintenance/blocked: campo reason resaltado en rojo con mensaje inline.',
+      '422 status invalido: dropdown de estado en rojo (no deberia ocurrir si el select esta bien restringido).'
     ]
   }),
-  req('REQ-0005', 'functional', 'critical', 'El sistema debe crear y mantener un folio por reserva, permitiendo registrar cargos de hospedaje, extras y pagos parciales o completos con saldo pendiente visible.', 'Toda reserva confirmada genera folio; front desk y cobros muestran balance_due actualizado; se pueden postear cargos y pagos con trazabilidad.', 3, {
+  req('REQ-0005', 'functional', 'critical', 'El sistema debe crear y mantener un folio por reserva, permitiendo registrar cargos de hospedaje, extras y pagos parciales o completos con saldo pendiente visible.', 'Toda reserva confirmada genera folio; front desk y cobros muestran balance_due actualizado; se pueden postear cargos y pagos con trazabilidad.', 'focus-frontdesk', {
     screenName: 'Folios y Cobros',
     routePath: '/folios/:id',
     endpointMethod: 'POST',
@@ -484,9 +709,64 @@ const requirements = [
       'POST /folios/:id/charges updates balance',
       'POST /payments partial payment updates balance',
       'POST /folios/:id/charges on closed folio returns 409'
+    ],
+    blockingRules: [
+      'No se pueden postear movimientos (cargos ni pagos) sobre folios con status = closed.',
+      'amount debe ser > 0 en cargos y pagos.',
+      'No se puede cerrar un folio con balance_due > 0 sin override autorizado por gerencia.',
+      'payment_method es obligatorio al registrar un pago (no en cargos).'
+    ],
+    stateRules: [
+      'open: el folio acepta cargos y pagos; balance_due se actualiza en cada movimiento.',
+      'closed: el folio no acepta movimientos; solo lectura.',
+      'disputed: el folio esta en revision por admin; no acepta movimientos hasta resolucion.',
+      'open -> closed: al check-out con balance_due = 0 o pago completo aplicado.',
+      'closed -> disputed: solo admin puede abrir disputa sobre un folio cerrado.',
+      'disputed -> closed: al resolver la discrepancia con un ajuste autorizado.'
+    ],
+    requiredVisibleData: [
+      'folio_number en el encabezado.',
+      'reservation_number del huesped vinculado.',
+      'balance_due actualizado en tiempo real tras cada movimiento.',
+      'Lista cronologica de cargos con tipo, descripcion, monto y fecha.',
+      'Lista de pagos con metodo, referencia y fecha.',
+      'Estado del folio (open / closed / disputed) con badge.',
+      'Total de cargos y total de pagos como resumen.'
+    ],
+    screenFields: [
+      'Tipo de cargo (select: room_rate | deposit | extra | tax | adjustment).',
+      'Descripcion del cargo (texto libre obligatorio).',
+      'Monto (numero > 0).',
+      'Metodo de pago (select: cash | card | transfer; solo para pagos).',
+      'Referencia de pago (texto opcional para transferencias o tarjeta).'
+    ],
+    visibleColumns: [
+      'Concepto', 'Tipo', 'Monto', 'Fecha', 'Usuario', 'Referencia'
+    ],
+    quickActions: [
+      'Agregar cargo',
+      'Registrar pago',
+      'Cerrar folio (si balance_due = 0)',
+      'Ver historial completo',
+      'Abrir disputa (solo admin)'
+    ],
+    filters: [
+      'Tipo de movimiento (cargo | pago)',
+      'Rango de fechas'
+    ],
+    sideEffects: [
+      'Al registrar pago: balance_due se recalcula y se actualiza en la tarjeta de front desk en tiempo real.',
+      'Al cerrar folio: el boton de check-out se habilita en la vista de front desk.',
+      'Si balance_due llega a 0 tras un pago: se muestra indicador visual de "Listo para check-out".'
+    ],
+    uiErrorBehavior: [
+      '409 folio cerrado: toast de error "El folio esta cerrado. Contacta al administrador para abrir una disputa".',
+      '422 monto = 0 o negativo: campo monto resaltado en rojo con mensaje inline.',
+      '422 tipo de cargo invalido: dropdown de tipo en rojo.',
+      '422 sin metodo de pago en pago: campo metodo resaltado en rojo.'
     ]
   }),
-  req('REQ-0006', 'functional', 'medium', 'El sistema debe generar reportes y dashboard de ocupacion, reservas activas, ingresos, salidas del dia y habitaciones disponibles.', 'Dashboard muestra metricas del dia y reportes exportables por periodo.', 6, {
+  req('REQ-0006', 'functional', 'medium', 'El sistema debe generar reportes y dashboard de ocupacion, reservas activas, ingresos, salidas del dia y habitaciones disponibles.', 'Dashboard muestra metricas del dia y reportes exportables por periodo.', 'document-analysis', {
     screenName: 'Dashboard',
     routePath: '/dashboard',
     endpointMethod: 'GET',
@@ -512,9 +792,51 @@ const requirements = [
     testCases: [
       'GET /dashboard/summary returns expected counters',
       'GET /dashboard/summary with business_date returns arrivals and departures'
+    ],
+    blockingRules: [
+      'Solo roles manager y admin pueden acceder al dashboard y a los reportes.',
+      'Las metricas de ingresos solo incluyen pagos con status = confirmed dentro del periodo.',
+      'Si no se envia business_date, se usa la fecha actual del servidor.'
+    ],
+    stateRules: [
+      'El dashboard es de solo lectura; no genera cambios de estado.',
+      'Las metricas reflejan el estado live; se actualizan via polling o websocket.',
+      'Las llegadas y salidas se calculan sobre check_in/check_out de la business_date seleccionada.'
+    ],
+    requiredVisibleData: [
+      'Tasa de ocupacion del dia (%) con denominador visible (X de Y habitaciones).',
+      'Reservas activas en este momento.',
+      'Ingresos del periodo con moneda.',
+      'Llegadas pendientes del dia.',
+      'Salidas pendientes del dia.',
+      'Habitaciones disponibles (vacant_clean).',
+      'Alertas operativas: reservas pending_assignment, folios con saldo vencido.'
+    ],
+    screenFields: [
+      'Selector de fecha operativa (business_date).',
+      'Rango de fechas para reporte de ingresos (from / to).'
+    ],
+    visibleColumns: [],
+    quickActions: [
+      'Exportar reporte del periodo',
+      'Ver detalle de llegadas pendientes',
+      'Ver detalle de salidas pendientes',
+      'Ver folios con saldo'
+    ],
+    filters: [
+      'business_date',
+      'Rango from / to para ingresos'
+    ],
+    sideEffects: [
+      'Sin efectos secundarios; endpoint es de solo lectura.'
+    ],
+    uiErrorBehavior: [
+      '401: redirigir a login.',
+      '403: toast "Sin acceso al modulo de reportes".',
+      'Error de red: cards con indicador de "Datos no disponibles" y boton de reintento; no mostrar valores en cero como si fueran reales.'
     ]
   }),
-  req('REQ-0007', 'functional', 'high', 'El sistema debe soportar handoff de turno y cierre operativo con pendientes, pagos no conciliados, llegadas, salidas y auditoria nocturna trazable.', 'El cierre de turno identifica reservas con saldo, llegadas pendientes, salidas del dia y discrepancias de caja para el siguiente usuario.', 5, {
+  req('REQ-0007', 'functional', 'high', 'El sistema debe soportar handoff de turno y cierre operativo con pendientes, pagos no conciliados, llegadas, salidas y auditoria nocturna trazable.', 'El cierre de turno identifica reservas con saldo, llegadas pendientes, salidas del dia y discrepancias de caja para el siguiente usuario.', 'shadow-housekeeping', {
     screenName: 'Night Audit / Shift Handoff',
     routePath: '/night-audit',
     endpointMethod: 'GET',
@@ -547,6 +869,56 @@ const requirements = [
     testCases: [
       'GET /night-audit/summary returns pending arrivals, departures and unbalanced folios',
       'GET /night-audit/summary includes late checkouts and unassigned reservations'
+    ],
+    blockingRules: [
+      'Solo roles night_audit, manager y admin pueden ejecutar el cierre.',
+      'business_date es obligatoria; no se puede ejecutar el cierre sin ella.',
+      'No se puede ejecutar el cierre dos veces para la misma business_date sin autorizacion explicita.',
+      'El cierre no puede ejecutarse si hay folios en estado disputed sin resolver.'
+    ],
+    stateRules: [
+      'Al confirmar el cierre: se genera un registro en audit_log con snapshot del estado de reservas, folios y caja.',
+      'El cierre actualiza la business_date interna del sistema al dia siguiente.',
+      'Los pendientes del cierre quedan visibles para el siguiente turno hasta ser resueltos o descartados.'
+    ],
+    requiredVisibleData: [
+      'Llegadas pendientes (reservas booked sin check-in en business_date).',
+      'Salidas pendientes (reservas checked_in sin check-out en business_date).',
+      'Folios con saldo (balance_due > 0).',
+      'Late checkouts (checked_in con check_out < business_date).',
+      'Reservas sin habitacion asignada (pending_assignment).',
+      'Discrepancias de caja (movimientos no conciliados).',
+      'Incidencias registradas en el turno.'
+    ],
+    screenFields: [
+      'business_date (date picker obligatorio).',
+      'shift_code (texto; obligatorio si se registra handoff formal).',
+      'handoff_notes (textarea; notas de incidencias para el siguiente turno).',
+      'Confirmacion de cierre (checkbox + boton de accion; irreversible sin override).'
+    ],
+    visibleColumns: [
+      'Tipo de pendiente', 'Reserva/Folio #', 'Huesped', 'Estado', 'Monto', 'Acciones'
+    ],
+    quickActions: [
+      'Ver detalle de reserva',
+      'Abrir folio',
+      'Registrar incidencia de turno',
+      'Confirmar cierre del dia',
+      'Exportar resumen de turno'
+    ],
+    filters: [
+      'Tipo de pendiente (llegadas | salidas | folios | habitaciones | inconsistencias)',
+      'Solo inconsistencias criticas'
+    ],
+    sideEffects: [
+      'Al confirmar cierre: genera audit_log con snapshot; actualiza business_date del sistema; publica resumen al siguiente turno.',
+      'Al registrar handoff: incidencias quedan visibles en el tablero de front desk del siguiente turno.'
+    ],
+    uiErrorBehavior: [
+      '403: toast "Solo el auditor nocturno o gerencia puede ejecutar el cierre".',
+      '401: redirigir a login.',
+      'Si ya existe cierre para business_date: modal de confirmacion "Ya existe un cierre para esta fecha. Deseas generar uno de reconciliacion?".',
+      'Si existen folios disputed sin resolver: advertencia bloqueante con lista de folios afectados antes de permitir el cierre.'
     ]
   })
 ];
@@ -567,8 +939,8 @@ function errorSpec(statusCode, condition, message) {
   return { statusCode, condition, message };
 }
 
-function req(code, type, priority, description, acceptanceCriteria, findingIndex, contract) {
-  return { code, type, priority, description, acceptanceCriteria, findingIndex, contract };
+function req(code, type, priority, description, acceptanceCriteria, findingKey, contract) {
+  return { code, type, priority, description, acceptanceCriteria, findingKey, contract };
 }
 
 function normalizeText(value) {
@@ -809,12 +1181,12 @@ async function main() {
           objective: 'Seguir una reserva realista desde llamada hasta confirmacion para detectar duplicidad, manejo de tarifa y validaciones faltantes.',
           realFlowSummary: 'La recepcionista consulta disponibilidad en Excel, define tarifa desde memoria, registra datos del huesped, asigna habitacion y anota saldo pendiente en otra hoja.',
           steps: [
-            { order: 1, name: 'Cliente solicita habitacion', actorRole: 'Huesped', channel: 'Telefono', input: 'Fechas y numero de personas', action: 'Solicita disponibilidad', output: 'Datos preliminares', duration: '3 min', issue: 'Datos incompletos al primer contacto' },
-            { order: 2, name: 'Recepcion consulta disponibilidad', actorStakeholderId: null, actorRole: 'Recepcionista', system: 'Excel', input: 'Fechas', action: 'Busca disponibilidad manualmente', output: 'Habitacion candidata', duration: '7 min', issue: 'Riesgo de solapamiento por hoja no actualizada' },
-            { order: 3, name: 'Definicion de tarifa', actorRole: 'Recepcionista', system: 'Excel', input: 'Tipo de habitacion y fechas', action: 'Consulta tarifa en referencia manual', output: 'Monto por noche', duration: '4 min', issue: 'No existe catalogo unico de tarifas ni vigencias por canal' },
-            { order: 4, name: 'Registro de reserva', actorRole: 'Recepcionista', system: 'Excel', input: 'Datos del huesped', action: 'Captura reserva y saldo', output: 'Reserva confirmada', duration: '8 min', issue: 'Duplicidad entre disponibilidad, saldo y datos del huesped' },
-            { order: 5, name: 'Creacion de folio manual', actorRole: 'Recepcionista', system: 'Libretta/Caja', input: 'Reserva confirmada', action: 'Anota saldo pendiente y deposito', output: 'Control de cobro separado', duration: '3 min', issue: 'Folio no queda vinculado a la reserva en la misma herramienta' },
-            { order: 6, name: 'Confirmacion al cliente', actorRole: 'Recepcionista', channel: 'Telefono', input: 'Reserva registrada', action: 'Comunica condiciones y pago pendiente', output: 'Cliente acepta', duration: '3 min' }
+            { order: 1, name: 'Cliente solicita habitacion', actorRole: 'Huesped', channel: 'Telefono', input: 'Fechas y numero de personas', action: 'Solicita disponibilidad', output: 'Datos preliminares', duration: '3 min', issue: 'Datos incompletos al primer contacto', bottleneck: '', handoffTo: 'Recepcionista (Excel)' },
+            { order: 2, name: 'Recepcion consulta disponibilidad', actorStakeholderId: null, actorRole: 'Recepcionista', system: 'Excel', input: 'Fechas', action: 'Busca disponibilidad manualmente', output: 'Habitacion candidata', duration: '7 min', issue: 'Riesgo de solapamiento por hoja no actualizada', bottleneck: 'Si — hoja no actualizada en tiempo real causa el mayor retraso y riesgo de sobreventa', handoffTo: 'Recepcionista (referencia manual de tarifas)' },
+            { order: 3, name: 'Definicion de tarifa', actorRole: 'Recepcionista', system: 'Excel', input: 'Tipo de habitacion y fechas', action: 'Consulta tarifa en referencia manual', output: 'Monto por noche', duration: '4 min', issue: 'No existe catalogo unico de tarifas ni vigencias por canal', bottleneck: 'Si — sin catalogo unico la consulta es ambigua y variable entre turnos', handoffTo: 'Recepcionista (Excel - hoja de reservas)' },
+            { order: 4, name: 'Registro de reserva', actorRole: 'Recepcionista', system: 'Excel', input: 'Datos del huesped', action: 'Captura reserva y saldo', output: 'Reserva confirmada', duration: '8 min', issue: 'Duplicidad entre disponibilidad, saldo y datos del huesped', bottleneck: 'Si — duplicidad manual en 3 herramientas es el principal origen de errores y retrasos', handoffTo: 'Recepcionista (Libretta/Caja)' },
+            { order: 5, name: 'Creacion de folio manual', actorRole: 'Recepcionista', system: 'Libretta/Caja', input: 'Reserva confirmada', action: 'Anota saldo pendiente y deposito', output: 'Control de cobro separado', duration: '3 min', issue: 'Folio no queda vinculado a la reserva en la misma herramienta', bottleneck: 'Si — folio desvinculado genera discrepancias en check-in y cierre de turno', handoffTo: 'Huesped (confirmacion telefonica)' },
+            { order: 6, name: 'Confirmacion al cliente', actorRole: 'Recepcionista', channel: 'Telefono', input: 'Reserva registrada', action: 'Comunica condiciones y pago pendiente', output: 'Cliente acepta', duration: '3 min', issue: '', bottleneck: '', handoffTo: 'Huesped' }
           ],
           problems: [
             { stepOrder: 2, description: 'La disponibilidad se valida manualmente en Excel, generando riesgo de sobreventa.', severity: 'high', impact: 'Reserva solapada o habitacion duplicada.' },
@@ -850,10 +1222,10 @@ async function main() {
           objective: 'Seguir un check-in realista para verificar visibilidad de folio, saldo y estatus de habitacion.',
           realFlowSummary: 'La recepcion valida reserva, consulta saldo en un registro aparte, cobra deposito y marca ocupada la habitacion sin un folio visible en la pantalla principal.',
           steps: [
-            { order: 1, name: 'Localizar reserva', actorRole: 'Recepcionista', system: 'Recepcion', input: 'Nombre o numero de reserva', action: 'Busca reserva del dia', output: 'Reserva localizada', duration: '2 min', issue: 'No siempre se usa el folio de reserva como llave principal' },
-            { order: 2, name: 'Validar saldo y deposito', actorRole: 'Recepcionista', system: 'Caja', input: 'Reserva localizada', action: 'Consulta cobros pendientes', output: 'Saldo/deposito esperados', duration: '4 min', issue: 'El saldo no se visualiza en la misma vista del front desk' },
-            { order: 3, name: 'Asignar llave y habitacion', actorRole: 'Recepcionista', system: 'Recepcion', input: 'Reserva y habitacion', action: 'Entrega acceso y marca ocupacion', output: 'Check-in completado', duration: '4 min', issue: 'El cambio de estatus no notifica automaticamente a limpieza' },
-            { order: 4, name: 'Registrar deposito', actorRole: 'Recepcionista', system: 'Caja', input: 'Monto depositado', action: 'Anota pago parcial', output: 'Deposito registrado', duration: '3 min', issue: 'El pago queda sin folio unificado visible' }
+            { order: 1, name: 'Localizar reserva', actorRole: 'Recepcionista', system: 'Recepcion', input: 'Nombre o numero de reserva', action: 'Busca reserva del dia', output: 'Reserva localizada', duration: '2 min', issue: 'No siempre se usa el folio de reserva como llave principal', bottleneck: '', handoffTo: 'Recepcionista (Caja)' },
+            { order: 2, name: 'Validar saldo y deposito', actorRole: 'Recepcionista', system: 'Caja', input: 'Reserva localizada', action: 'Consulta cobros pendientes en herramienta separada', output: 'Saldo/deposito esperados', duration: '4 min', issue: 'El saldo no se visualiza en la misma vista del front desk', bottleneck: 'Si — obliga a cambiar de herramienta y duplicar la busqueda; principal causa de demora y errores de cobro', handoffTo: 'Recepcionista (Recepcion - asignacion de habitacion)' },
+            { order: 3, name: 'Asignar llave y habitacion', actorRole: 'Recepcionista', system: 'Recepcion', input: 'Reserva y habitacion validadas', action: 'Entrega acceso y marca ocupacion', output: 'Check-in completado', duration: '4 min', issue: 'El cambio de estatus no notifica automaticamente a limpieza', bottleneck: '', handoffTo: 'Recepcionista (Caja)' },
+            { order: 4, name: 'Registrar deposito', actorRole: 'Recepcionista', system: 'Caja', input: 'Monto depositado por el huesped', action: 'Anota pago parcial en registro separado', output: 'Deposito registrado sin vinculo con reserva', duration: '3 min', issue: 'El pago queda sin folio unificado visible; puede omitirse en conciliacion de turno', bottleneck: 'Si — folio sin vincular genera doble captura y discrepancias de caja al cierre', handoffTo: 'Huesped (entrega de llave)' }
           ],
           problems: [
             { stepOrder: 2, description: 'Front desk no muestra folio ni saldo pendiente en la misma tarjeta/lista.', severity: 'high', impact: 'Check-in lento y riesgo de cobrar mal.' },
@@ -935,7 +1307,7 @@ async function main() {
       ['document-analysis', 'need', 'Los checklists AM, PM y Night Audit evidencian necesidad de reportes operativos diarios y cierre de caja trazable.'],
       ['shadow-housekeeping', 'problem', 'Las salidas tardias y habitaciones listas no tienen una bandeja compartida en tiempo real entre recepcion y limpieza.']
     ];
-    const findingIds = [];
+    const findingIdByKey = {};
     for (const [sessionKey, category, statement] of findingDefs) {
       const result = await client.query(
         `INSERT INTO trace_findings (session_id, category, statement)
@@ -943,7 +1315,7 @@ async function main() {
          RETURNING id`,
         [sessionIds[sessionKey], category, statement]
       );
-      findingIds.push(result.rows[0].id);
+      findingIdByKey[sessionKey] = result.rows[0].id;
     }
 
     const implementationContracts = [];
@@ -957,9 +1329,11 @@ async function main() {
       );
       const requirementId = result.rows[0].id;
       requirementIds.push(requirementId);
+      const linkedFindingId = findingIdByKey[item.findingKey];
+      if (!linkedFindingId) throw new Error(`No finding found for key "${item.findingKey}" (${item.code})`);
       await client.query(
         `INSERT INTO trace_requirement_findings (requirement_id, finding_id) VALUES ($1,$2)`,
-        [requirementId, findingIds[item.findingIndex]]
+        [requirementId, linkedFindingId]
       );
       implementationContracts.push({
         requirementId,
