@@ -121,12 +121,12 @@ export type AgentProfile = {
 export type DerivedDiagram = {
   id: string;
   title: string;
-  kind: string;
+  kind: DiagramKind;
   source: string;
   sourceRequirementIds: number[];
   sourceUseCaseIds: number[];
   sourceSpecIds: string[];
-  mermaid: string;
+  diagram: DiagramModel;
 };
 
 export type DiagramNode = {

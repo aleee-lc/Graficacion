@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cd \"c:\\\\Users\\\\el_al\\\\OneDrive\\\\Desktop\\\\Graficacion\\\\backend\" ; node scripts/seed-pms-opera-demo\\.js$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

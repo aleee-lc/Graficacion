@@ -175,7 +175,7 @@
               <button type="button" (click)="downloadProjectBundleJson()">JSON</button>
               <button type="button" (click)="exportImplementationSpecsZip()">Exportar specs implementables</button>
               <button type="button" (click)="exportProjectZip()">Descargar ZIP</button>
-              <input #projectFolderInput type="file" multiple accept=".zip,.json,.md,.markdown,.txt,.mmd,.drawio-lite,.png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" hidden (change)="importProjectFolderFile($event)" />
+              <input #projectFolderInput type="file" multiple accept=".zip,.json,.md,.markdown,.txt,.drawio-lite,.drawio,.png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" hidden (change)="importProjectFolderFile($event)" />
             </div>
           </div>
 
@@ -1361,7 +1361,7 @@
           <div class="module-action-bar">
             <div>
               <strong>Mapa de arquitectura y requisitos</strong>
-              <span>Modela procesos, casos de uso, clases y componentes como evidencia visual revisable.</span>
+              <span>Genera y ajusta diagramas editables basados en requisitos, contratos, procesos y seguimientos transaccionales.</span>
             </div>
             <div class="generate-diagram-actions">
               <button type="button" [disabled]="requirements().length === 0" (click)="generateEditableDiagram('use_case')">Casos de uso</button>
@@ -1376,17 +1376,17 @@
             <article>
               <span class="material-icons">auto_awesome_motion</span>
               <strong>1. Generar</strong>
-              <p>Usa requisitos y specs para crear casos de uso, clases, secuencia, paquetes o componentes.</p>
+              <p>Usa requisitos, stack, modelo de datos y tracking para crear diagramas editables útiles para implementación.</p>
             </article>
             <article>
               <span class="material-icons">edit_note</span>
               <strong>2. Ajustar</strong>
-              <p>Mueve nodos, conecta elementos y edita etiquetas para reflejar el dominio real.</p>
+              <p>Reacomoda nodos, conecta elementos y documenta reglas, payloads o decisiones directamente en el canvas.</p>
             </article>
             <article>
               <span class="material-icons">inventory_2</span>
               <strong>3. Entregar</strong>
-              <p>Guarda el .drawio-lite y exporta el paquete del proyecto para incluirlo en el handoff.</p>
+              <p>Guarda modelos editables y exporta `.drawio` reales para que el agente implementador los use sin depender de Mermaid.</p>
             </article>
           </div>
 
@@ -1748,10 +1748,18 @@
             <div class="card-grid">
               <article *ngFor="let diagram of diagramArtifacts()" class="data-card spec-card">
                 <div class="card-topline">
-                  <span>Mermaid secundario</span>
+                  <span>{{ diagramKindLabel(diagram.kind) }}</span>
                   <small>{{ diagram.source }}</small>
                 </div>
-                <pre class="spec-preview diagram-code">{{ diagram.mermaid }}</pre>
+                <h3>{{ diagram.title }}</h3>
+                <div class="spec-section">
+                  <span><b>Nodos</b>{{ diagram.diagram.nodes.length }}</span>
+                  <span><b>Conexiones</b>{{ diagram.diagram.edges.length }}</span>
+                  <span><b>Requisitos</b>{{ diagram.sourceRequirementIds.length }}</span>
+                </div>
+                <div class="generate-diagram-actions">
+                  <button type="button" (click)="openDerivedDiagram(diagram.id)">Abrir</button>
+                </div>
               </article>
             </div>
 

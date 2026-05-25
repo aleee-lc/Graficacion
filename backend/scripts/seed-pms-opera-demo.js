@@ -55,6 +55,23 @@ const dataEntities = [
     integrityRules: ['document_id unico cuando exista', 'email debe tener formato valido si se captura']
   },
   {
+    id: 'entity-room-type',
+    name: 'RoomType',
+    tableName: 'room_types',
+    description: 'Catalogo de tipos de habitacion, capacidad base y configuracion comercial.',
+    source: 'manual',
+    confidence: 'alta',
+    fields: [
+      field('id', 'number', true, true, false, '', '1', 'PK'),
+      field('code', 'string', true, true, false, '', 'STD', 'Codigo del tipo'),
+      field('name', 'string', true, false, false, '', 'Standard King', 'Nombre comercial'),
+      field('base_occupancy', 'number', true, false, false, '2', '2', 'Capacidad base'),
+      field('max_occupancy', 'number', true, false, false, '4', '4', 'Capacidad maxima')
+    ],
+    relationships: [],
+    integrityRules: ['code unico', 'base_occupancy <= max_occupancy']
+  },
+  {
     id: 'entity-room',
     name: 'Room',
     tableName: 'rooms',
@@ -64,50 +81,119 @@ const dataEntities = [
     fields: [
       field('id', 'number', true, true, false, '', '12', 'PK'),
       field('number', 'string', true, true, false, '', '204', 'Numero interno'),
-      field('type', 'enum', true, false, false, '', 'standard', 'Tipo de habitacion', ['standard', 'double', 'suite']),
-      field('status', 'enum', true, false, false, 'available', 'available', 'Estado operativo', ['available', 'occupied', 'cleaning', 'maintenance', 'blocked'])
+      field('room_type_id', 'number', true, false, false, '', '1', 'FK a room_types'),
+      field('floor', 'number', false, false, true, '', '2', 'Piso'),
+      field('status', 'enum', true, false, false, 'vacant_clean', 'vacant_clean', 'Estado operativo', ['vacant_clean', 'vacant_dirty', 'occupied', 'maintenance', 'blocked', 'inspection_pending'])
     ],
-    relationships: [],
+    relationships: [rel('Room', 'many-to-one', 'RoomType', 'room_type_id', 'restrict', 'La habitacion pertenece a un tipo comercial.')],
     integrityRules: ['number unico', 'status solo puede tomar valores permitidos']
+  },
+  {
+    id: 'entity-rate-plan',
+    name: 'RatePlan',
+    tableName: 'rate_plans',
+    description: 'Tarifa comercial aplicable a una reserva por tipo de habitacion, canal y politica.',
+    source: 'manual',
+    confidence: 'alta',
+    fields: [
+      field('id', 'number', true, true, false, '', '10', 'PK'),
+      field('code', 'string', true, true, false, '', 'BAR', 'Codigo de tarifa'),
+      field('name', 'string', true, false, false, '', 'Best Available Rate', 'Nombre comercial'),
+      field('room_type_id', 'number', true, false, false, '', '1', 'FK a room_types'),
+      field('currency', 'string', true, false, false, 'MXN', 'MXN', 'Moneda'),
+      field('base_nightly_rate', 'number', true, false, false, '', '1800.00', 'Tarifa base por noche'),
+      field('is_refundable', 'boolean', true, false, false, 'true', 'true', 'Politica de reembolso')
+    ],
+    relationships: [rel('RatePlan', 'many-to-one', 'RoomType', 'room_type_id', 'restrict', 'La tarifa pertenece a un tipo de habitacion.')],
+    integrityRules: ['code unico', 'base_nightly_rate > 0']
   },
   {
     id: 'entity-reservation',
     name: 'Reservation',
     tableName: 'reservations',
-    description: 'Reserva con fechas, huesped titular, habitacion asignada y estado.',
+    description: 'Reserva con folio, tarifa, fechas, huesped titular, habitacion asignada y estado operativo.',
     source: 'manual',
     confidence: 'alta',
     fields: [
       field('id', 'number', true, true, false, '', '1001', 'PK'),
+      field('reservation_number', 'string', true, true, false, '', 'RSV-2026-0001', 'Folio visible de reserva'),
       field('guest_id', 'number', true, false, false, '', '1', 'FK a guests'),
+      field('room_type_id', 'number', true, false, false, '', '1', 'FK a room_types'),
       field('room_id', 'number', false, false, true, '', '12', 'FK a rooms'),
+      field('rate_plan_id', 'number', true, false, false, '', '10', 'FK a rate_plans'),
+      field('nightly_rate', 'number', true, false, false, '', '1800.00', 'Tarifa aplicada por noche'),
+      field('adults', 'number', true, false, false, '1', '2', 'Adultos'),
+      field('children', 'number', false, false, true, '0', '1', 'Menores'),
       field('check_in', 'date', true, false, false, '', '2026-06-01', 'Fecha de entrada'),
       field('check_out', 'date', true, false, false, '', '2026-06-03', 'Fecha de salida'),
-      field('status', 'enum', true, false, false, 'booked', 'booked', 'Estado de reserva', ['booked', 'checked_in', 'checked_out', 'cancelled', 'no_show'])
+      field('status', 'enum', true, false, false, 'booked', 'booked', 'Estado de reserva', ['draft', 'booked', 'pending_assignment', 'checked_in', 'checked_out', 'cancelled', 'no_show']),
+      field('source', 'enum', true, false, false, 'direct', 'direct', 'Canal de reserva', ['direct', 'phone', 'walk_in', 'ota', 'corporate'])
     ],
     relationships: [
       rel('Reservation', 'many-to-one', 'Guest', 'guest_id', 'restrict', 'La reserva pertenece a un huesped titular.'),
+      rel('Reservation', 'many-to-one', 'RoomType', 'room_type_id', 'restrict', 'La reserva debe corresponder a un tipo de habitacion.'),
       rel('Reservation', 'many-to-one', 'Room', 'room_id', 'set null', 'La reserva puede tener habitacion asignada.'),
-      rel('Reservation', 'one-to-many', 'Payment', 'reservation_id', 'cascade', 'Una reserva puede tener pagos parciales.')
+      rel('Reservation', 'many-to-one', 'RatePlan', 'rate_plan_id', 'restrict', 'La reserva debe tener una tarifa aplicada.'),
+      rel('Reservation', 'one-to-one', 'Folio', 'reservation_id', 'cascade', 'La reserva genera un folio operativo visible en front desk.')
     ],
-    integrityRules: ['check_in < check_out', 'no overlap por room_id en reservas activas']
+    integrityRules: ['check_in < check_out', 'nightly_rate > 0', 'no overlap por room_id en reservas activas', 'room_id puede ser null solo si status = pending_assignment']
+  },
+  {
+    id: 'entity-folio',
+    name: 'Folio',
+    tableName: 'folios',
+    description: 'Cuenta operativa y financiera de la estancia con saldo, cargos y estatus.',
+    source: 'manual',
+    confidence: 'alta',
+    fields: [
+      field('id', 'number', true, true, false, '', '7001', 'PK'),
+      field('folio_number', 'string', true, true, false, '', 'FOL-2026-0001', 'Numero visible en front desk y cobros'),
+      field('reservation_id', 'number', true, false, false, '', '1001', 'FK a reservations'),
+      field('status', 'enum', true, false, false, 'open', 'open', 'Estado del folio', ['open', 'closed', 'disputed']),
+      field('balance_due', 'number', true, false, false, '0', '1800.00', 'Saldo pendiente actual'),
+      field('currency', 'string', true, false, false, 'MXN', 'MXN', 'Moneda')
+    ],
+    relationships: [
+      rel('Folio', 'one-to-one', 'Reservation', 'reservation_id', 'cascade', 'El folio principal pertenece a una reserva.'),
+      rel('Folio', 'one-to-many', 'FolioCharge', 'folio_id', 'cascade', 'El folio contiene cargos y ajustes.'),
+      rel('Folio', 'one-to-many', 'Payment', 'folio_id', 'cascade', 'El folio recibe pagos parciales o completos.')
+    ],
+    integrityRules: ['folio_number unico', 'balance_due >= 0']
+  },
+  {
+    id: 'entity-folio-charge',
+    name: 'FolioCharge',
+    tableName: 'folio_charges',
+    description: 'Cargo individual aplicado al folio por hospedaje, consumo o ajuste.',
+    source: 'manual',
+    confidence: 'alta',
+    fields: [
+      field('id', 'number', true, true, false, '', '9001', 'PK'),
+      field('folio_id', 'number', true, false, false, '', '7001', 'FK a folios'),
+      field('charge_type', 'enum', true, false, false, '', 'room_rate', 'Tipo de cargo', ['room_rate', 'deposit', 'extra', 'tax', 'adjustment']),
+      field('description', 'string', true, false, false, '', 'Nightly room charge', 'Descripcion visible'),
+      field('amount', 'number', true, false, false, '', '1800.00', 'Monto del cargo'),
+      field('posted_at', 'datetime', true, false, false, '', '2026-06-01T15:00:00Z', 'Fecha de registro')
+    ],
+    relationships: [rel('FolioCharge', 'many-to-one', 'Folio', 'folio_id', 'cascade', 'Cargo asociado al folio.')],
+    integrityRules: ['amount != 0']
   },
   {
     id: 'entity-payment',
     name: 'Payment',
     tableName: 'payments',
-    description: 'Pago parcial o completo asociado a una reserva.',
+    description: 'Pago parcial o completo asociado al folio principal de una reserva.',
     source: 'manual',
     confidence: 'alta',
     fields: [
       field('id', 'number', true, true, false, '', '5001', 'PK'),
-      field('reservation_id', 'number', true, false, false, '', '1001', 'FK a reservations'),
+      field('folio_id', 'number', true, false, false, '', '7001', 'FK a folios'),
       field('amount', 'number', true, false, false, '', '1200.00', 'Monto pagado'),
       field('method', 'enum', true, false, false, '', 'cash', 'Metodo', ['cash', 'card', 'transfer']),
       field('paid_at', 'datetime', true, false, false, '', '2026-06-01T10:00:00Z', 'Fecha de pago')
     ],
-    relationships: [rel('Payment', 'many-to-one', 'Reservation', 'reservation_id', 'cascade', 'Pago asociado a una reserva.')],
-    integrityRules: ['amount > 0', 'suma de pagos no debe exceder total salvo ajuste autorizado']
+    relationships: [rel('Payment', 'many-to-one', 'Folio', 'folio_id', 'cascade', 'Pago asociado al folio operativo.')],
+    integrityRules: ['amount > 0', 'suma de pagos no debe exceder saldo salvo ajuste autorizado']
   }
 ];
 
@@ -126,9 +212,9 @@ const targetRoles = [
     name: 'Recepcionista',
     description: 'Opera reservas, check-in, check-out y cobros del turno.',
     userType: 'staff',
-    permissions: ['reservations.manage', 'checkin.perform', 'checkout.perform', 'payments.create'],
-    screens: ['/reservations', '/calendar', '/front-desk', '/payments'],
-    endpoints: ['POST /reservations', 'PATCH /reservations/:id/check-in', 'PATCH /reservations/:id/check-out', 'POST /payments']
+    permissions: ['reservations.manage', 'checkin.perform', 'checkout.perform', 'payments.create', 'folios.view', 'folios.charge_post'],
+    screens: ['/reservations', '/calendar', '/front-desk', '/payments', '/folios', '/guests'],
+    endpoints: ['POST /reservations', 'PATCH /reservations/:id/check-in', 'PATCH /reservations/:id/check-out', 'POST /payments', 'GET /folios/:id', 'POST /folios/:id/charges']
   },
   {
     id: 'role-housekeeping',
@@ -151,40 +237,80 @@ const targetRoles = [
 ];
 
 const requirements = [
-  req('REQ-0001', 'functional', 'critical', 'El sistema debe permitir registrar, modificar y cancelar reservaciones con fechas de entrada/salida, huesped titular, estado y habitacion asignada.', 'Crear reserva retorna 201; check_in es menor que check_out; no permite solapamientos de habitacion; cancelar reserva cerrada requiere rol Administrador.', 0, {
+  req('REQ-0001', 'functional', 'critical', 'El sistema debe permitir registrar, modificar y cancelar reservaciones con fechas de entrada/salida, huesped titular, tipo de habitacion, tarifa aplicada, monto por noche, estado y habitacion asignada.', 'Crear reserva retorna 201; check_in es menor que check_out; no permite solapamientos de habitacion; exige tarifa aplicada; reserva sin habitacion solo si queda en pending_assignment.', 0, {
     screenName: 'Reservaciones',
     routePath: '/reservations',
     endpointMethod: 'POST',
     endpointPath: '/reservations',
-    requestFields: [fieldSpec('guest_id', 'number', true), fieldSpec('room_id', 'number', false), fieldSpec('check_in', 'date', true), fieldSpec('check_out', 'date', true)],
-    responseFields: [fieldSpec('id', 'number', true), fieldSpec('status', 'string', true)],
-    businessRules: ['No debe existir reserva activa solapada por habitacion.', 'Solo Administrador puede cancelar reservas cerradas.'],
-    validations: ['check_in < check_out', 'guest_id debe existir', 'room_id debe existir si se envia'],
+    requestFields: [
+      fieldSpec('guest_id', 'number', true),
+      fieldSpec('room_type_id', 'number', true),
+      fieldSpec('room_id', 'number', false),
+      fieldSpec('rate_plan_id', 'number', true),
+      fieldSpec('nightly_rate', 'number', true),
+      fieldSpec('check_in', 'date', true),
+      fieldSpec('check_out', 'date', true),
+      fieldSpec('adults', 'number', true),
+      fieldSpec('children', 'number', false)
+    ],
+    responseFields: [
+      fieldSpec('id', 'number', true),
+      fieldSpec('reservation_number', 'string', true),
+      fieldSpec('folio_number', 'string', true),
+      fieldSpec('status', 'string', true)
+    ],
+    businessRules: [
+      'No debe existir reserva activa solapada por habitacion.',
+      'La reserva debe tener tarifa y nightly_rate al confirmarse.',
+      'Solo Administrador puede cancelar reservas cerradas.'
+    ],
+    validations: ['check_in < check_out', 'guest_id debe existir', 'rate_plan_id debe existir', 'nightly_rate > 0', 'room_id debe existir si se envia'],
     expectedErrors: [errorSpec(409, 'Habitacion ocupada en el rango solicitado', 'Room is not available'), errorSpec(422, 'Fechas invalidas', 'check_in must be before check_out')],
     permissions: ['reservations.manage'],
-    acceptanceChecks: ['Crear reserva valida', 'Rechazar solapamiento', 'Cancelar reserva abierta'],
-    testCases: ['POST /reservations happy path', 'POST /reservations overlap returns 409']
+    acceptanceChecks: ['Crear reserva valida con tarifa', 'Rechazar solapamiento', 'Generar reservation_number y folio_number', 'Cancelar reserva abierta'],
+    testCases: ['POST /reservations happy path', 'POST /reservations overlap returns 409', 'POST /reservations without rate_plan returns 422']
   }),
-  req('REQ-0002', 'functional', 'critical', 'El sistema debe ejecutar check-in y check-out actualizando estado de reserva, ocupacion y estado de habitacion de forma automatica.', 'Check-in cambia reserva a checked_in y habitacion a occupied; check-out cambia reserva a checked_out y habitacion a cleaning o available segun politica.', 1, {
+  req('REQ-0002', 'functional', 'critical', 'El modulo de Front Desk debe mostrar cada reserva activa con reservation number, folio number, huesped, habitacion, fechas, estado, saldo pendiente y acciones rapidas operativas.', 'Front Desk lista llegadas, in-house y salidas; cada fila muestra reservation_number y folio_number; permite abrir folio, check-in, check-out y cambio de habitacion.', 1, {
+    screenName: 'Front Desk',
+    routePath: '/front-desk',
+    endpointMethod: 'GET',
+    endpointPath: '/front-desk/board',
+    requestFields: [fieldSpec('status', 'string', false), fieldSpec('date', 'date', false)],
+    responseFields: [
+      fieldSpec('reservation_number', 'string', true),
+      fieldSpec('folio_number', 'string', true),
+      fieldSpec('guest_name', 'string', true),
+      fieldSpec('room_number', 'string', false),
+      fieldSpec('balance_due', 'number', true),
+      fieldSpec('status', 'string', true)
+    ],
+    businessRules: ['Front desk no debe ocultar el folio de la reserva.', 'Las acciones rapidas deben depender del estado actual de la reserva.'],
+    validations: ['Solo usuarios de front desk y gerencia pueden consultar el tablero operativo.'],
+    expectedErrors: [errorSpec(401, 'Usuario no autenticado', 'Unauthorized')],
+    permissions: ['reservations.manage', 'checkin.perform', 'checkout.perform', 'folios.view'],
+    acceptanceChecks: ['Front desk muestra reservation_number y folio_number', 'Front desk muestra balance pendiente', 'Acciones rapidas cambian segun estado'],
+    testCases: ['GET /front-desk/board returns operational cards with folio and balance']
+  }),
+  req('REQ-0003', 'functional', 'critical', 'El sistema debe ejecutar check-in y check-out actualizando estado de reserva, ocupacion, folio y estado de habitacion de forma automatica.', 'Check-in cambia reserva a checked_in y habitacion a occupied; check-out cambia reserva a checked_out y habitacion a vacant_dirty o inspection_pending segun politica; no permite salida con saldo no autorizado.', 2, {
     screenName: 'Front Desk',
     routePath: '/front-desk',
     endpointMethod: 'PATCH',
     endpointPath: '/reservations/{id}/check-in',
-    requestFields: [fieldSpec('reservation_id', 'number', true), fieldSpec('confirmed_balance', 'boolean', true)],
-    responseFields: [fieldSpec('reservation_id', 'number', true), fieldSpec('room_status', 'string', true)],
-    businessRules: ['No permitir check-in si existe saldo vencido.', 'Check-out libera la habitacion para limpieza.'],
+    requestFields: [fieldSpec('reservation_id', 'number', true), fieldSpec('confirmed_balance', 'boolean', true), fieldSpec('room_id', 'number', false)],
+    responseFields: [fieldSpec('reservation_id', 'number', true), fieldSpec('room_status', 'string', true), fieldSpec('folio_number', 'string', true)],
+    businessRules: ['No permitir check-in si existe saldo vencido.', 'Check-out libera la habitacion para limpieza.', 'Check-in requiere habitacion asignada.'],
     validations: ['La reserva debe estar booked para check-in', 'La reserva debe estar checked_in para check-out'],
     expectedErrors: [errorSpec(409, 'Saldo vencido o reserva en estado incorrecto', 'Reservation cannot be checked in')],
     permissions: ['checkin.perform', 'checkout.perform'],
     acceptanceChecks: ['Check-in actualiza reserva y habitacion', 'Check-out libera habitacion'],
     testCases: ['PATCH check-in happy path', 'PATCH check-out happy path']
   }),
-  req('REQ-0003', 'functional', 'high', 'El sistema debe administrar habitaciones, tipos y estados operativos para recepcion y limpieza.', 'Alta/edicion/baja logica de habitacion disponible; estados restringidos a disponible, ocupada, limpieza, mantenimiento y bloqueada.', 2, {
+  req('REQ-0004', 'functional', 'high', 'El sistema debe administrar habitaciones, tipos y estados operativos para recepcion y limpieza.', 'Alta/edicion/baja logica de habitacion disponible; estados restringidos a vacant_clean, vacant_dirty, occupied, maintenance, blocked e inspection_pending.', 4, {
     screenName: 'Habitaciones',
     routePath: '/rooms',
     endpointMethod: 'PATCH',
     endpointPath: '/rooms/{id}/status',
-    requestFields: [fieldSpec('status', 'enum', true, ['available', 'occupied', 'cleaning', 'maintenance', 'blocked'])],
+    requestFields: [fieldSpec('status', 'enum', true, ['vacant_clean', 'vacant_dirty', 'occupied', 'maintenance', 'blocked', 'inspection_pending'])],
     responseFields: [fieldSpec('id', 'number', true), fieldSpec('status', 'string', true)],
     businessRules: ['Limpieza solo puede cambiar estado operativo, no modificar tarifas ni reservas.'],
     validations: ['status debe estar en catalogo permitido', 'room number unico'],
@@ -193,21 +319,21 @@ const requirements = [
     acceptanceChecks: ['Cambiar estado desde limpieza', 'Administrador edita datos de habitacion'],
     testCases: ['PATCH /rooms/:id/status with housekeeping role']
   }),
-  req('REQ-0004', 'functional', 'high', 'El sistema debe registrar pagos parciales o completos y calcular saldos pendientes por reserva.', 'Pago con monto positivo queda asociado a reserva; dashboard y detalle muestran saldo pendiente actualizado.', 3, {
-    screenName: 'Cobros',
-    routePath: '/payments',
+  req('REQ-0005', 'functional', 'critical', 'El sistema debe crear y mantener un folio por reserva, permitiendo registrar cargos de hospedaje, extras y pagos parciales o completos con saldo pendiente visible.', 'Toda reserva confirmada genera folio; front desk y cobros muestran balance_due actualizado; se pueden postear cargos y pagos con trazabilidad.', 3, {
+    screenName: 'Folios y Cobros',
+    routePath: '/folios/:id',
     endpointMethod: 'POST',
-    endpointPath: '/payments',
-    requestFields: [fieldSpec('reservation_id', 'number', true), fieldSpec('amount', 'number', true), fieldSpec('method', 'enum', true, ['cash', 'card', 'transfer'])],
-    responseFields: [fieldSpec('id', 'number', true), fieldSpec('balance_due', 'number', true)],
-    businessRules: ['El pago puede ser parcial o completo.', 'No permitir monto menor o igual a cero.'],
-    validations: ['amount > 0', 'reservation_id debe existir'],
+    endpointPath: '/folios/{id}/charges',
+    requestFields: [fieldSpec('folio_id', 'number', true), fieldSpec('charge_type', 'string', true), fieldSpec('amount', 'number', true), fieldSpec('description', 'string', true)],
+    responseFields: [fieldSpec('folio_number', 'string', true), fieldSpec('balance_due', 'number', true)],
+    businessRules: ['El folio debe existir y pertenecer a una reserva activa o cerrada.', 'Los pagos pueden ser parciales o completos.', 'No permitir monto menor o igual a cero en pagos o cargos.'],
+    validations: ['amount > 0', 'folio_id debe existir'],
     expectedErrors: [errorSpec(422, 'Monto invalido', 'amount must be greater than zero')],
-    permissions: ['payments.create'],
-    acceptanceChecks: ['Registrar pago parcial', 'Actualizar saldo pendiente'],
-    testCases: ['POST /payments partial payment updates balance']
+    permissions: ['payments.create', 'folios.view', 'folios.charge_post'],
+    acceptanceChecks: ['Crear folio por reserva', 'Registrar cargo', 'Registrar pago parcial', 'Actualizar saldo pendiente'],
+    testCases: ['POST /folios/:id/charges updates balance', 'POST /payments partial payment updates balance']
   }),
-  req('REQ-0005', 'functional', 'medium', 'El sistema debe generar reportes y dashboard de ocupacion, reservas activas, ingresos y habitaciones disponibles.', 'Dashboard muestra metricas del dia y reportes exportables por periodo.', 4, {
+  req('REQ-0006', 'functional', 'medium', 'El sistema debe generar reportes y dashboard de ocupacion, reservas activas, ingresos, salidas del dia y habitaciones disponibles.', 'Dashboard muestra metricas del dia y reportes exportables por periodo.', 6, {
     screenName: 'Dashboard',
     routePath: '/dashboard',
     endpointMethod: 'GET',
@@ -220,6 +346,20 @@ const requirements = [
     permissions: ['dashboard.view', 'reports.view'],
     acceptanceChecks: ['Dashboard carga metricas', 'Reporte filtra por periodo'],
     testCases: ['GET /dashboard/summary returns expected counters']
+  }),
+  req('REQ-0007', 'functional', 'high', 'El sistema debe soportar handoff de turno y cierre operativo con pendientes, pagos no conciliados, llegadas, salidas y auditoria nocturna trazable.', 'El cierre de turno identifica reservas con saldo, llegadas pendientes, salidas del dia y discrepancias de caja para el siguiente usuario.', 5, {
+    screenName: 'Night Audit / Shift Handoff',
+    routePath: '/night-audit',
+    endpointMethod: 'GET',
+    endpointPath: '/night-audit/summary',
+    requestFields: [fieldSpec('business_date', 'date', true)],
+    responseFields: [fieldSpec('pending_arrivals', 'number', true), fieldSpec('pending_departures', 'number', true), fieldSpec('unbalanced_folios', 'number', true)],
+    businessRules: ['El cierre debe mostrar discrepancias de caja y reservas con saldo.', 'El handoff debe quedar visible para el siguiente turno.'],
+    validations: ['business_date es obligatoria'],
+    expectedErrors: [errorSpec(401, 'Usuario no autenticado', 'Unauthorized')],
+    permissions: ['reports.view', 'payments.create'],
+    acceptanceChecks: ['Resumen de cierre disponible', 'Pendientes visibles para el siguiente turno'],
+    testCases: ['GET /night-audit/summary returns pending arrivals, departures and unbalanced folios']
   })
 ];
 
@@ -405,7 +545,7 @@ async function main() {
           occurredAt: '2026-05-01T10:00:00Z',
           notes: 'Sesion sintetica basada en alcance PMS. La gerencia prioriza reducir Excel duplicado, errores de ocupacion y falta de reportes diarios.',
           evidences: [
-            { kind: 'transcript', fileName: 'entrevista-gerencia-pms.txt', mimeType: 'text/plain', notes: 'Transcripcion sintetica: dolor principal es duplicidad entre recepcion, caja y limpieza.' }
+            { kind: 'note', fileName: 'entrevista-gerencia-pms.txt', mimeType: 'text/plain', notes: 'Transcripcion sintetica: dolor principal es duplicidad entre recepcion, caja y limpieza.' }
           ]
         }
       },
@@ -423,7 +563,8 @@ async function main() {
           notes: 'Se observo recepcion operando con hoja Excel paralela para disponibilidad y pagos, usando checklist AM como referencia operativa.',
           evidences: [
             { kind: 'file', fileName: 'OPERA Cloud - AM Shift Checklist.pdf', mimeType: 'application/pdf', sizeBytes: 108774, notes: 'Checklist AM usado como evidencia documental de pasos de turno.' },
-            { kind: 'note', fileName: 'observacion-checkin-am.md', mimeType: 'text/markdown', notes: 'Nota: validacion de llegadas, asignacion de habitaciones y comunicacion con limpieza se hacen en herramientas separadas.' }
+            { kind: 'note', fileName: 'observacion-checkin-am.md', mimeType: 'text/markdown', notes: 'Nota: validacion de llegadas, asignacion de habitaciones, tarifas y comunicacion con limpieza se hacen en herramientas separadas.' },
+            { kind: 'file', fileName: 'captura-frontdesk-columnas.txt', mimeType: 'text/plain', notes: 'La vista operativa no muestra folio ni saldo consolidado; el recepcionista consulta otra libreta para cobros pendientes.' }
           ]
         }
       },
@@ -440,7 +581,7 @@ async function main() {
           occurredAt: '2026-05-03T18:00:00Z',
           notes: 'Sesion sintetica: se compararon actividades AM, PM y Night Audit. Coinciden en necesidad de checklist digital, handoff entre turnos y control de caja.',
           evidences: [
-            { kind: 'transcript', fileName: 'focus-recepcion-turnos.txt', mimeType: 'text/plain', notes: 'Participantes reportan que los saldos y estados de habitacion se verifican manualmente.' },
+            { kind: 'note', fileName: 'focus-recepcion-turnos.txt', mimeType: 'text/plain', notes: 'Participantes reportan que los saldos y estados de habitacion se verifican manualmente.' },
             { kind: 'file', fileName: 'OPERA Cloud - PM Shift Checklist.pdf', mimeType: 'application/pdf', sizeBytes: 128779, notes: 'Checklist PM aporta pasos de pre-bloqueo, depositos, routing y cierre de cajero.' }
           ]
         }
@@ -477,19 +618,22 @@ async function main() {
           finalStatus: 'confirmada_con_pago_pendiente',
           primaryActorId: null,
           systemsInvolved: ['Telefono', 'Excel', 'Comprobante interno'],
-          objective: 'Seguir una reserva realista desde llamada hasta confirmacion para detectar duplicidad y validaciones faltantes.',
-          realFlowSummary: 'La recepcionista consulta disponibilidad en Excel, registra datos del huesped, asigna habitacion y anota saldo pendiente en otra hoja.',
+          objective: 'Seguir una reserva realista desde llamada hasta confirmacion para detectar duplicidad, manejo de tarifa y validaciones faltantes.',
+          realFlowSummary: 'La recepcionista consulta disponibilidad en Excel, define tarifa desde memoria, registra datos del huesped, asigna habitacion y anota saldo pendiente en otra hoja.',
           steps: [
             { order: 1, name: 'Cliente solicita habitacion', actorRole: 'Huesped', channel: 'Telefono', input: 'Fechas y numero de personas', action: 'Solicita disponibilidad', output: 'Datos preliminares', duration: '3 min', issue: 'Datos incompletos al primer contacto' },
             { order: 2, name: 'Recepcion consulta disponibilidad', actorStakeholderId: null, actorRole: 'Recepcionista', system: 'Excel', input: 'Fechas', action: 'Busca disponibilidad manualmente', output: 'Habitacion candidata', duration: '7 min', issue: 'Riesgo de solapamiento por hoja no actualizada' },
-            { order: 3, name: 'Registro de reserva', actorRole: 'Recepcionista', system: 'Excel', input: 'Datos del huesped', action: 'Captura reserva y saldo', output: 'Reserva confirmada', duration: '8 min', issue: 'Duplicidad entre disponibilidad, saldo y datos del huesped' },
-            { order: 4, name: 'Confirmacion al cliente', actorRole: 'Recepcionista', channel: 'Telefono', input: 'Reserva registrada', action: 'Comunica condiciones y pago pendiente', output: 'Cliente acepta', duration: '3 min' }
+            { order: 3, name: 'Definicion de tarifa', actorRole: 'Recepcionista', system: 'Excel', input: 'Tipo de habitacion y fechas', action: 'Consulta tarifa en referencia manual', output: 'Monto por noche', duration: '4 min', issue: 'No existe catalogo unico de tarifas ni vigencias por canal' },
+            { order: 4, name: 'Registro de reserva', actorRole: 'Recepcionista', system: 'Excel', input: 'Datos del huesped', action: 'Captura reserva y saldo', output: 'Reserva confirmada', duration: '8 min', issue: 'Duplicidad entre disponibilidad, saldo y datos del huesped' },
+            { order: 5, name: 'Creacion de folio manual', actorRole: 'Recepcionista', system: 'Libretta/Caja', input: 'Reserva confirmada', action: 'Anota saldo pendiente y deposito', output: 'Control de cobro separado', duration: '3 min', issue: 'Folio no queda vinculado a la reserva en la misma herramienta' },
+            { order: 6, name: 'Confirmacion al cliente', actorRole: 'Recepcionista', channel: 'Telefono', input: 'Reserva registrada', action: 'Comunica condiciones y pago pendiente', output: 'Cliente acepta', duration: '3 min' }
           ],
           problems: [
             { stepOrder: 2, description: 'La disponibilidad se valida manualmente en Excel, generando riesgo de sobreventa.', severity: 'high', impact: 'Reserva solapada o habitacion duplicada.' },
-            { stepOrder: 3, description: 'El saldo pendiente queda separado de la reserva y puede omitirse en check-in.', severity: 'medium', impact: 'Errores de cobro y conciliacion.' }
+            { stepOrder: 3, description: 'La tarifa se consulta manualmente y puede variar entre turnos sin trazabilidad.', severity: 'high', impact: 'Cobros inconsistentes y conflictos con el huesped.' },
+            { stepOrder: 5, description: 'El saldo pendiente queda separado de la reserva y puede omitirse en check-in.', severity: 'medium', impact: 'Errores de cobro y conciliacion.' }
           ],
-          metrics: { totalTime: '21 min', targetTime: '8 min', deviation: '+162%', reworkCount: 2, manualStepCount: 4, informalApprovalCount: 1 }
+          metrics: { totalTime: '28 min', targetTime: '8 min', deviation: '+250%', reworkCount: 3, manualStepCount: 6, informalApprovalCount: 1 }
         },
         definition: {
           technique: 'Seguimiento Transaccional',
@@ -500,6 +644,45 @@ async function main() {
           notes: 'Seguimiento sintetico de una reserva directa para observar flujo real contra proceso esperado.',
           evidences: [
             { kind: 'note', fileName: 'seguimiento-rsv-demo-2026-001.md', mimeType: 'text/markdown', notes: 'Recorrido paso a paso con tiempos, sistemas, problemas y metricas.' }
+          ]
+        }
+      },
+      {
+        key: 'tracking-checkin-folio',
+        stakeholderRoles: ['Recepcionista AM'],
+        process: 'Operacion de front desk',
+        subprocess: 'Check-in',
+        metadata: {
+          transactionId: 'CHK-DEMO-2026-014',
+          transactionType: 'Check-in con deposito y folio abierto',
+          startedAt: '2026-05-06T15:02:00Z',
+          completedAt: '2026-05-06T15:18:00Z',
+          finalStatus: 'checked_in_con_deposito',
+          systemsInvolved: ['Recepcion', 'Caja', 'Bitacora manual'],
+          objective: 'Seguir un check-in realista para verificar visibilidad de folio, saldo y estatus de habitacion.',
+          realFlowSummary: 'La recepcion valida reserva, consulta saldo en un registro aparte, cobra deposito y marca ocupada la habitacion sin un folio visible en la pantalla principal.',
+          steps: [
+            { order: 1, name: 'Localizar reserva', actorRole: 'Recepcionista', system: 'Recepcion', input: 'Nombre o numero de reserva', action: 'Busca reserva del dia', output: 'Reserva localizada', duration: '2 min', issue: 'No siempre se usa el folio de reserva como llave principal' },
+            { order: 2, name: 'Validar saldo y deposito', actorRole: 'Recepcionista', system: 'Caja', input: 'Reserva localizada', action: 'Consulta cobros pendientes', output: 'Saldo/deposito esperados', duration: '4 min', issue: 'El saldo no se visualiza en la misma vista del front desk' },
+            { order: 3, name: 'Asignar llave y habitacion', actorRole: 'Recepcionista', system: 'Recepcion', input: 'Reserva y habitacion', action: 'Entrega acceso y marca ocupacion', output: 'Check-in completado', duration: '4 min', issue: 'El cambio de estatus no notifica automaticamente a limpieza' },
+            { order: 4, name: 'Registrar deposito', actorRole: 'Recepcionista', system: 'Caja', input: 'Monto depositado', action: 'Anota pago parcial', output: 'Deposito registrado', duration: '3 min', issue: 'El pago queda sin folio unificado visible' }
+          ],
+          problems: [
+            { stepOrder: 2, description: 'Front desk no muestra folio ni saldo pendiente en la misma tarjeta/lista.', severity: 'high', impact: 'Check-in lento y riesgo de cobrar mal.' },
+            { stepOrder: 4, description: 'El deposito se registra sin visibilidad inmediata en la operacion principal.', severity: 'medium', impact: 'Doble captura o discrepancias de caja.' }
+          ],
+          metrics: { totalTime: '16 min', targetTime: '6 min', deviation: '+166%', reworkCount: 2, manualStepCount: 4, informalApprovalCount: 0 }
+        },
+        definition: {
+          technique: 'Seguimiento Transaccional',
+          techniqueCode: 'transaction_tracking',
+          discoveryType: 'direct',
+          title: 'Seguimiento transaccional de check-in CHK-DEMO-2026-014',
+          occurredAt: '2026-05-06T15:02:00Z',
+          notes: 'Seguimiento sintetico del front desk para confirmar necesidad de folio visible, saldo integrado y acciones rapidas reales.',
+          evidences: [
+            { kind: 'note', fileName: 'seguimiento-checkin-folio-demo.md', mimeType: 'text/markdown', notes: 'Recorrido del check-in con problemas de saldo, deposito y visibilidad de folio.' },
+            { kind: 'file', fileName: 'metricas-checkin-folio.json', mimeType: 'application/json', notes: 'Tiempo total y comparativo contra tiempo objetivo.' }
           ]
         }
       },
@@ -517,6 +700,24 @@ async function main() {
           notes: 'Encuesta sintetica a usuarios operativos sobre frecuencia de errores, estados usados y comunicacion recepcion-limpieza.',
           evidences: [
             { kind: 'note', fileName: 'encuesta-estados-habitacion.md', mimeType: 'text/markdown', notes: 'Resultado sintetico: estado limpieza/mantenimiento no siempre se actualiza a tiempo.' }
+          ]
+        }
+      },
+      {
+        key: 'shadow-housekeeping',
+        stakeholderRoles: ['Supervisora de Limpieza'],
+        process: 'Control de habitaciones y limpieza',
+        subprocess: 'Comunicacion de late checkouts',
+        definition: {
+          technique: 'Shadowing',
+          techniqueCode: 'shadowing',
+          discoveryType: 'direct',
+          title: 'Shadowing de supervisora de limpieza en salidas y stay-overs',
+          occurredAt: '2026-05-07T17:00:00Z',
+          notes: 'Se siguio a la supervisora durante actualizacion de habitaciones, salidas tardias y coordinacion con recepcion.',
+          evidences: [
+            { kind: 'note', fileName: 'shadow-housekeeping-late-checkout.md', mimeType: 'text/markdown', notes: 'La supervisora recibe late checkouts por llamada o WhatsApp; no hay bandeja unica de habitaciones listas/no listas.' },
+            { kind: 'file', fileName: 'tiempos-limpieza-demo.csv', mimeType: 'text/csv', notes: 'Tiempos estimados de liberacion, habitaciones sucias y estatus no sincronizados.' }
           ]
         }
       }
@@ -538,11 +739,13 @@ async function main() {
 
     const findingDefs = [
       ['interview-manager', 'problem', 'El hotel opera disponibilidad, huespedes y saldos en hojas separadas, provocando duplicidad y baja confianza en la ocupacion real.'],
+      ['tracking-reservation', 'need', 'Toda reserva confirmada debe incluir tarifa aplicada, monto por noche y folio visible para evitar cobros ambiguos.'],
       ['observation-frontdesk', 'need', 'Recepcion necesita registrar check-in y check-out en un flujo unico que actualice reserva, habitacion y comunicacion con limpieza.'],
+      ['tracking-checkin-folio', 'need', 'Front desk debe mostrar reservation number, folio number, saldo pendiente y acciones rapidas en una sola vista operativa.'],
       ['survey-staff', 'need', 'El equipo de limpieza requiere actualizar estados de habitacion sin depender de llamadas o notas manuales de recepcion.'],
-      ['focus-frontdesk', 'problem', 'Los pagos parciales y saldos pendientes se verifican al cierre de turno de forma manual, con riesgo de omisiones.'],
+      ['focus-frontdesk', 'problem', 'Los pagos parciales, depositos y saldos pendientes se verifican al cierre de turno de forma manual, con riesgo de omisiones.'],
       ['document-analysis', 'need', 'Los checklists AM, PM y Night Audit evidencian necesidad de reportes operativos diarios y cierre de caja trazable.'],
-      ['tracking-reservation', 'problem', 'El seguimiento de reserva telefonica mostro riesgo de solapamiento y tiempo excesivo por validacion manual de disponibilidad.']
+      ['shadow-housekeeping', 'problem', 'Las salidas tardias y habitaciones listas no tienen una bandeja compartida en tiempo real entre recepcion y limpieza.']
     ];
     const findingIds = [];
     for (const [sessionKey, category, statement] of findingDefs) {
@@ -578,11 +781,13 @@ async function main() {
     }
 
     const useCases = [
-      [0, 'Registrar una reservacion', 'Recepcionista', 'registrar una reserva con disponibilidad validada', 'evitar sobreventas y confirmar al huesped'],
-      [1, 'Realizar check-in y check-out', 'Recepcionista', 'ejecutar entrada y salida desde una reserva', 'mantener ocupacion y habitaciones actualizadas'],
-      [2, 'Actualizar estado de habitacion', 'Limpieza', 'cambiar el estado operativo de una habitacion', 'coordinar recepcion y limpieza sin llamadas manuales'],
-      [3, 'Registrar pago parcial o completo', 'Recepcionista', 'registrar un pago asociado a una reserva', 'controlar saldos y cierre de caja'],
-      [4, 'Consultar dashboard operativo', 'Gerente', 'ver ocupacion, reservas e ingresos del periodo', 'tomar decisiones con informacion actualizada']
+      [0, 'Registrar una reservacion con tarifa', 'Recepcionista', 'registrar una reserva con disponibilidad y tarifa validadas', 'evitar sobreventas y confirmar condiciones comerciales al huesped'],
+      [1, 'Consultar tablero de front desk', 'Recepcionista', 'ver folio, reserva, saldo y acciones operativas desde una sola vista', 'operar llegadas, estancias y salidas sin cambiar de modulo'],
+      [2, 'Realizar check-in y check-out', 'Recepcionista', 'ejecutar entrada y salida desde una reserva', 'mantener ocupacion, folio y habitaciones actualizadas'],
+      [3, 'Actualizar estado de habitacion', 'Limpieza', 'cambiar el estado operativo de una habitacion', 'coordinar recepcion y limpieza sin llamadas manuales'],
+      [4, 'Registrar cargos y pagos del folio', 'Recepcionista', 'registrar cargos o pagos asociados a una estancia', 'controlar saldos y cierre de caja'],
+      [5, 'Consultar dashboard operativo', 'Gerente', 'ver ocupacion, reservas e ingresos del periodo', 'tomar decisiones con informacion actualizada'],
+      [6, 'Realizar cierre operativo de turno', 'Auditor Nocturno', 'consultar pendientes, discrepancias y movimientos del dia', 'entregar un handoff trazable al siguiente turno']
     ];
     for (const [index, title, actor, action, benefit] of useCases) {
       const result = await client.query(

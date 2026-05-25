@@ -24,7 +24,6 @@ export const kindForFileName = (fileName: string) => {
   if (/\.(png|jpe?g|webp|svg)$/.test(lower)) return 'Imagen';
   if (lower.endsWith('.json')) return 'JSON';
   if (lower.endsWith('.md')) return 'Markdown';
-  if (lower.endsWith('.mmd')) return 'Mermaid';
   if (lower.endsWith('.txt')) return 'Texto';
   return 'Archivo';
 };

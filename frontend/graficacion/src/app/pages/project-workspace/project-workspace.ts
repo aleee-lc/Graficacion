@@ -746,8 +746,8 @@ export class ProjectWorkspace {
         sourceRequirementIds: diagram.sourceRequirementIds,
         sourceUseCaseIds: diagram.sourceUseCaseIds,
         sourceSpecIds: diagram.sourceSpecIds,
-        format: 'mermaid',
-        content: diagram.mermaid
+        format: 'drawio-lite-json',
+        content: diagram.diagram
       })),
       ...this.savedDiagrams().map((entry) => ({
         id: entry.id,
@@ -781,25 +781,7 @@ export class ProjectWorkspace {
     }))
   );
 
-  readonly diagramArtifacts = computed<DerivedDiagram[]>(() =>
-    this.useCaseArtifacts().map((useCase) => ({
-      id: `diagram-${useCase.requirement.id}`,
-      title: `Caso de uso ${useCase.requirement.code}`,
-      kind: 'use-case',
-      source: useCase.requirement.code,
-      sourceRequirementIds: [useCase.requirement.id],
-      sourceUseCaseIds: useCase.persistedId ? [useCase.persistedId] : [],
-      sourceSpecIds: [`spec-${useCase.requirement.id}`],
-      mermaid: [
-        'flowchart LR',
-        `  actor["${this.escapeDiagramText(useCase.actor)}"]`,
-        `  usecase((" ${this.escapeDiagramText(useCase.action)} "))`,
-        `  req["${useCase.requirement.code}"]`,
-        '  actor --> usecase',
-        '  usecase --> req'
-      ].join('\n')
-    }))
-  );
+  readonly diagramArtifacts = computed<DerivedDiagram[]>(() => this.buildDerivedDiagramArtifacts());
 
   // The project folder is a virtual bundle: generated artifacts plus whatever I edit or import manually.
   readonly generatedProjectArtifactFiles = computed<ProjectArtifactFile[]>(() => {
@@ -977,13 +959,22 @@ export class ProjectWorkspace {
 
     this.diagramArtifacts().forEach((diagram) => {
       files.push({
-        id: `mermaid-${diagram.id}`,
-        folder: '06_DIAGRAMS/mermaid',
-        name: `${slugify(diagram.title)}.mmd`,
-        kind: 'Mermaid',
+        id: `derived-${diagram.id}`,
+        folder: '06_DIAGRAMS/derived',
+        name: `${slugify(diagram.title)}.drawio-lite.json`,
+        kind: 'Derived diagram model',
         source: 'generated',
         encoding: 'text',
-        content: diagram.mermaid
+        content: JSON.stringify(diagram.diagram, null, 2)
+      });
+      files.push({
+        id: `derived-drawio-${diagram.id}`,
+        folder: '06_DIAGRAMS/drawio',
+        name: `${slugify(diagram.title)}.drawio`,
+        kind: 'Diagrams.net',
+        source: 'generated',
+        encoding: 'text',
+        content: this.buildDrawioXml(diagram.diagram)
       });
     });
 
@@ -1552,7 +1543,7 @@ export class ProjectWorkspace {
   }
 
   // Diagram editing stays local first; saving it adds the editable JSON to the project folder.
-  generateEditableDiagram(kind: DiagramKind = 'use_case') {
+  async generateEditableDiagram(kind: DiagramKind = 'use_case') {
     const projectId = this.projectId();
     const useCases = this.useCaseArtifacts();
     if (useCases.length === 0 && kind !== 'free') {
@@ -1569,13 +1560,15 @@ export class ProjectWorkspace {
       free: () => this.ensureDiagram()
     };
 
-    this.diagram.set(builders[kind]());
+    const baseDiagram = builders[kind]();
+    const nextDiagram = kind === 'sequence' ? baseDiagram : await this.layoutDiagram(baseDiagram);
+    this.diagram.set(nextDiagram);
     this.selectedDiagramNodeId.set(null);
     this.selectedDiagramEdgeId.set(null);
     this.connectSourceNodeId.set(null);
     this.selectedSavedDiagramId.set(null);
     this.exportedDiagramJson.set(null);
-    this.success.set('Diagrama editable generado desde requisitos y specs.');
+    this.success.set('Diagrama editable generado desde requisitos, procesos y contratos.');
   }
 
   // I keep connection mode explicit so selecting, dragging, and linking nodes do not fight each other.
@@ -1853,17 +1846,14 @@ export class ProjectWorkspace {
     }
   }
 
-  autoLayoutDiagram() {
+  async autoLayoutDiagram() {
     const current = this.diagram();
     if (!current) {
       return;
     }
-    const nextNodes = current.nodes.map((node, index) => ({
-      ...node,
-      x: 70 + (index % 4) * 180,
-      y: 70 + Math.floor(index / 4) * 130
-    }));
-    this.diagram.set({ ...current, nodes: nextNodes });
+    const nextDiagram = await this.layoutDiagram(current);
+    this.diagram.set(nextDiagram);
+    this.success.set('Layout recalculado para mejorar legibilidad.');
   }
 
   exportDiagramJson() {
@@ -1925,6 +1915,21 @@ export class ProjectWorkspace {
     this.connectSourceNodeId.set(null);
     this.exportedDiagramJson.set(JSON.stringify(entry.diagram, null, 2));
     this.success.set(`Diagrama "${entry.title}" abierto.`);
+  }
+
+  openDerivedDiagram(diagramId: string) {
+    const artifact = this.diagramArtifacts().find((item) => item.id === diagramId);
+    if (!artifact) {
+      this.error.set('No se encontro el diagrama derivado.');
+      return;
+    }
+    this.diagram.set({ ...artifact.diagram, nodes: artifact.diagram.nodes.map((node) => ({ ...node })), edges: artifact.diagram.edges.map((edge) => ({ ...edge })) });
+    this.selectedSavedDiagramId.set(null);
+    this.selectedDiagramNodeId.set(null);
+    this.selectedDiagramEdgeId.set(null);
+    this.connectSourceNodeId.set(null);
+    this.exportedDiagramJson.set(JSON.stringify(artifact.diagram, null, 2));
+    this.success.set(`Diagrama derivado "${artifact.title}" abierto para edicion.`);
   }
 
   deleteSavedDiagram(diagramId: string) {
@@ -4044,10 +4049,6 @@ export class ProjectWorkspace {
     ];
   }
 
-  private escapeDiagramText(value: string) {
-    return value.replace(/"/g, "'");
-  }
-
   // These helpers are lightweight guesses, not a replacement for real modeling done by the analyst.
   private toPascalCase(value: string) {
     const cleaned = removeAccents(value)
@@ -4150,6 +4151,231 @@ export class ProjectWorkspace {
       ].filter(Boolean).map((actor) => this.toPascalCase(actor)))
     );
     return actors.length > 0 ? actors.slice(0, 3) : ['Usuario'];
+  }
+
+  private buildDerivedDiagramArtifacts(): DerivedDiagram[] {
+    const projectId = this.projectId();
+    const useCases = this.useCaseArtifacts();
+    if (useCases.length === 0) {
+      return [];
+    }
+
+    const baseDiagrams: DerivedDiagram[] = [
+      {
+        id: 'derived-use-case-overview',
+        title: 'Use case architecture map',
+        kind: 'use_case',
+        source: 'requirements-and-use-cases',
+        sourceRequirementIds: useCases.map((useCase) => useCase.requirement.id),
+        sourceUseCaseIds: useCases.map((useCase) => useCase.persistedId).filter((id): id is number => typeof id === 'number'),
+        sourceSpecIds: useCases.map((useCase) => `spec-${useCase.requirement.id}`),
+        diagram: { ...this.buildUseCaseDiagram(projectId, useCases), id: 'derived-use-case-overview', title: 'Use case architecture map' }
+      },
+      {
+        id: 'derived-class-model',
+        title: 'Class model',
+        kind: 'class',
+        source: 'data-model-and-requirements',
+        sourceRequirementIds: useCases.map((useCase) => useCase.requirement.id),
+        sourceUseCaseIds: useCases.map((useCase) => useCase.persistedId).filter((id): id is number => typeof id === 'number'),
+        sourceSpecIds: useCases.map((useCase) => `spec-${useCase.requirement.id}`),
+        diagram: { ...this.buildClassDiagram(projectId, useCases), id: 'derived-class-model', title: 'Class model' }
+      },
+      {
+        id: 'derived-package-map',
+        title: 'Package map',
+        kind: 'package',
+        source: 'target-stack-and-requirements',
+        sourceRequirementIds: useCases.map((useCase) => useCase.requirement.id),
+        sourceUseCaseIds: useCases.map((useCase) => useCase.persistedId).filter((id): id is number => typeof id === 'number'),
+        sourceSpecIds: useCases.map((useCase) => `spec-${useCase.requirement.id}`),
+        diagram: { ...this.buildPackageDiagram(projectId, useCases), id: 'derived-package-map', title: 'Package map' }
+      },
+      {
+        id: 'derived-component-map',
+        title: 'Component map',
+        kind: 'component',
+        source: 'technical-contracts-and-stack',
+        sourceRequirementIds: useCases.map((useCase) => useCase.requirement.id),
+        sourceUseCaseIds: useCases.map((useCase) => useCase.persistedId).filter((id): id is number => typeof id === 'number'),
+        sourceSpecIds: useCases.map((useCase) => `spec-${useCase.requirement.id}`),
+        diagram: { ...this.buildComponentDiagram(projectId, useCases), id: 'derived-component-map', title: 'Component map' }
+      }
+    ];
+
+    return [...baseDiagrams, ...this.buildDerivedSequenceArtifacts(projectId, useCases)];
+  }
+
+  private buildDerivedSequenceArtifacts(projectId: number | null, useCases: DerivedUseCase[]): DerivedDiagram[] {
+    const trackingSessions = this.trackingSessions();
+    if (trackingSessions.length === 0) {
+      return [
+        {
+          id: 'derived-sequence-generic',
+          title: 'Generic sequence flow',
+          kind: 'sequence',
+          source: 'requirements',
+          sourceRequirementIds: useCases.map((useCase) => useCase.requirement.id),
+          sourceUseCaseIds: useCases.map((useCase) => useCase.persistedId).filter((id): id is number => typeof id === 'number'),
+          sourceSpecIds: useCases.map((useCase) => `spec-${useCase.requirement.id}`),
+          diagram: { ...this.buildSequenceDiagram(projectId, useCases), id: 'derived-sequence-generic', title: 'Generic sequence flow' }
+        }
+      ];
+    }
+
+    return trackingSessions.map((session) => {
+      const diagram = this.buildTrackingSequenceDiagram(projectId, useCases, session);
+      return {
+        id: `derived-sequence-session-${session.id}`,
+        title: diagram.title,
+        kind: 'sequence' as const,
+        source: session.title,
+        sourceRequirementIds: diagram.sourceRequirementIds,
+        sourceUseCaseIds: diagram.sourceUseCaseIds,
+        sourceSpecIds: diagram.sourceSpecIds,
+        diagram
+      };
+    });
+  }
+
+  private buildTrackingSequenceDiagram(projectId: number | null, useCases: DerivedUseCase[], session: Session): DiagramModel {
+    const steps = this.trackingSteps(session);
+    const processName = this.trackingProcessName(session);
+    const subprocessName = this.trackingSubprocessName(session);
+    const participantMap = new Map<string, { id: string; label: string }>();
+
+    const registerParticipant = (label: string) => {
+      const normalized = label.trim() || 'Operational system';
+      if (!participantMap.has(normalized)) {
+        participantMap.set(normalized, {
+          id: `participant-${participantMap.size + 1}`,
+          label: normalized
+        });
+      }
+      return participantMap.get(normalized)!;
+    };
+
+    steps.forEach((step) => {
+      registerParticipant(this.trackingActorLabel(step.actorStakeholderId, step.actorRole ?? '') || 'Operational actor');
+      registerParticipant([step.system, step.channel].filter(Boolean).join(' / ') || 'Operational system');
+    });
+
+    if (participantMap.size === 0) {
+      registerParticipant(this.trackingPrimaryActor(session));
+      registerParticipant(this.trackingSystems(session));
+    }
+
+    const participants = [...participantMap.values()];
+    const nodes: DiagramNode[] = participants.map((participant, index) => ({
+      id: participant.id,
+      type: 'lifeline',
+      label: participant.label,
+      x: 60 + index * 190,
+      y: 40,
+      width: 150,
+      height: Math.max(420, 120 + Math.max(steps.length, 3) * 54)
+    }));
+
+    const edges: DiagramEdge[] = [];
+    steps.forEach((step, index) => {
+      const actor = registerParticipant(this.trackingActorLabel(step.actorStakeholderId, step.actorRole ?? '') || 'Operational actor');
+      const target = registerParticipant([step.system, step.channel].filter(Boolean).join(' / ') || 'Operational system');
+      edges.push({
+        id: `tracking-seq-edge-${session.id}-${index + 1}`,
+        sourceNodeId: actor.id,
+        targetNodeId: target.id,
+        type: 'message',
+        label: `${step.order ?? index + 1}. ${step.name || step.action || 'Operational step'}`
+      });
+      if (step.output || step.issue) {
+        edges.push({
+          id: `tracking-seq-result-${session.id}-${index + 1}`,
+          sourceNodeId: target.id,
+          targetNodeId: actor.id,
+          type: 'dependency',
+          label: step.issue ? `Issue: ${step.issue}` : `Output: ${step.output}`
+        });
+      }
+    });
+
+    return this.diagramModel(
+      projectId,
+      'sequence',
+      `Sequence - ${processName}${subprocessName ? ` / ${subprocessName}` : ''}`,
+      nodes,
+      edges,
+      useCases,
+      `derived-sequence-session-${session.id}`
+    );
+  }
+
+  private async layoutDiagram(diagram: DiagramModel): Promise<DiagramModel> {
+    if (diagram.type === 'sequence' || diagram.nodes.length < 2) {
+      return diagram;
+    }
+
+    const boundaryNode = diagram.nodes.find((node) => node.type === 'boundary') ?? null;
+    const layoutNodes = diagram.nodes.filter((node) => node.type !== 'boundary');
+    const layoutNodeIds = new Set(layoutNodes.map((node) => node.id));
+    const { default: ELK } = await import('elkjs/lib/elk.bundled.js');
+    const elk = new ELK();
+    const result = await elk.layout({
+      id: diagram.id,
+      layoutOptions: {
+        'elk.algorithm': 'layered',
+        'elk.direction': diagram.type === 'class' ? 'DOWN' : 'RIGHT',
+        'elk.layered.spacing.nodeNodeBetweenLayers': '90',
+        'elk.spacing.nodeNode': '70',
+        'elk.padding': '[top=40,left=40,bottom=40,right=40]'
+      },
+      children: layoutNodes.map((node) => ({
+        id: node.id,
+        width: node.width,
+        height: node.height
+      })),
+      edges: diagram.edges
+        .filter((edge) => layoutNodeIds.has(edge.sourceNodeId) && layoutNodeIds.has(edge.targetNodeId))
+        .map((edge) => ({
+          id: edge.id,
+          sources: [edge.sourceNodeId],
+          targets: [edge.targetNodeId]
+        }))
+    });
+
+    const positionedChildren = new Map((result.children ?? []).map((node) => [node.id, node]));
+    const positionedNodes = layoutNodes.map((node) => {
+      const positioned = positionedChildren.get(node.id);
+      return positioned
+        ? {
+            ...node,
+            x: Math.round(positioned.x ?? node.x),
+            y: Math.round(positioned.y ?? node.y)
+          }
+        : node;
+    });
+
+    const nextNodes = boundaryNode
+      ? [...positionedNodes, this.fitBoundaryNode(boundaryNode, positionedNodes)]
+      : positionedNodes;
+
+    return { ...diagram, nodes: nextNodes };
+  }
+
+  private fitBoundaryNode(boundaryNode: DiagramNode, nodes: DiagramNode[]): DiagramNode {
+    if (nodes.length === 0) {
+      return boundaryNode;
+    }
+    const minX = Math.min(...nodes.map((node) => node.x)) - 70;
+    const minY = Math.min(...nodes.map((node) => node.y)) - 40;
+    const maxX = Math.max(...nodes.map((node) => node.x + node.width)) + 40;
+    const maxY = Math.max(...nodes.map((node) => node.y + node.height)) + 40;
+    return {
+      ...boundaryNode,
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY
+    };
   }
 
   private buildUseCaseDiagram(projectId: number | null, useCases: DerivedUseCase[]): DiagramModel {
@@ -4280,6 +4506,10 @@ export class ProjectWorkspace {
   }
 
   private buildSequenceDiagram(projectId: number | null, useCases: DerivedUseCase[]): DiagramModel {
+    const firstTrackingSession = this.trackingSessions()[0];
+    if (firstTrackingSession) {
+      return this.buildTrackingSequenceDiagram(projectId, useCases, firstTrackingSession);
+    }
     const first = useCases[0];
     const entities = this.inferDomainEntities(useCases);
     const mainEntity = entities[0]?.name ?? 'Entidad';
@@ -4347,10 +4577,11 @@ export class ProjectWorkspace {
     title: string,
     nodes: DiagramNode[],
     edges: DiagramEdge[],
-    useCases: DerivedUseCase[]
+    useCases: DerivedUseCase[],
+    id = `diagram-${type}-${Date.now()}`
   ): DiagramModel {
     return {
-      id: `diagram-${type}-${Date.now()}`,
+      id,
       projectId,
       type,
       title,
