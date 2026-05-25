@@ -1813,7 +1813,7 @@ export class ProjectWorkspace {
     const svgStr = this.buildExportSVGString();
     if (!svgStr) return;
     const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-    this.triggerDownload(blob, `${this.diagram()?.name ?? 'diagrama'}.svg`);
+    this.triggerDownload(blob, `${this.diagram()?.title ?? 'diagrama'}.svg`);
   }
 
   exportDiagramPNG() {
@@ -1838,7 +1838,7 @@ export class ProjectWorkspace {
       ctx.drawImage(img, 0, 0, w, h);
       URL.revokeObjectURL(url);
       canvas.toBlob(png => {
-        if (png) this.triggerDownload(png, `${this.diagram()?.name ?? 'diagrama'}.png`);
+        if (png) this.triggerDownload(png, `${this.diagram()?.title ?? 'diagrama'}.png`);
       }, 'image/png');
     };
     img.onerror = () => URL.revokeObjectURL(url);
