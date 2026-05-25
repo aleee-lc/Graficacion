@@ -112,7 +112,7 @@ const readinessFor = (input: ImplementationSpecExportInput) =>
     savedDiagrams: input.savedDiagrams
   });
 
-const text = (value: string | null | undefined, fallback = 'No especificado') => {
+const text = (value: string | null | undefined, fallback = 'Not specified') => {
   const trimmed = String(value ?? '').trim();
   return trimmed || fallback;
 };
@@ -142,7 +142,7 @@ const toSnake = (value: string) =>
 
 const unique = <T>(items: T[]) => [...new Set(items)];
 
-const bulletList = (items: string[], empty = '- Sin datos registrados') =>
+const bulletList = (items: string[], empty = '- No data recorded') =>
   items.length ? items.map((item) => `- ${item}`).join('\n') : empty;
 
 const markdownTable = (headers: string[], rows: string[][]) => {
@@ -201,7 +201,7 @@ const transactionStepsFor = (session: Session) => {
 
 const stakeholderName = (input: ImplementationSpecExportInput, id: number | null | undefined, fallback?: string) => {
   const stakeholder = id ? input.stakeholders.find((item) => item.id === id) : null;
-  return stakeholder ? `${stakeholder.name} (${stakeholder.role})` : text(fallback, 'No especificado');
+  return stakeholder ? `${stakeholder.name} (${stakeholder.role})` : text(fallback, 'Not specified');
 };
 
 const requirementHasEvidence = (input: ImplementationSpecExportInput, requirement: Requirement) => {
@@ -210,6 +210,27 @@ const requirementHasEvidence = (input: ImplementationSpecExportInput, requiremen
 };
 
 const extractCandidateEntities = (input: ImplementationSpecExportInput) => {
+  const excluded = new Set([
+    ...input.stakeholders.flatMap((stakeholder) => [
+      toPascal(stakeholder.name),
+      toPascal(stakeholder.role),
+      ...stakeholder.role.split(/\s+/).map(toPascal)
+    ]),
+    ...(input.targetRoles ?? []).map((role) => toPascal(role.name)),
+    'Analista',
+    'AnalistaDeNegocio',
+    'Recepcionista',
+    'RecepcionistaAm',
+    'RecepcionistaPm',
+    'Auditor',
+    'AuditorNocturno',
+    'Gerente',
+    'GerenteGeneral',
+    'SupervisoraDeLimpieza',
+    'Limpieza',
+    'Stakeholder',
+    'Usuario'
+  ]);
   const sourceText = [
     input.project?.name,
     input.project?.objective,
@@ -232,7 +253,7 @@ const extractCandidateEntities = (input: ImplementationSpecExportInput) => {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
     .map(([token]) => toPascal(token));
-  return unique(['Usuario', ...input.stakeholders.map((stakeholder) => toPascal(stakeholder.role)), ...ranked]).slice(0, 12);
+  return unique(['User', ...ranked]).filter((name) => !excluded.has(name)).slice(0, 10);
 };
 
 const inferEntities = (input: ImplementationSpecExportInput): InferredEntity[] => {
@@ -255,10 +276,36 @@ const inferEntities = (input: ImplementationSpecExportInput): InferredEntity[] =
       attributes: ['id: int', 'nombre: str', 'descripcion: str | None', 'estado: str', 'created_at: datetime'],
       methods: methods.length ? methods : [`crear_${toSnake(name)}`, `listar_${toSnake(name)}`, `actualizar_${toSnake(name)}`],
       outgoingRelations: name === 'Usuario' ? candidates.filter((candidate) => candidate !== name).map((candidate) => `gestiona ${candidate}`) : ['pertenece a Usuario'],
-      incomingRelations: name === 'Usuario' ? ['referenciado por entidades operativas'] : ['creado o actualizado por Usuario'],
-      source: confidence === 'LOW' ? 'Inferida desde requisitos, historias y hallazgos' : 'Derivada de actores/stakeholders/procesos'
+      incomingRelations: name === 'Usuario' ? ['referenced by operational entities'] : ['created or updated by User'],
+      source: confidence === 'LOW' ? 'Inferred from requirements, use cases, and findings' : 'Derived from actors/stakeholders/processes'
     };
   });
+};
+
+const implementationEntityNames = (input: ImplementationSpecExportInput) => {
+  const manual = input.dataEntities ?? [];
+  if (manual.length) {
+    return manual.map((entity) => entity.name);
+  }
+  return inferEntities(input)
+    .filter((entity) => entity.confidence !== 'LOW')
+    .map((entity) => entity.name);
+};
+
+const outOfScopeFor = (input: ImplementationSpecExportInput) => {
+  const scope = input.project?.scope ?? '';
+  const explicit = scope.match(/(?:Excluye|Fuera del alcance|No contempla|No se contempla)[:\s]+(.+)$/i);
+  if (explicit?.[1]) {
+    return explicit[1].trim();
+  }
+  const inline = scope.match(/(?:^|[.;]\s*)(?:Excluye|Fuera del alcance|No contempla|No se contempla)\s+(.+?)(?=$|[.;]\s*(?:Incluye|Alcance|Objetivo)\b)/i);
+  if (inline?.[1]) {
+    return inline[1].trim();
+  }
+  const sentence = scope
+    .split(/(?<=[.!?])\s+/)
+    .find((part) => /excluye|fuera del alcance|no contempla|no se contempla/i.test(part));
+  return sentence?.trim() || '';
 };
 
 const methodName = (value: string) => {
@@ -273,16 +320,16 @@ const methodName = (value: string) => {
 };
 
 const useCasesFor = (input: ImplementationSpecExportInput) =>
-  input.useCases.length
+      input.useCases.length
     ? input.useCases
     : input.requirements.map((requirement) => ({
         id: `uc-derived-${requirement.id}`,
         persistedId: null,
-        title: `Gestionar ${requirement.code}`,
+        title: `Manage ${requirement.code}`,
         requirement,
-        actor: 'usuario del sistema',
+        actor: 'system user',
         action: requirement.description,
-        benefit: 'cumplir el requisito documentado',
+        benefit: 'fulfill the documented requirement',
         acceptanceCriteria: requirement.acceptance_criteria,
         sourceFindings: [] as Finding[]
       }));
@@ -291,32 +338,138 @@ const contractFor = (input: ImplementationSpecExportInput, requirementId: number
   input.implementationContracts?.find((contract) => contract.requirementId === requirementId) ?? null;
 
 const targetStackFor = (input: ImplementationSpecExportInput): TargetStack => input.targetStack ?? {
-  architectureType: 'SPA + API REST',
-  backendFramework: 'FastAPI',
-  backendLanguage: 'Python',
-  backendOrm: 'SQLModel',
-  backendDatabase: 'SQLite',
-  backendMigrations: 'Alembic',
-  backendAuth: 'JWT',
-  backendTesting: 'pytest',
-  frontendFramework: 'React + Vite',
-  frontendLanguage: 'TypeScript',
-  frontendUi: 'Bootstrap 5',
-  frontendRouting: 'React Router',
-  frontendDataFetching: 'TanStack Query + Axios',
-  frontendState: 'Zustand',
-  frontendTesting: 'Vitest / pruebas UI basicas',
-  runMode: 'Local development',
-  envVars: ['DATABASE_URL', 'JWT_SECRET_KEY', 'CORS_ORIGINS'],
-  seedAdmin: 'admin@example.com / cambiar password',
-  commands: ['backend: uvicorn app.main:app --reload', 'frontend: npm run dev', 'migraciones: alembic upgrade head']
+  architectureType: 'Pending definition in Target Stack',
+  backendFramework: 'Pending',
+  backendLanguage: 'Pending',
+  backendOrm: 'Pending',
+  backendDatabase: 'Pending',
+  backendMigrations: 'Pending',
+  backendAuth: 'Pending',
+  backendTesting: 'Pending',
+  frontendFramework: 'Pending',
+  frontendLanguage: 'Pending',
+  frontendUi: 'Pending',
+  frontendRouting: 'Pending',
+  frontendDataFetching: 'Pending',
+  frontendState: 'Pending',
+  frontendTesting: 'Pending',
+  runMode: 'Pending',
+  envVars: [],
+  seedAdmin: 'Pending',
+  commands: []
+};
+
+const backendStructureFor = (stack: TargetStack) => {
+  const backend = `${stack.backendFramework} ${stack.backendLanguage}`.toLowerCase();
+  if (backend.includes('nest')) {
+    return [
+      'backend/',
+      '  src/',
+      '    main.ts',
+      '    app.module.ts',
+      '    config/',
+      '    auth/',
+      '    common/',
+      '    modules/',
+      '      reservations/',
+      '        reservations.controller.ts',
+      '        reservations.service.ts',
+      '        dto/',
+      '        entities/',
+      '    database/',
+      '    migrations/',
+      '  test/'
+    ];
+  }
+  if (backend.includes('express') || backend.includes('node')) {
+    return [
+      'backend/',
+      '  src/',
+      '    server.ts',
+      '    app.ts',
+      '    config/',
+      '    middleware/',
+      '    modules/',
+      '      reservations/',
+      '        reservation.routes.ts',
+      '        reservation.service.ts',
+      '        reservation.repository.ts',
+      '        reservation.schemas.ts',
+      '    db/',
+      '    tests/'
+    ];
+  }
+  if (backend.includes('fastapi') || backend.includes('python')) {
+    return [
+      'backend/',
+      '  app/',
+      '    main.py',
+      '    core/config.py',
+      '    core/security.py',
+      '    db/session.py',
+      '    models/',
+      '    schemas/',
+      '    services/',
+      '    routers/',
+      '    seed.py',
+      '  alembic/',
+      '  tests/'
+    ];
+  }
+  return [
+    'backend/',
+    '  src/',
+    '    config/',
+    '    auth/',
+    '    modules/',
+    '    persistence/',
+    '    tests/'
+  ];
+};
+
+const frontendStructureFor = (stack: TargetStack) => {
+  const frontend = `${stack.frontendFramework} ${stack.frontendLanguage}`.toLowerCase();
+  if (frontend.includes('angular')) {
+    return [
+      'frontend/',
+      '  src/app/',
+      '    core/',
+      '    shared/',
+      '    features/',
+      '    layouts/',
+      '    services/',
+      '    guards/'
+    ];
+  }
+  if (frontend.includes('react') || frontend.includes('vite')) {
+    return [
+      'frontend/',
+      '  src/',
+      '    app/router.tsx',
+      '    api/client.ts',
+      '    auth/',
+      '    components/ui/',
+      '    features/',
+      '    layouts/',
+      '    stores/'
+    ];
+  }
+  return [
+    'frontend/',
+    '  src/',
+    '    api/',
+    '    auth/',
+    '    components/',
+    '    features/',
+    '    routes/'
+  ];
 };
 
 const fieldRows = (fields: { name: string; type: string; required?: boolean; description?: string; example?: string }[]) =>
   fields.map((field) => [
     field.name,
     field.type,
-    field.required ? 'Si' : 'No',
+    field.required ? 'Yes' : 'No',
     field.description || '-',
     field.example || '-'
   ]);
@@ -328,23 +481,23 @@ const collectValidationIssues = (input: ImplementationSpecExportInput, entities 
   const suggestions: ValidationIssue[] = [];
 
   if (!input.requirements.length) {
-    errors.push({ code: 'NO_REQUIREMENTS', message: 'No hay requisitos registrados para construir specs implementables.' });
+    errors.push({ code: 'NO_REQUIREMENTS', message: 'No requirements are registered to build implementable specs.' });
   }
   if (!useCases.length) {
-    errors.push({ code: 'NO_USE_CASES', message: 'No hay casos de uso ni requisitos suficientes para derivarlos.' });
+    errors.push({ code: 'NO_USE_CASES', message: 'There are no use cases or sufficient requirements to derive them.' });
   }
 
   for (const requirement of input.requirements) {
     if (!requirementHasEvidence(input, requirement)) {
       warnings.push({
         code: 'REQUIREMENT_WITHOUT_EVIDENCE',
-        message: `${requirement.code}: requisito sin evidencia o hallazgo vinculado.`
+        message: `${requirement.code}: requirement without linked evidence or finding.`
       });
     }
     if (!input.useCases.some((useCase) => useCase.requirement.id === requirement.id && useCase.persistedId)) {
       warnings.push({
         code: 'REQUIREMENT_WITHOUT_USE_CASE',
-        message: `${requirement.code}: el caso de uso fue inferido o no esta persistido como historia/caso.`
+        message: `${requirement.code}: the use case was inferred or is not persisted as a formal story/use case.`
       });
     }
   }
@@ -353,156 +506,171 @@ const collectValidationIssues = (input: ImplementationSpecExportInput, entities 
     if (!sessionsForUseCase(input, useCase).length) {
       warnings.push({
         code: 'USE_CASE_WITHOUT_PROCESS',
-        message: `${useCase.title}: no tiene proceso o sesion trazable; se genera flujo basico inferido.`
+        message: `${useCase.title}: missing traceable process or session; a baseline inferred flow will be generated.`
       });
     }
   }
 
   if (!input.diagrams.length && !input.savedDiagrams.length) {
-    warnings.push({ code: 'MISSING_DIAGRAMS', message: 'No hay diagramas guardados o derivados en el paquete.' });
+    warnings.push({ code: 'MISSING_DIAGRAMS', message: 'There are no saved or derived diagrams in the package.' });
   }
 
   const contracts = input.implementationContracts ?? [];
   for (const requirement of input.requirements) {
     const contract = contractFor(input, requirement.id);
     if (!contract) {
-      warnings.push({ code: 'REQUIREMENT_WITHOUT_CONTRACT', message: `${requirement.code}: falta contrato tecnico implementable.` });
+      warnings.push({ code: 'REQUIREMENT_WITHOUT_CONTRACT', message: `${requirement.code}: missing implementable technical contract.` });
       continue;
     }
     if (!contract.endpointPath) {
-      warnings.push({ code: 'CONTRACT_WITHOUT_ENDPOINT', message: `${requirement.code}: contrato sin endpoint.` });
+      warnings.push({ code: 'CONTRACT_WITHOUT_ENDPOINT', message: `${requirement.code}: contract without endpoint.` });
     }
     if (!contract.validations.length) {
-      warnings.push({ code: 'CONTRACT_WITHOUT_VALIDATIONS', message: `${requirement.code}: contrato sin validaciones.` });
+      warnings.push({ code: 'CONTRACT_WITHOUT_VALIDATIONS', message: `${requirement.code}: contract without validations.` });
     }
     if (!contract.expectedErrors.length) {
-      warnings.push({ code: 'CONTRACT_WITHOUT_EXPECTED_ERRORS', message: `${requirement.code}: contrato sin errores esperados.` });
+      warnings.push({ code: 'CONTRACT_WITHOUT_EXPECTED_ERRORS', message: `${requirement.code}: contract without expected errors.` });
     }
   }
   if (!(input.dataEntities ?? []).length) {
-    warnings.push({ code: 'NO_MANUAL_DATA_MODEL', message: 'No hay entidades manuales del modelo de datos; se usaran inferencias.' });
+    warnings.push({ code: 'NO_MANUAL_DATA_MODEL', message: 'No manual data-model entities were captured; inferred entities will be used.' });
   }
   for (const entity of input.dataEntities ?? []) {
     if (!entity.fields.length) {
-      warnings.push({ code: 'ENTITY_WITHOUT_FIELDS', message: `${entity.name}: entidad sin campos definidos.` });
+      warnings.push({ code: 'ENTITY_WITHOUT_FIELDS', message: `${entity.name}: entity without defined fields.` });
     }
     if (entity.relationships.some((relationship) => !relationship.foreignKey && relationship.type !== 'many-to-many')) {
-      warnings.push({ code: 'RELATION_WITHOUT_FK', message: `${entity.name}: relacion sin FK sugerida.` });
+      warnings.push({ code: 'RELATION_WITHOUT_FK', message: `${entity.name}: relationship without suggested FK.` });
     }
   }
   if (!(input.targetRoles ?? []).length) {
-    warnings.push({ code: 'NO_TARGET_ROLES', message: 'No hay roles/permisos definidos para el sistema objetivo.' });
+    warnings.push({ code: 'NO_TARGET_ROLES', message: 'No roles or permissions were defined for the target system.' });
   }
   for (const role of input.targetRoles ?? []) {
     if (!role.permissions.length) {
-      warnings.push({ code: 'ROLE_WITHOUT_PERMISSIONS', message: `${role.name}: rol sin permisos.` });
+      warnings.push({ code: 'ROLE_WITHOUT_PERMISSIONS', message: `${role.name}: role without permissions.` });
     }
   }
   const stack = targetStackFor(input);
   if (!stack.backendFramework || !stack.frontendFramework || !stack.backendDatabase || !stack.backendAuth) {
-    warnings.push({ code: 'TARGET_STACK_INCOMPLETE', message: 'Stack objetivo incompleto: backend/frontend/base de datos/auth deben estar definidos.' });
+    warnings.push({ code: 'TARGET_STACK_INCOMPLETE', message: 'Target stack is incomplete: backend/frontend/database/auth must be defined.' });
   }
 
-  for (const entity of entities.filter((entity) => entity.confidence === 'LOW')) {
-    warnings.push({
-      code: 'LOW_CONFIDENCE',
-      message: `${entity.name}: entidad inferida con baja confianza; validar nombre, atributos y relaciones.`
-    });
+  if (!(input.dataEntities ?? []).length) {
+    for (const entity of entities.filter((entity) => entity.confidence === 'LOW')) {
+      warnings.push({
+        code: 'LOW_CONFIDENCE',
+        message: `${entity.name}: low-confidence inferred entity; validate name, attributes, and relationships.`
+      });
+    }
   }
 
-  for (const entity of entities) {
+  for (const entity of implementationEntityNames(input)) {
     suggestions.push({
       code: 'CRUD_SUGGESTION',
-      message: `Crear CRUD base para ${entity.name}: listar, crear, editar, eliminar logico y detalle.`
+      message: `Create a baseline CRUD for ${entity}: list, create, edit, logical delete, and detail view.`
     });
   }
 
   return { errors, warnings, suggestions };
 };
 
-export const buildAgentInstructionsMarkdown = (input: ImplementationSpecExportInput) => [
-  '# Instrucciones para equipo implementador',
-  '',
-  `Sistema objetivo: **${projectName(input)}**`,
-  `Generado desde Specora: ${nowIso(input)}`,
-  '',
-  '## Orden obligatorio de lectura',
-  '',
-  'Lee y usa los archivos en este orden:',
-  '',
-  '1. `01_AGENT_INSTRUCTIONS.md`',
-  '2. `02_REQUIREMENTS.md`',
-  '3. `03_CLASS_MODEL.md`',
-  '4. `04_ARCHITECTURE.md`',
-  '5. `05_PROCESS.md`',
-  '6. `06_EXECUTION.md`',
-  '7. `07_DESIGN.md`',
-  '8. `08_VALIDATION_REPORT.md`',
-  '',
-  '## Stack objetivo',
-  '',
-  '- Backend: FastAPI + SQLModel + Alembic + SQLite.',
-  '- Frontend: Vite + React + TypeScript + Bootstrap 5.',
-  '- Auth: JWT con login, proteccion de rutas y seed de usuario administrador.',
-  '- API: routers por modulo, schemas separados, services con reglas de negocio y tests basicos.',
-  '- Persistencia: modelos SQLModel, migraciones Alembic y datos seed reproducibles.',
-  '',
-  '## Estrategia de implementacion',
-  '',
-  '- Implementa desde dominio hacia interfaz: entidades, modelos, migraciones, servicios, endpoints, UI.',
-  '- No inventes reglas como definitivas cuando el reporte de validacion marque inferencias o baja confianza.',
-  '- Todo output inferido debe quedar facil de ajustar en codigo: nombres claros, servicios pequenos y componentes reutilizables.',
-  '- Mantener CRUD completo para entidades centrales y flujos guiados para casos de uso principales.',
-  '- Cada endpoint debe validar permisos, payload y estados de negocio antes de persistir.',
-  '',
-  '## Checklist final',
-  '',
-  '- Backend levanta con `uvicorn app.main:app --reload`.',
-  '- Migraciones corren con Alembic sobre SQLite.',
-  '- Existe seed admin documentado.',
-  '- Frontend levanta con `npm run dev`.',
-  '- Login JWT funciona.',
-  '- CRUD y casos de uso principales funcionan de punta a punta.',
-  '- UI cumple `07_DESIGN.md` y evita pantallas CRUD pobres.',
-  '- Warnings de `08_VALIDATION_REPORT.md` fueron revisados o documentados.'
-].join('\n');
+export const buildAgentInstructionsMarkdown = (input: ImplementationSpecExportInput) => {
+  const stack = targetStackFor(input);
+  return [
+    '# Instructions for the implementation team',
+    '',
+    `Target system: **${projectName(input)}**`,
+    `Generated from Specora: ${nowIso(input)}`,
+    '',
+    '## Mandatory reading order',
+    '',
+    'Read and use the files in this order:',
+    '',
+    '1. `01_AGENT_INSTRUCTIONS.md`',
+    '2. `02_REQUIREMENTS.md`',
+    '3. `03_CLASS_MODEL.md`',
+    '4. `04_ARCHITECTURE.md`',
+    '5. `05_PROCESS.md`',
+    '6. `06_EXECUTION.md`',
+    '7. `07_DESIGN.md`',
+    '8. `08_VALIDATION_REPORT.md`',
+    '',
+    '## Target stack',
+    '',
+    `- Backend: ${stack.backendFramework} + ${stack.backendLanguage}.`,
+    `- ORM/persistence: ${stack.backendOrm || 'Not specified'} + ${stack.backendDatabase}.`,
+    `- Migrations: ${stack.backendMigrations || 'Not specified'}.`,
+    `- Frontend: ${stack.frontendFramework} + ${stack.frontendLanguage}.`,
+    `- UI: ${stack.frontendUi || 'Not specified'}.`,
+    `- Auth: ${stack.backendAuth || 'Not specified'}.`,
+    '- API: module-level routers/controllers, separate schemas/DTOs, services with business rules, and baseline tests.',
+    '',
+    '## Implementation strategy',
+    '',
+    '- Implement from domain to interface: entities, models, migrations, services, endpoints, and UI.',
+    '- Do not treat inferred information as final when the validation report flags low confidence or missing evidence.',
+    '- Any inferred output must stay easy to adjust in code: clear names, small services, and reusable components.',
+    '- Keep full CRUD for core entities and guided workflows for primary use cases.',
+    '- Every endpoint must validate permissions, payload shape, and business state before persisting.',
+    '',
+    '## Final checklist',
+    '',
+    `- Backend starts with: ${stack.commands.find((command) => command.toLowerCase().includes('backend')) || 'backend command defined in 04_ARCHITECTURE.md'}.`,
+    `- Migrations: ${stack.backendMigrations || 'define if applicable'}.`,
+    `- Admin seed: ${stack.seedAdmin || 'define initial user'}.`,
+    `- Frontend starts with: ${stack.commands.find((command) => command.toLowerCase().includes('frontend')) || 'frontend command defined in 04_ARCHITECTURE.md'}.`,
+    '- Login/authorization works when the system requires roles.',
+    '- Core CRUD and primary use cases work end to end.',
+    '- UI follows `07_DESIGN.md` and avoids flat CRUD-only screens.',
+    '- Warnings from `08_VALIDATION_REPORT.md` were reviewed or explicitly documented.'
+  ].join('\n');
+};
 
 export const buildRequirementsMarkdown = (input: ImplementationSpecExportInput) => {
   const useCases = useCasesFor(input);
-  const entities = inferEntities(input);
+  const entities = input.dataEntities?.length
+    ? input.dataEntities.map((entity) => ({
+        name: entity.name,
+        tableName: entity.tableName,
+        confidence: entity.confidence.toUpperCase(),
+        source: entity.source
+      }))
+    : inferEntities(input);
   const roles = input.targetRoles ?? [];
+  const outOfScope = outOfScopeFor(input);
   return [
-    '# Requisitos del sistema',
+    '# System requirements',
     '',
-    `## Nombre del sistema`,
+    '## System name',
     '',
     projectName(input),
     '',
-    '## Descripcion general',
+    '## General description',
     '',
-    text(input.project?.description ?? input.project?.objective, 'Descripcion inferida desde el proyecto en Specora.'),
+    text(input.project?.description ?? input.project?.objective, 'Description inferred from the project captured in Specora.'),
     '',
-    '## Problema que resuelve',
+    '## Problem statement',
     '',
-    text(input.project?.objective, 'Pendiente de documentar con claridad en el contexto del proyecto.'),
+    text(input.project?.objective, 'Pending a clearer problem statement in the project context.'),
     '',
-    '## Alcance incluido',
+    '## Included scope',
     '',
-    text(input.project?.scope, 'Pendiente de separar funcionalidades obligatorias y opcionales.'),
+    text(input.project?.scope, 'Pending separation between mandatory and optional functionality.'),
     '',
-    '## Fuera de alcance',
+    '## Out of scope',
     '',
-    'No especificado. El equipo debe confirmar que funcionalidades quedan fuera antes de implementar.',
+    text(outOfScope, 'Not specified. The team should confirm what remains out of scope before implementation.'),
     '',
-    '## Actores',
+    '## Actors',
     '',
     bulletList(actorsFor(input)),
     '',
-    '## Roles y permisos objetivo',
+    '## Target roles and permissions',
     '',
     roles.length
       ? markdownTable(
-          ['Rol', 'Tipo', 'Permisos', 'Pantallas', 'Endpoints'],
+          ['Role', 'Type', 'Permissions', 'Screens', 'Endpoints'],
           roles.map((role) => [
             role.name,
             role.userType || '-',
@@ -511,96 +679,96 @@ export const buildRequirementsMarkdown = (input: ImplementationSpecExportInput) 
             role.endpoints.join('<br>') || '-'
           ])
         )
-      : '- No hay roles objetivo capturados. Definir Admin/Usuario/etc. antes de cerrar implementacion.',
+      : '- No target roles captured yet. Define Admin/User/etc. before closing implementation.',
     '',
-    '## Casos de uso detallados',
+    '## Detailed use cases',
     '',
     ...useCases.map((useCase, index) =>
       [
         `### CU-${index + 1}: ${useCase.title}`,
         '',
-        `- Requisito origen: ${useCase.requirement.code}`,
-        `- Actor principal: ${useCase.actor}`,
-        `- Objetivo: ${useCase.action}`,
-        `- Beneficio esperado: ${useCase.benefit}`,
-        `- Prioridad: ${useCase.requirement.priority}`,
-        `- Tipo: ${useCase.requirement.type}`,
+        `- Source requirement: ${useCase.requirement.code}`,
+        `- Primary actor: ${useCase.actor}`,
+        `- Goal: ${useCase.action}`,
+        `- Expected benefit: ${useCase.benefit}`,
+        `- Priority: ${useCase.requirement.priority}`,
+        `- Type: ${useCase.requirement.type}`,
         '',
-        '#### Criterios de aceptacion',
+        '#### Acceptance criteria',
         '',
-        text(useCase.acceptanceCriteria || useCase.requirement.acceptance_criteria, 'Pendiente de detallar.'),
+        text(useCase.acceptanceCriteria || useCase.requirement.acceptance_criteria, 'Pending detail.'),
         '',
-        '#### Flujos asociados',
+        '#### Related flows',
         '',
-        bulletList(sessionsForUseCase(input, useCase).map(sessionLabel), '- Flujo basico inferido; falta proceso/sesion trazable.'),
+        bulletList(sessionsForUseCase(input, useCase).map(sessionLabel), '- Basic inferred flow; missing traceable process/session.'),
         '',
-        '#### Trazabilidad de evidencia',
+        '#### Evidence traceability',
         '',
         bulletList(
           useCase.sourceFindings.map((finding) => {
             const session = input.sessions.find((item) => item.id === finding.session_id);
             const process = session?.process_id ? input.processes.find((item) => item.id === session.process_id) : null;
-            const transaction = session && isTransactionSession(session) ? `; seguimiento transaccional ${session.metadata?.['transactionId'] ?? session.title}` : '';
-            return `${finding.statement} -> ${useCase.requirement.code}${process ? ` -> proceso ${process.name}` : ''}${transaction}`;
+            const transaction = session && isTransactionSession(session) ? `; transaction tracking ${session.metadata?.['transactionId'] ?? session.title}` : '';
+            return `${finding.statement} -> ${useCase.requirement.code}${process ? ` -> process ${process.name}` : ''}${transaction}`;
           }),
-          '- Sin hallazgos/evidencias vinculadas.'
+          '- No linked findings or evidence.'
         ),
         '',
-        '#### Contrato tecnico',
+        '#### Technical contract',
         '',
         (() => {
           const contract = contractFor(input, useCase.requirement.id);
           return contract
             ? [
-                `- Pantalla: ${text(contract.screenName, 'No especificada')}`,
-                `- Ruta UI: ${text(contract.routePath, 'No especificada')}`,
-                `- Endpoint: ${text(`${contract.endpointMethod ?? ''} ${contract.endpointPath ?? ''}`.trim(), 'No especificado')}`,
+                `- Screen: ${text(contract.screenName, 'Not specified')}`,
+                `- UI route: ${text(contract.routePath, 'Not specified')}`,
+                `- Endpoint: ${text(`${contract.endpointMethod ?? ''} ${contract.endpointPath ?? ''}`.trim(), 'Not specified')}`,
                 '',
                 '##### Request fields',
-                markdownTable(['Campo', 'Tipo', 'Requerido', 'Descripcion', 'Ejemplo'], fieldRows(contract.requestFields)),
+                markdownTable(['Field', 'Type', 'Required', 'Description', 'Example'], fieldRows(contract.requestFields)),
                 '',
                 '##### Response fields',
-                markdownTable(['Campo', 'Tipo', 'Requerido', 'Descripcion', 'Ejemplo'], fieldRows(contract.responseFields)),
+                markdownTable(['Field', 'Type', 'Required', 'Description', 'Example'], fieldRows(contract.responseFields)),
                 '',
-                '##### Reglas de negocio',
-                bulletList(contract.businessRules, '- Pendiente'),
+                '##### Business rules',
+                bulletList(contract.businessRules, '- Pending'),
                 '',
-                '##### Validaciones',
-                bulletList(contract.validations, '- Pendiente'),
+                '##### Validations',
+                bulletList(contract.validations, '- Pending'),
                 '',
-                '##### Errores esperados',
+                '##### Expected errors',
                 markdownTable(
-                  ['HTTP', 'Condicion', 'Mensaje'],
+                  ['HTTP', 'Condition', 'Message'],
                   contract.expectedErrors.map((error) => [String(error.statusCode), error.condition, error.message])
                 ),
                 '',
-                '##### Permisos',
-                bulletList(contract.permissions, '- Pendiente'),
+                '##### Permissions',
+                bulletList(contract.permissions, '- Pending'),
                 '',
-                '##### Pruebas',
-                bulletList(contract.testCases, '- Pendiente')
+                '##### Test cases',
+                bulletList(contract.testCases, '- Pending')
               ].join('\n')
-            : '_Warning: falta contrato tecnico manual para este requisito._';
+            : '_Warning: missing manual technical contract for this requirement._';
         })()
       ].join('\n')
     ),
     '',
-    '## Matriz de relaciones entre casos de uso',
+    '## Use case relationship matrix',
     '',
     markdownTable(
-      ['Caso de uso', 'Requisito', 'Evidencia', 'Contrato tecnico'],
+      ['Use case', 'Requirement', 'Evidence', 'Technical contract'],
       useCases.map((useCase, index) => [
         `CU-${index + 1}`,
         useCase.requirement.code,
-        useCase.sourceFindings.length ? `${useCase.sourceFindings.length} hallazgo(s)` : 'Sin evidencia',
-        contractFor(input, useCase.requirement.id)?.endpointPath ?? 'Sin contrato'
+        useCase.sourceFindings.length ? `${useCase.sourceFindings.length} finding(s)` : 'No evidence',
+        contractFor(input, useCase.requirement.id)?.endpointPath ?? 'No contract'
       ])
     ),
     '',
-    '## Entidades de negocio involucradas',
+    '## Involved business entities',
     '',
     markdownTable(
-      ['Entidad', 'Tabla sugerida', 'Confianza', 'Origen'],
+      ['Entity', 'Suggested table', 'Confidence', 'Source'],
       entities.map((entity) => [entity.name, entity.tableName, entity.confidence, entity.source])
     )
   ].join('\n');
@@ -610,15 +778,19 @@ export const buildClassModelMarkdown = (input: ImplementationSpecExportInput) =>
   const entities = inferEntities(input);
   const manualEntities = input.dataEntities ?? [];
   if (manualEntities.length > 0) {
+    const manualEntityNames = new Set(manualEntities.map((entity) => normalize(entity.name)));
+    const inferredAdditional = entities.filter(
+      (entity) => entity.confidence !== 'LOW' && !manualEntityNames.has(normalize(entity.name))
+    );
     return [
-      '# Modelo de clases y datos',
+      '# Class and data model',
       '',
-      'Este modelo prioriza entidades capturadas manualmente en Specora. Las relaciones y reglas aqui descritas deben implementarse en modelos, migraciones y servicios.',
+      'This model prioritizes entities captured manually in Specora. The relationships and integrity rules described here should be implemented in models, migrations, and services.',
       '',
-      '## Resumen de entidades manuales',
+      '## Summary of manual entities',
       '',
       markdownTable(
-        ['Entidad', 'Tabla', 'Origen', 'Confianza', 'Campos', 'Relaciones'],
+        ['Entity', 'Table', 'Source', 'Confidence', 'Fields', 'Relationships'],
         manualEntities.map((entity) => [
           entity.name,
           entity.tableName,
@@ -633,31 +805,31 @@ export const buildClassModelMarkdown = (input: ImplementationSpecExportInput) =>
         [
           `## ${entity.name}`,
           '',
-          `- Tabla: \`${entity.tableName}\``,
-          `- Origen: ${entity.source}`,
-          `- Confianza: ${entity.confidence}`,
-          `- Descripcion: ${text(entity.description, 'No especificada')}`,
+          `- Table: \`${entity.tableName}\``,
+          `- Source: ${entity.source}`,
+          `- Confidence: ${entity.confidence}`,
+          `- Description: ${text(entity.description, 'Not specified')}`,
           '',
-          '### Campos',
+          '### Fields',
           '',
           markdownTable(
-            ['Campo', 'Tipo', 'Requerido', 'Unico', 'Nullable', 'Default', 'Ejemplo', 'Descripcion'],
+            ['Field', 'Type', 'Required', 'Unique', 'Nullable', 'Default', 'Example', 'Description'],
             entity.fields.map((field) => [
               field.name,
               field.type,
-              field.required ? 'Si' : 'No',
-              field.unique ? 'Si' : 'No',
-              field.nullable ? 'Si' : 'No',
+              field.required ? 'Yes' : 'No',
+              field.unique ? 'Yes' : 'No',
+              field.nullable ? 'Yes' : 'No',
               field.defaultValue || '-',
               field.example || '-',
               field.description || '-'
             ])
           ),
           '',
-          '### Relaciones',
+          '### Relationships',
           '',
           markdownTable(
-            ['Origen', 'Tipo', 'Destino', 'FK sugerida', 'On delete', 'Descripcion'],
+            ['Source', 'Type', 'Target', 'Suggested FK', 'On delete', 'Description'],
             entity.relationships.map((relationship) => [
               relationship.fromEntity,
               relationship.type,
@@ -668,31 +840,31 @@ export const buildClassModelMarkdown = (input: ImplementationSpecExportInput) =>
             ])
           ),
           '',
-          '### Integridad',
+          '### Integrity rules',
           '',
-          bulletList(entity.integrityRules, '- Sin reglas de integridad capturadas.')
+          bulletList(entity.integrityRules, '- No captured integrity rules.')
         ].join('\n')
       ),
       '',
-      '## Entidades inferidas adicionales',
+      '## Additional inferred entities',
       '',
-      markdownTable(
-        ['Entidad', 'Tabla', 'Confianza', 'Origen'],
-        entities
-          .filter((entity) => !manualEntities.some((manual) => normalize(manual.name) === normalize(entity.name)))
-          .map((entity) => [entity.name, entity.tableName, entity.confidence, entity.source])
-      )
+      inferredAdditional.length
+        ? markdownTable(
+            ['Entity', 'Table', 'Confidence', 'Source'],
+            inferredAdditional.map((entity) => [entity.name, entity.tableName, entity.confidence, entity.source])
+          )
+        : '- No inferred entities were added. The manual model is the primary source.'
     ].join('\n');
   }
   return [
-    '# Modelo de clases',
+    '# Class model',
     '',
-    'Este modelo combina datos capturados y heuristicas. Las entidades marcadas como `LOW` deben validarse antes de implementar migraciones finales.',
+    'This model combines captured data and heuristics. Entities marked as `LOW` must be validated before implementing final migrations.',
     '',
-    '## Resumen de entidades',
+    '## Entity summary',
     '',
     markdownTable(
-      ['Entidad', 'Tabla', 'Confianza', 'Atributos principales'],
+      ['Entity', 'Table', 'Confidence', 'Main attributes'],
       entities.map((entity) => [entity.name, entity.tableName, `${entity.confidence} (${entity.confidenceScore}%)`, entity.attributes.join(', ')])
     ),
     '',
@@ -700,38 +872,38 @@ export const buildClassModelMarkdown = (input: ImplementationSpecExportInput) =>
       [
         `## ${entity.name}`,
         '',
-        `- Tabla: \`${entity.tableName}\``,
-        `- Confianza: ${entity.confidence} (${entity.confidenceScore}%)`,
-        `- Origen: ${entity.source}`,
+        `- Table: \`${entity.tableName}\``,
+        `- Confidence: ${entity.confidence} (${entity.confidenceScore}%)`,
+        `- Source: ${entity.source}`,
         '',
-        '### Atributos',
+        '### Attributes',
         '',
         bulletList(entity.attributes.map((attribute) => `\`${attribute}\``)),
         '',
-        '### Metodos sugeridos',
+        '### Suggested methods',
         '',
         bulletList(entity.methods.map((method) => `\`${method}()\``)),
         '',
-        '### Relaciones salientes',
+        '### Outgoing relationships',
         '',
         bulletList(entity.outgoingRelations),
         '',
-        '### Relaciones entrantes',
+        '### Incoming relationships',
         '',
         bulletList(entity.incomingRelations)
       ].join('\n')
     ),
     '',
-    '## Matriz de relaciones',
+    '## Relationship matrix',
     '',
     markdownTable(
-      ['Origen', 'Relacion', 'Destino', 'Tipo'],
+      ['Source', 'Relationship', 'Target', 'Type'],
       entities.flatMap((entity) =>
         entity.outgoingRelations.map((relation) => [
           entity.name,
           relation,
-          entity.name === 'Usuario' ? relation.replace('gestiona ', '') : 'Usuario',
-          entity.confidence === 'LOW' ? 'Inferida' : 'Recomendada'
+          entity.name === 'Usuario' ? relation.replace('gestiona ', '') : 'User',
+          entity.confidence === 'LOW' ? 'Inferred' : 'Recommended'
         ])
       )
     )
@@ -741,108 +913,89 @@ export const buildClassModelMarkdown = (input: ImplementationSpecExportInput) =>
 export const buildArchitectureMarkdown = (input: ImplementationSpecExportInput) => {
   const stack = targetStackFor(input);
   return [
-    '# Arquitectura objetivo',
+    '# Target architecture',
     '',
-    `Sistema: ${projectName(input)}`,
-    `Tipo de arquitectura: ${stack.architectureType}`,
+    `System: ${projectName(input)}`,
+    `Architecture type: ${stack.architectureType}`,
     '',
     '## Backend target',
     '',
     `- Framework: ${stack.backendFramework}.`,
-    `- Lenguaje: ${stack.backendLanguage}.`,
-    `- ORM: ${stack.backendOrm || 'No especificado'}.`,
-    `- Migraciones: ${stack.backendMigrations || 'No especificadas'}.`,
-    `- Base de datos: ${stack.backendDatabase}.`,
-    `- Auth: ${stack.backendAuth || 'No especificado'}.`,
-    `- Testing: ${stack.backendTesting || 'No especificado'}.`,
-    '- Capas: routers, schemas, services, repositories simples cuando agreguen claridad, models y core.',
-  '',
-  '### Estructura sugerida',
-  '',
-  '```txt',
-  'backend/',
-  '  app/',
-  '    main.py',
-  '    core/config.py',
-  '    core/security.py',
-  '    db/session.py',
-  '    models/',
-  '    schemas/',
-  '    services/',
-  '    routers/',
-  '    seed.py',
-  '  alembic/',
-  '  tests/',
-  '```',
-  '',
-  '## Frontend target',
-  '',
-  `- Framework/build: ${stack.frontendFramework}.`,
-  `- Lenguaje: ${stack.frontendLanguage}.`,
-  `- UI library: ${stack.frontendUi || 'No especificada'}.`,
-  `- Routing: ${stack.frontendRouting || 'No especificado'}.`,
-  `- Data fetching: ${stack.frontendDataFetching || 'No especificado'}.`,
-  `- Estado: ${stack.frontendState || 'No especificado'}.`,
-  `- Testing: ${stack.frontendTesting || 'No especificado'}.`,
-  '',
-  '### Estructura sugerida',
-  '',
-  '```txt',
-  'frontend/',
-  '  src/',
-  '    app/router.tsx',
-  '    api/client.ts',
-  '    auth/',
-  '    components/ui/',
-  '    features/',
-  '    layouts/',
-  '    stores/',
-  '```',
-  '',
-  '## Reglas de implementacion',
-  '',
-  '- Cada entidad debe tener schema de entrada, schema de salida y servicio.',
-  '- Los endpoints deben usar nombres REST claros: `GET /api/<recurso>`, `POST`, `PATCH`, `DELETE` logico cuando aplique.',
-  '- Los errores de validacion deben responder con HTTP 400/422 y mensajes accionables.',
-  '- Las pantallas no deben exponer tablas CRUD crudas como experiencia principal; usar workflows, filtros, estados vacios y paneles de detalle.',
-  '- El frontend debe centralizar loading, error y empty state.',
-  '- Cada caso de uso importante debe tener ruta o accion visible.',
-  '',
-  '## Ejecucion local e infraestructura',
-  '',
-  `- Modo: ${stack.runMode || 'No especificado'}`,
-  `- Seed admin: ${stack.seedAdmin || 'No especificado'}`,
-  '',
-  '### Variables de entorno',
-  '',
-  bulletList(stack.envVars.map((item) => `\`${item}\``), '- Pendiente'),
-  '',
-  '### Comandos esperados',
-  '',
-  bulletList(stack.commands.map((item) => `\`${item}\``), '- Pendiente')
-].join('\n');
+    `- Language: ${stack.backendLanguage}.`,
+    `- ORM: ${stack.backendOrm || 'Not specified'}.`,
+    `- Migrations: ${stack.backendMigrations || 'Not specified'}.`,
+    `- Database: ${stack.backendDatabase}.`,
+    `- Auth: ${stack.backendAuth || 'Not specified'}.`,
+    `- Testing: ${stack.backendTesting || 'Not specified'}.`,
+    '- Layers: controllers/routers, DTOs/schemas, services, repositories when they add clarity, entities/models, and centralized configuration.',
+    '',
+    '### Suggested structure',
+    '',
+    '```txt',
+    ...backendStructureFor(stack),
+    '```',
+    '',
+    '## Frontend target',
+    '',
+    `- Framework/build: ${stack.frontendFramework}.`,
+    `- Language: ${stack.frontendLanguage}.`,
+    `- UI library: ${stack.frontendUi || 'Not specified'}.`,
+    `- Routing: ${stack.frontendRouting || 'Not specified'}.`,
+    `- Data fetching: ${stack.frontendDataFetching || 'Not specified'}.`,
+    `- State: ${stack.frontendState || 'Not specified'}.`,
+    `- Testing: ${stack.frontendTesting || 'Not specified'}.`,
+    '',
+    '### Suggested structure',
+    '',
+    '```txt',
+    ...frontendStructureFor(stack),
+    '```',
+    '',
+    '## Implementation rules',
+    '',
+    '- Every entity should have an input contract, an output contract, and a service/use-case layer.',
+    '- Endpoints should use clear REST naming: `GET /api/<resource>`, `POST`, `PATCH`, `DELETE` when appropriate.',
+    '- Validation errors should return HTTP 400/422 with actionable messages.',
+    '- Screens should not expose raw CRUD tables as the primary experience; use workflows, filters, empty states, and detail panels.',
+    '- The frontend should centralize loading, error, and empty states.',
+    '- Every important use case should have a visible route or action.',
+    '',
+    '## Local execution and infrastructure',
+    '',
+    `- Mode: ${stack.runMode || 'Not specified'}`,
+    `- Admin seed: ${stack.seedAdmin || 'Not specified'}`,
+    '',
+    '### Environment variables',
+    '',
+    bulletList(stack.envVars.map((item) => `\`${item}\``), '- Pending'),
+    '',
+    '### Expected commands',
+    '',
+    bulletList(stack.commands.map((item) => `\`${item}\``), '- Pending')
+  ].join('\n');
 };
 
 export const buildProcessMarkdown = (input: ImplementationSpecExportInput) => {
   const useCases = useCasesFor(input);
   const transactionSessions = input.sessions.filter(isTransactionSession);
+  const stack = targetStackFor(input);
   return [
-    '# Procesos y flujos',
+    '# Processes and flows',
     '',
-    'Cada flujo incluye origen, destino, accion, capa e hint de implementacion para guiar al equipo constructor.',
+    'Each flow includes source, target, action, layer, and implementation hints to guide the delivery team.',
     '',
-    '## Procesos registrados',
+    '## Registered processes',
     '',
     markdownTable(
-      ['Proceso', 'Descripcion', 'Seguimientos reales'],
+      ['Process', 'Description', 'Real transaction samples'],
       input.processes.map((process) => [
         process.name,
-        process.description ?? 'Sin descripcion',
+        process.description ?? 'No description',
         String(transactionSessions.filter((session) => session.process_id === process.id).length)
       ])
     ),
     '',
-    '## Seguimientos transaccionales',
+    '## Transaction tracking sessions',
     '',
     transactionSessions.length
       ? transactionSessions.map((session) => {
@@ -852,32 +1005,32 @@ export const buildProcessMarkdown = (input: ImplementationSpecExportInput) => {
           return [
             `### ${session.title}`,
             '',
-            `- Proceso: ${process?.name ?? 'No vinculado'}`,
-            `- Transaccion: ${text(String(session.metadata?.['transactionId'] ?? ''), 'No especificada')}`,
-            `- Tipo: ${text(String(session.metadata?.['transactionType'] ?? ''), 'No especificado')}`,
-            `- Estado final: ${text(String(session.metadata?.['finalStatus'] ?? ''), 'No especificado')}`,
-            `- Sistemas/canales: ${Array.isArray(session.metadata?.['systemsInvolved']) ? (session.metadata['systemsInvolved'] as string[]).join(', ') : 'No especificados'}`,
-            metrics ? `- Tiempo total: ${text(String(metrics['totalTime'] ?? ''), 'No especificado')}` : '',
-            metrics ? `- Desviacion: ${text(String(metrics['deviation'] ?? ''), 'No especificada')}` : '',
+            `- Process: ${process?.name ?? 'Not linked'}`,
+            `- Transaction: ${text(String(session.metadata?.['transactionId'] ?? ''), 'Not specified')}`,
+            `- Type: ${text(String(session.metadata?.['transactionType'] ?? ''), 'Not specified')}`,
+            `- Final status: ${text(String(session.metadata?.['finalStatus'] ?? ''), 'Not specified')}`,
+            `- Systems/channels: ${Array.isArray(session.metadata?.['systemsInvolved']) ? (session.metadata['systemsInvolved'] as string[]).join(', ') : 'Not specified'}`,
+            metrics ? `- Total time: ${text(String(metrics['totalTime'] ?? ''), 'Not specified')}` : '',
+            metrics ? `- Deviation: ${text(String(metrics['deviation'] ?? ''), 'Not specified')}` : '',
             '',
             steps.length
               ? markdownTable(
-                  ['Paso', 'Actor', 'Sistema/canal', 'Entrada', 'Accion', 'Salida', 'Tiempo', 'Problema'],
+                  ['Step', 'Actor', 'System/channel', 'Input', 'Action', 'Output', 'Time', 'Issue'],
                   steps.map((step, index) => [
-                    `${step.order ?? index + 1}. ${text(step.name, 'Paso sin nombre')}`,
+                    `${step.order ?? index + 1}. ${text(step.name, 'Unnamed step')}`,
                     stakeholderName(input, step.actorStakeholderId, step.actorRole),
-                    [step.system, step.channel].filter(Boolean).join(' / ') || 'No especificado',
+                    [step.system, step.channel].filter(Boolean).join(' / ') || 'Not specified',
                     step.input ?? '-',
                     step.action ?? '-',
                     step.output ?? '-',
-                    [step.duration, step.waitTime ? `espera ${step.waitTime}` : ''].filter(Boolean).join(', ') || '-',
+                    [step.duration, step.waitTime ? `wait ${step.waitTime}` : ''].filter(Boolean).join(', ') || '-',
                     step.issue ?? '-'
                   ])
                 )
-              : '_Warning: seguimiento sin pasos observados._'
+              : '_Warning: transaction tracking session without observed steps._'
           ].filter(Boolean).join('\n');
         }).join('\n\n')
-      : '_No hay seguimientos transaccionales registrados. Los flujos por caso de uso se muestran como inferencias basicas._',
+      : '_No transaction tracking sessions registered. Use-case flows are shown as baseline inferences._',
     '',
     ...useCases.map((useCase, index) => {
       const linkedSessions = sessionsForUseCase(input, useCase);
@@ -885,96 +1038,99 @@ export const buildProcessMarkdown = (input: ImplementationSpecExportInput) => {
         ? linkedSessions.map((session, stepIndex) => [
             String(stepIndex + 1),
             useCase.actor,
-            'Sistema',
+            'System',
             sessionLabel(session),
-            'Aplicacion',
-            `Usar datos de trace_session ${session.id}; validar relaciones y evidencia.`
+            'Application',
+            `Use data from trace_session ${session.id}; validate relationships and evidence.`
           ])
         : [
-            ['1', useCase.actor, 'Frontend', `Iniciar ${useCase.title}`, 'UI', 'Crear formulario guiado y validar campos requeridos.'],
-            ['2', 'Frontend', 'Backend API', 'Enviar payload validado', 'API', 'Usar axios + TanStack Query mutation.'],
-            ['3', 'Backend API', 'Servicio de dominio', 'Validar reglas del requisito', 'Service', `Aplicar criterios de ${useCase.requirement.code}.`],
-            ['4', 'Servicio de dominio', 'SQLite', 'Persistir cambios', 'DB', 'Usar SQLModel y transaccion corta.'],
-            ['5', 'Backend API', useCase.actor, 'Confirmar resultado', 'UI', 'Mostrar estado, detalle y siguiente accion.']
+            ['1', useCase.actor, 'Frontend', `Start ${useCase.title}`, 'UI', 'Create a guided form and validate required fields.'],
+            ['2', 'Frontend', 'Backend API', 'Send validated payload', 'API', 'Use Axios + TanStack Query mutation.'],
+            ['3', 'Backend API', 'Domain service', 'Validate requirement rules', 'Service', `Apply the acceptance criteria of ${useCase.requirement.code}.`],
+            ['4', 'Domain service', stack.backendDatabase || 'Database', 'Persist changes', 'DB', `Use ${stack.backendOrm || 'the persistence layer'} with a short transaction.`],
+            ['5', 'Backend API', useCase.actor, 'Return result', 'UI', 'Show resulting state, detail, and next action.']
           ];
       return [
-        `## Proceso ${index + 1}: ${useCase.title}`,
+        `## Process ${index + 1}: ${useCase.title}`,
         '',
-        `- Caso de uso: CU-${index + 1}`,
-        `- Requisito: ${useCase.requirement.code}`,
-        `- Origen: ${linkedSessions.length ? 'Sesiones/hallazgos trazables' : 'Inferencia por falta de proceso paso a paso'}`,
+        `- Use case: CU-${index + 1}`,
+        `- Requirement: ${useCase.requirement.code}`,
+        `- Source: ${linkedSessions.length ? 'Traceable sessions/findings' : 'Inference due to missing step-by-step process data'}`,
         '',
-        markdownTable(['Paso', 'Origen', 'Destino', 'Accion', 'Capa', 'Hint de implementacion'], processRows),
+        markdownTable(['Step', 'Source', 'Target', 'Action', 'Layer', 'Implementation hint'], processRows),
         '',
-        '### Validaciones requeridas',
+        '### Required validations',
         '',
         bulletList([
-          'Usuario autenticado con JWT cuando la ruta no sea publica.',
-          `Payload cumple criterios de aceptacion de ${useCase.requirement.code}.`,
-          'Relaciones referenciadas existen antes de persistir.',
-          'Errores se muestran en UI con mensaje claro.'
+          'User is authenticated with JWT when the route is not public.',
+          `Payload satisfies the acceptance criteria of ${useCase.requirement.code}.`,
+          'Referenced relationships exist before persistence.',
+          'Errors are shown in the UI with a clear message.'
         ]),
         '',
-        '### Entidades afectadas',
+        '### Affected entities',
         '',
-        bulletList(inferEntities(input).slice(0, 5).map((entity) => entity.name))
+        bulletList(implementationEntityNames(input).slice(0, 6), '- Pending validation against the data model.')
       ].join('\n');
     })
   ].join('\n');
 };
 
-export const buildExecutionMarkdown = () => [
-  '# Plan de ejecucion',
-  '',
-  '## Fase 1: Lectura y plan',
-  '',
-  '- Leer archivos 01 a 08 en orden.',
-  '- Identificar errores bloqueantes del reporte de validacion.',
-  '- Confirmar entidades finales antes de migraciones si hay LOW_CONFIDENCE.',
-  '',
-  '## Fase 2: Backend setup',
-  '',
-  '- Crear proyecto FastAPI.',
-  '- Configurar SQLModel, SQLite, Alembic, settings y CORS.',
-  '- Implementar seguridad JWT y seed admin.',
-  '',
-  '## Fase 3: Backend API',
-  '',
-  '- Modelos y migraciones.',
-  '- Schemas de request/response.',
-  '- Routers y services por entidad/caso de uso.',
-  '- Tests minimos de auth y CRUD central.',
-  '',
-  '## Fase 4: Frontend setup',
-  '',
-  '- Crear Vite React TypeScript.',
-  '- Instalar Bootstrap, React Router, TanStack Query, Zustand y Axios.',
-  '- Configurar layout protegido, login y cliente API.',
-  '',
-  '## Fase 5: Features y rutas',
-  '',
-  '- Implementar dashboard operativo.',
-  '- Implementar CRUD de entidades.',
-  '- Implementar flujos principales descritos en 05_PROCESS.md.',
-  '',
-  '## Fase 6: UX/UI',
-  '',
-  '- Aplicar sistema visual de 07_DESIGN.md.',
-  '- Agregar empty states, badges, feedback de guardado, loading y errores.',
-  '- Evitar pantallas con tabla cruda como unica experiencia.',
-  '',
-  '## Fase 7: Verificacion final',
-  '',
-  '- Ejecutar backend tests.',
-  '- Ejecutar build frontend.',
-  '- Probar login, navegacion y CRUD.',
-  '- Revisar warnings pendientes.',
-  '',
-  '## Fase 8: Integracion CRUD',
-  '',
-  '- Validar crear, listar, editar y eliminar/logical delete por entidad.',
-  '- Validar que cada caso de uso tenga accion visible y persistencia real.'
-].join('\n');
+export const buildExecutionMarkdown = (input: ImplementationSpecExportInput) => {
+  const stack = targetStackFor(input);
+  return [
+    '# Execution plan',
+    '',
+    '## Phase 1: Read and plan',
+    '',
+    '- Read files 01 to 08 in order.',
+    '- Identify blocking issues from the validation report.',
+    '- Confirm final entities before migrations when `LOW_CONFIDENCE` markers exist.',
+    '',
+    '## Phase 2: Backend setup',
+    '',
+    `- Create the backend project with ${stack.backendFramework} (${stack.backendLanguage}).`,
+    `- Configure ${stack.backendOrm || 'the persistence layer'}, ${stack.backendDatabase}, ${stack.backendMigrations || 'migrations if applicable'}, settings, and CORS.`,
+    `- Implement ${stack.backendAuth || 'the authentication mechanism defined in architecture'} and the admin seed.`,
+    '',
+    '## Phase 3: Backend API',
+    '',
+    '- Implement models and migrations.',
+    '- Add request/response schemas or DTOs.',
+    '- Build routers/controllers and services per entity and use case.',
+    '- Add baseline auth and core CRUD tests.',
+    '',
+    '## Phase 4: Frontend setup',
+    '',
+    `- Create the frontend with ${stack.frontendFramework} (${stack.frontendLanguage}).`,
+    `- Install/configure ${[stack.frontendUi, stack.frontendRouting, stack.frontendDataFetching, stack.frontendState].filter(Boolean).join(', ') || 'the frontend libraries defined in architecture'}.`,
+    '- Configure the protected layout, login flow, and API client.',
+    '',
+    '## Phase 5: Features and routes',
+    '',
+    '- Implement the operational dashboard.',
+    '- Implement entity CRUD.',
+    '- Implement the primary flows described in `05_PROCESS.md`.',
+    '',
+    '## Phase 6: UX/UI',
+    '',
+    '- Apply the visual system from `07_DESIGN.md`.',
+    '- Add empty states, badges, save feedback, loading states, and error handling.',
+    '- Avoid screens where a raw table is the only interaction model.',
+    '',
+    '## Phase 7: Final verification',
+    '',
+    `- Run backend tests: ${stack.backendTesting || 'according to the selected stack'}.`,
+    `- Run frontend tests/build: ${stack.frontendTesting || 'according to the selected stack'}.`,
+    '- Verify login, navigation, and CRUD flows.',
+    '- Review any remaining warnings.',
+    '',
+    '## Phase 8: CRUD integration',
+    '',
+    '- Validate create, list, edit, and delete/logical-delete behavior per entity.',
+    '- Validate that every use case has a visible action and real persistence.'
+  ].join('\n');
+};
 
 const designInputContent = (input: ImplementationSpecExportInput) =>
   (input.designInputs ?? [])
@@ -988,56 +1144,56 @@ const designInputContent = (input: ImplementationSpecExportInput) =>
 export const buildDesignMarkdown = (input: ImplementationSpecExportInput) => {
   const inputs = designInputContent(input);
   return [
-    '# Design system y experiencia',
+    '# Design system and experience',
     '',
-    'La interfaz debe sentirse cercana a Vercel, Figma, Linear, Raycast y Stripe: sobria, rapida, precisa y profesional.',
+    'The interface should feel close to Vercel, Figma, Linear, Raycast, and Stripe: restrained, fast, precise, and professional.',
     '',
-    '## Instrucciones de diseno importadas',
+    '## Imported design instructions',
     '',
     inputs.length > 0
-      ? 'Esta seccion incluye lineamientos manuales importados a Specora, por ejemplo archivos `.md` generados por Stitch. El equipo implementador debe tratarlos como referencia prioritaria, validando que no contradigan requisitos funcionales, accesibilidad ni alcance.'
-      : 'No se importaron archivos de diseno. Usa las reglas base de este documento y valida visualmente las pantallas principales.',
+      ? 'This section includes manual guidelines imported into Specora, such as `.md` files generated by Stitch. The implementation team should treat them as high-priority references, validating that they do not contradict functional requirements, accessibility, or scope.'
+      : 'No design files were imported. Use the baseline rules in this document and manually validate the main screens.',
     '',
     ...inputs.flatMap((file, index) => [
-      `### Fuente ${index + 1}: ${file.path}`,
+      `### Source ${index + 1}: ${file.path}`,
       '',
       '```md',
       file.content.slice(0, 12000),
-      file.content.length > 12000 ? '\n<!-- Contenido recortado por longitud. Revisar archivo fuente completo en el paquete del proyecto. -->' : '',
+      file.content.length > 12000 ? '\n<!-- Content trimmed due to length. Review the full source file in the project package. -->' : '',
       '```',
       ''
     ]),
-    '## Paleta base',
+    '## Base palette',
     '',
-    '- Base: zinc/neutra (`#09090b`, `#18181b`, `#27272a`, `#71717a`, `#e4e4e7`, `#fafafa`).',
-    '- Acento principal: azul o indigo sobrio para acciones primarias.',
-    '- Estados: verde para exito, amber para advertencia, rojo para error.',
-    '- Si el archivo importado define tokens visuales distintos, usarlos solo cuando mantengan contraste y consistencia.',
+    '- Base: zinc/neutral (`#09090b`, `#18181b`, `#27272a`, `#71717a`, `#e4e4e7`, `#fafafa`).',
+    '- Primary accent: restrained blue or indigo for primary actions.',
+    '- States: green for success, amber for warning, red for error.',
+    '- If the imported file defines different visual tokens, use them only when they preserve contrast and consistency.',
     '',
-    '## Componentes',
+    '## Components',
     '',
-    '- `PageHeader`: titulo, descripcion corta y acciones principales.',
-    '- `Card`: radio maximo 8px, borde sutil, padding consistente.',
-    '- `Button`: variantes primary, secondary, ghost y danger; con icono cuando aplique.',
-    '- `Input`: label visible, ayuda corta, error inline.',
-    '- `Badge`: estado compacto con contraste suficiente.',
-    '- `EmptyState`: mensaje breve, accion siguiente y sin ilustraciones decorativas pesadas.',
-    '- `DataToolbar`: busqueda, filtros y ordenamiento.',
+    '- `PageHeader`: title, short description, and primary actions.',
+    '- `Card`: maximum 8px radius, subtle border, consistent padding.',
+    '- `Button`: primary, secondary, ghost, and danger variants, with icon when appropriate.',
+    '- `Input`: visible label, short help text, inline error.',
+    '- `Badge`: compact status token with sufficient contrast.',
+    '- `EmptyState`: short message, next action, and no heavy decorative illustration.',
+    '- `DataToolbar`: search, filters, and sorting.',
     '',
     '## Layout',
     '',
-    '- Sidebar estable para modulos principales.',
-    '- Contenido max-width controlado, pero tablas y workbenches pueden usar ancho completo.',
-    '- Responsive desde mobile: formularios en una columna, acciones agrupadas.',
-    '- Densidad empresarial: menos hero, mas informacion escaneable.',
+    '- Stable sidebar for primary modules.',
+    '- Controlled content max-width, but tables and workbenches may use full width.',
+    '- Responsive from mobile upward: single-column forms, grouped actions.',
+    '- Enterprise density: less hero, more scannable information.',
     '',
-    '## Reglas de calidad visual',
+    '## Visual quality rules',
     '',
-    '- No crear CRUD feo: cada lista debe tener busqueda, filtros, estado, accion principal y detalle.',
-    '- No meter cards dentro de cards.',
-    '- Los textos no deben desbordar botones, badges ni tablas.',
-    '- Cada pantalla debe mostrar claramente que se puede hacer despues.',
-    '- Las referencias importadas desde Stitch son guia visual; la implementacion final debe seguir criterios de accesibilidad, responsive y validacion manual.'
+    '- Avoid ugly CRUD: each list must have search, filters, state, a primary action, and detail access.',
+    '- Do not place cards inside cards.',
+    '- Text must not overflow buttons, badges, or tables.',
+    '- Every screen must make the next action obvious.',
+    '- References imported from Stitch are visual guidance; the final implementation must still satisfy accessibility, responsive behavior, and manual validation.'
   ].join('\n');
 };
 
@@ -1048,10 +1204,10 @@ export const buildValidationReportMarkdown = (input: ImplementationSpecExportInp
   return [
     '# Validation report',
     '',
-    `Sistema: ${projectName(input)}`,
-    `Generado: ${nowIso(input)}`,
-    `Score de preparacion: ${readiness.score}/100`,
-    `Estado: ${readiness.status}`,
+    `System: ${projectName(input)}`,
+    `Generated: ${nowIso(input)}`,
+    `Readiness score: ${readiness.score}/100`,
+    `Status: ${readiness.status}`,
     '',
     '## Errors',
     '',
@@ -1060,7 +1216,7 @@ export const buildValidationReportMarkdown = (input: ImplementationSpecExportInp
         ...readiness.errors.map((issue) => `[${issue.code}] ${issue.title}: ${issue.description}`),
         ...issues.errors.map((issue) => `[${issue.code}] ${issue.message}`)
       ],
-      '- Sin errores bloqueantes detectados.'
+      '- No blocking errors detected.'
     ),
     '',
     '## Warnings',
@@ -1070,7 +1226,7 @@ export const buildValidationReportMarkdown = (input: ImplementationSpecExportInp
         ...readiness.warnings.map((issue) => `[${issue.code}] ${issue.title}: ${issue.description}`),
         ...issues.warnings.map((issue) => `[${issue.code}] ${issue.message}`)
       ],
-      '- Sin warnings detectados.'
+      '- No warnings detected.'
     ),
     '',
     '## Suggestions',
@@ -1080,13 +1236,13 @@ export const buildValidationReportMarkdown = (input: ImplementationSpecExportInp
         ...readiness.suggestions.map((issue) => `[${issue.code}] ${issue.title}: ${issue.description}`),
         ...issues.suggestions.map((issue) => `[${issue.code}] ${issue.message}`)
       ],
-      '- Sin sugerencias adicionales.'
+      '- No additional suggestions.'
     ),
     '',
-    '## Matriz de faltantes',
+    '## Missing items matrix',
     '',
     markdownTable(
-      ['Severidad', 'Codigo', 'Modulo', 'Accion'],
+      ['Severity', 'Code', 'Module', 'Action'],
       [...readiness.errors, ...readiness.warnings, ...readiness.suggestions].map((issue) => [
         issue.severity,
         issue.code,
@@ -1095,36 +1251,36 @@ export const buildValidationReportMarkdown = (input: ImplementationSpecExportInp
       ])
     ),
     '',
-    '## Cobertura de trazabilidad',
+    '## Traceability coverage',
     '',
     markdownTable(
-      ['Elemento', 'Total'],
+      ['Element', 'Total'],
       [
         ['Stakeholders', String(input.stakeholders.length)],
-        ['Sesiones', String(input.sessions.length)],
-        ['Hallazgos', String(input.findings.length)],
-        ['Requisitos', String(input.requirements.length)],
-        ['Casos de uso', String(useCasesFor(input).length)],
-        ['Contratos tecnicos', String(input.implementationContracts?.length ?? 0)],
-        ['Entidades manuales', String(input.dataEntities?.length ?? 0)],
-        ['Roles objetivo', String(input.targetRoles?.length ?? 0)],
-        ['Insumos de diseno importados', String(input.designInputs?.length ?? 0)],
-        ['Diagramas derivados', String(input.diagrams.length)],
-        ['Diagramas guardados', String(input.savedDiagrams.length)]
+        ['Sessions', String(input.sessions.length)],
+        ['Findings', String(input.findings.length)],
+        ['Requirements', String(input.requirements.length)],
+        ['Use cases', String(useCasesFor(input).length)],
+        ['Technical contracts', String(input.implementationContracts?.length ?? 0)],
+        ['Manual entities', String(input.dataEntities?.length ?? 0)],
+        ['Target roles', String(input.targetRoles?.length ?? 0)],
+        ['Imported design inputs', String(input.designInputs?.length ?? 0)],
+        ['Derived diagrams', String(input.diagrams.length)],
+        ['Saved diagrams', String(input.savedDiagrams.length)]
       ]
     ),
     '',
-    '## Checklist evaluable',
+    '## Evaluatable checklist',
     '',
     bulletList([
-      'Backend corre localmente con comandos documentados.',
-      'Frontend corre localmente con comandos documentados.',
-      'Login/autenticacion funciona si el sistema requiere roles.',
-      'CRUD principal completo para entidades centrales.',
-      'Validaciones de negocio implementadas en backend.',
-      'Errores 400/401/403/404/409/422 documentados donde aplique.',
-      'README con pasos de instalacion, seed y ejemplos de uso.',
-      'Pruebas basicas de API y flujo principal.'
+      'Backend runs locally with documented commands.',
+      'Frontend runs locally with documented commands.',
+      'Login/authentication works when the system requires roles.',
+      'Core CRUD is complete for central entities.',
+      'Business validations are implemented in the backend.',
+      'HTTP 400/401/403/404/409/422 errors are documented where applicable.',
+      'README includes installation, seed, and usage examples.',
+      'Baseline API and primary flow tests exist.'
     ])
   ].join('\n');
 };
@@ -1135,7 +1291,7 @@ export const buildImplementationSpecFiles = (input: ImplementationSpecExportInpu
   { path: '03_CLASS_MODEL.md', content: buildClassModelMarkdown(input) },
   { path: '04_ARCHITECTURE.md', content: buildArchitectureMarkdown(input) },
   { path: '05_PROCESS.md', content: buildProcessMarkdown(input) },
-  { path: '06_EXECUTION.md', content: buildExecutionMarkdown() },
+  { path: '06_EXECUTION.md', content: buildExecutionMarkdown(input) },
   { path: '07_DESIGN.md', content: buildDesignMarkdown(input) },
   { path: '08_VALIDATION_REPORT.md', content: buildValidationReportMarkdown(input) }
 ];
