@@ -451,111 +451,6 @@ const targetStackFor = (input: ImplementationSpecExportInput): TargetStack => in
   commands: []
 };
 
-const backendStructureFor = (stack: TargetStack) => {
-  const backend = `${stack.backendFramework} ${stack.backendLanguage}`.toLowerCase();
-  if (backend.includes('nest')) {
-    return [
-      'backend/',
-      '  src/',
-      '    main.ts',
-      '    app.module.ts',
-      '    config/',
-      '    auth/',
-      '    common/',
-      '    modules/',
-      '      reservations/',
-      '        reservations.controller.ts',
-      '        reservations.service.ts',
-      '        dto/',
-      '        entities/',
-      '    database/',
-      '    migrations/',
-      '  test/'
-    ];
-  }
-  if (backend.includes('express') || backend.includes('node')) {
-    return [
-      'backend/',
-      '  src/',
-      '    server.ts',
-      '    app.ts',
-      '    config/',
-      '    middleware/',
-      '    modules/',
-      '      reservations/',
-      '        reservation.routes.ts',
-      '        reservation.service.ts',
-      '        reservation.repository.ts',
-      '        reservation.schemas.ts',
-      '    db/',
-      '    tests/'
-    ];
-  }
-  if (backend.includes('fastapi') || backend.includes('python')) {
-    return [
-      'backend/',
-      '  app/',
-      '    main.py',
-      '    core/config.py',
-      '    core/security.py',
-      '    db/session.py',
-      '    models/',
-      '    schemas/',
-      '    services/',
-      '    routers/',
-      '    seed.py',
-      '  alembic/',
-      '  tests/'
-    ];
-  }
-  return [
-    'backend/',
-    '  src/',
-    '    config/',
-    '    auth/',
-    '    modules/',
-    '    persistence/',
-    '    tests/'
-  ];
-};
-
-const frontendStructureFor = (stack: TargetStack) => {
-  const frontend = `${stack.frontendFramework} ${stack.frontendLanguage}`.toLowerCase();
-  if (frontend.includes('angular')) {
-    return [
-      'frontend/',
-      '  src/app/',
-      '    core/',
-      '    shared/',
-      '    features/',
-      '    layouts/',
-      '    services/',
-      '    guards/'
-    ];
-  }
-  if (frontend.includes('react') || frontend.includes('vite')) {
-    return [
-      'frontend/',
-      '  src/',
-      '    app/router.tsx',
-      '    api/client.ts',
-      '    auth/',
-      '    components/ui/',
-      '    features/',
-      '    layouts/',
-      '    stores/'
-    ];
-  }
-  return [
-    'frontend/',
-    '  src/',
-    '    api/',
-    '    auth/',
-    '    components/',
-    '    features/',
-    '    routes/'
-  ];
-};
 
 const fieldRows = (fields: { name: string; type: string; required?: boolean; description?: string; example?: string }[]) =>
   fields.map((field) => [
@@ -1081,12 +976,6 @@ export const buildArchitectureMarkdown = (input: ImplementationSpecExportInput) 
     `- Testing: ${stack.backendTesting || 'Not specified'}.`,
     '- Layers: controllers/routers, DTOs/schemas, services, repositories when they add clarity, entities/models, and centralized configuration.',
     '',
-    '### Suggested structure',
-    '',
-    '```txt',
-    ...backendStructureFor(stack),
-    '```',
-    '',
     '## Frontend target',
     '',
     `- Framework/build: ${stack.frontendFramework}.`,
@@ -1096,12 +985,6 @@ export const buildArchitectureMarkdown = (input: ImplementationSpecExportInput) 
     `- Data fetching: ${stack.frontendDataFetching || 'Not specified'}.`,
     `- State: ${stack.frontendState || 'Not specified'}.`,
     `- Testing: ${stack.frontendTesting || 'Not specified'}.`,
-    '',
-    '### Suggested structure',
-    '',
-    '```txt',
-    ...frontendStructureFor(stack),
-    '```',
     '',
     '## Implementation rules',
     '',
