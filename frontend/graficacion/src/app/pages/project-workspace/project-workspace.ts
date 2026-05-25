@@ -105,6 +105,8 @@ type TransactionTrackingStepDraft = {
   duration: string;
   waitTime: string;
   issue: string;
+  bottleneck: string;
+  handoffTo: string;
   evidenceRef: string;
   notes: string;
 };
@@ -281,6 +283,8 @@ export class ProjectWorkspace {
       duration: '',
       waitTime: '',
       issue: '',
+      bottleneck: '',
+      handoffTo: '',
       evidenceRef: '',
       notes: ''
     }
@@ -471,11 +475,20 @@ export class ProjectWorkspace {
     requestFieldsText: [''],
     responseFieldsText: [''],
     businessRulesText: [''],
+    blockingRulesText: [''],
+    stateRulesText: [''],
+    requiredVisibleDataText: [''],
     validationsText: [''],
     expectedErrorsText: [''],
     permissionsText: [''],
     acceptanceChecksText: [''],
-    testCasesText: ['']
+    testCasesText: [''],
+    screenFieldsText: [''],
+    visibleColumnsText: [''],
+    quickActionsText: [''],
+    filtersText: [''],
+    sideEffectsText: [''],
+    uiErrorBehaviorText: ['']
   });
 
   readonly dataEntityForm = this.fb.group({
@@ -1491,6 +1504,8 @@ export class ProjectWorkspace {
         duration: '',
         waitTime: '',
         issue: '',
+        bottleneck: '',
+        handoffTo: '',
         evidenceRef: '',
         notes: ''
       }
@@ -1511,6 +1526,8 @@ export class ProjectWorkspace {
       duration: '',
       waitTime: '',
       issue: '',
+      bottleneck: '',
+      handoffTo: '',
       evidenceRef: '',
       notes: ''
     }]);
@@ -3049,11 +3066,20 @@ export class ProjectWorkspace {
       requestFields: this.parseFieldSpecs(value.requestFieldsText),
       responseFields: this.parseFieldSpecs(value.responseFieldsText),
       businessRules: this.lines(value.businessRulesText),
+      blockingRules: this.lines(value.blockingRulesText),
+      stateRules: this.lines(value.stateRulesText),
+      requiredVisibleData: this.lines(value.requiredVisibleDataText),
       validations: this.lines(value.validationsText),
       expectedErrors: this.parseExpectedErrors(value.expectedErrorsText),
       permissions: this.lines(value.permissionsText),
       acceptanceChecks: this.lines(value.acceptanceChecksText),
-      testCases: this.lines(value.testCasesText)
+      testCases: this.lines(value.testCasesText),
+      screenFields: this.lines(value.screenFieldsText),
+      visibleColumns: this.lines(value.visibleColumnsText),
+      quickActions: this.lines(value.quickActionsText),
+      filters: this.lines(value.filtersText),
+      sideEffects: this.lines(value.sideEffectsText),
+      uiErrorBehavior: this.lines(value.uiErrorBehaviorText)
     };
     this.implementationContracts.update((contracts) => [
       contract,
@@ -3073,11 +3099,20 @@ export class ProjectWorkspace {
       requestFieldsText: this.formatFieldSpecs(contract.requestFields),
       responseFieldsText: this.formatFieldSpecs(contract.responseFields),
       businessRulesText: contract.businessRules.join('\n'),
+      blockingRulesText: (contract.blockingRules ?? []).join('\n'),
+      stateRulesText: (contract.stateRules ?? []).join('\n'),
+      requiredVisibleDataText: (contract.requiredVisibleData ?? []).join('\n'),
       validationsText: contract.validations.join('\n'),
       expectedErrorsText: contract.expectedErrors.map((item) => `${item.statusCode} | ${item.condition} | ${item.message}`).join('\n'),
       permissionsText: contract.permissions.join('\n'),
       acceptanceChecksText: contract.acceptanceChecks.join('\n'),
-      testCasesText: contract.testCases.join('\n')
+      testCasesText: contract.testCases.join('\n'),
+      screenFieldsText: (contract.screenFields ?? []).join('\n'),
+      visibleColumnsText: (contract.visibleColumns ?? []).join('\n'),
+      quickActionsText: (contract.quickActions ?? []).join('\n'),
+      filtersText: (contract.filters ?? []).join('\n'),
+      sideEffectsText: (contract.sideEffects ?? []).join('\n'),
+      uiErrorBehaviorText: (contract.uiErrorBehavior ?? []).join('\n')
     });
   }
 
@@ -3834,6 +3869,8 @@ export class ProjectWorkspace {
         duration: step.duration.trim(),
         waitTime: step.waitTime.trim(),
         issue: step.issue.trim(),
+        bottleneck: step.bottleneck.trim(),
+        handoffTo: step.handoffTo.trim(),
         evidenceRef: step.evidenceRef.trim(),
         notes: step.notes.trim()
       }))

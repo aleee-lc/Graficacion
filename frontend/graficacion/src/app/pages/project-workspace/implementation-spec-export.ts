@@ -56,6 +56,15 @@ type ValidationIssue = {
   message: string;
 };
 
+type DomainExecutionPolicy = {
+  domainType: string;
+  requiresDomainReasoning: boolean;
+  requiresExternalResearch: boolean;
+  researchTriggers: string[];
+  operationalFocusAreas: string[];
+  forbiddenSimplifications: string[];
+};
+
 const STOPWORDS = new Set([
   'para',
   'como',
@@ -157,6 +166,87 @@ const markdownTable = (headers: string[], rows: string[][]) => {
 const projectName = (input: ImplementationSpecExportInput) =>
   text(input.project?.name, `Proyecto ${input.projectId ?? 'Specora'}`);
 
+const sourceCorpus = (input: ImplementationSpecExportInput) =>
+  normalize([
+    input.project?.name,
+    input.project?.objective,
+    input.project?.scope,
+    input.project?.description,
+    ...input.processes.map((process) => `${process.name} ${process.description ?? ''}`),
+    ...input.requirements.map((requirement) => `${requirement.description} ${requirement.acceptance_criteria}`),
+    ...input.findings.map((finding) => finding.statement),
+    ...(input.dataEntities ?? []).map((entity) => `${entity.name} ${entity.description ?? ''}`)
+  ].join(' '));
+
+const domainExecutionPolicyFor = (input: ImplementationSpecExportInput): DomainExecutionPolicy => {
+  const corpus = sourceCorpus(input);
+  if (/(hotel|pms|folio|habitacion|huesped|checkin|checkout|housekeeping|night audit|reserv)/.test(corpus)) {
+    return {
+      domainType: 'PMS / hotel operations',
+      requiresDomainReasoning: true,
+      requiresExternalResearch: true,
+      researchTriggers: [
+        'missing folio behavior',
+        'missing room lifecycle rules',
+        'missing front desk visibility rules',
+        'missing housekeeping coordination details',
+        'missing night audit or shift handoff behavior'
+      ],
+      operationalFocusAreas: [
+        'reservation lifecycle',
+        'front desk board behavior',
+        'folio, deposit, payment, and balance handling',
+        'room operational states and housekeeping coordination',
+        'shift handoff and night audit controls'
+      ],
+      forbiddenSimplifications: [
+        'generic reservation CRUD only',
+        'front desk without folio visibility',
+        'checkout without balance validation',
+        'room assignment without operational state constraints'
+      ]
+    };
+  }
+  if (/(clinic|appointment|patient|doctor|cita|paciente|medic)/.test(corpus)) {
+    return {
+      domainType: 'Clinic / appointment operations',
+      requiresDomainReasoning: true,
+      requiresExternalResearch: true,
+      researchTriggers: ['missing appointment lifecycle rules', 'missing role separation', 'missing patient flow behavior'],
+      operationalFocusAreas: ['appointment scheduling', 'patient and practitioner roles', 'availability conflicts', 'check-in and service flow'],
+      forbiddenSimplifications: ['generic appointment CRUD only', 'no conflict validation', 'no role-aware workflow']
+    };
+  }
+  if (/(restaurant|mesa|order|kitchen|ticket|comanda|pos)/.test(corpus)) {
+    return {
+      domainType: 'Restaurant / POS operations',
+      requiresDomainReasoning: true,
+      requiresExternalResearch: true,
+      researchTriggers: ['missing ticket state flow', 'missing kitchen workflow', 'missing payment split behavior'],
+      operationalFocusAreas: ['order lifecycle', 'table occupancy', 'kitchen handoff', 'payment and closeout behavior'],
+      forbiddenSimplifications: ['generic order CRUD only', 'no ticket states', 'no handoff between floor and kitchen']
+    };
+  }
+  if (/(logistic|shipment|warehouse|tracking|delivery|inventory)/.test(corpus)) {
+    return {
+      domainType: 'Logistics / order tracking',
+      requiresDomainReasoning: true,
+      requiresExternalResearch: true,
+      researchTriggers: ['missing status transitions', 'missing warehouse handoff rules', 'missing exception flow'],
+      operationalFocusAreas: ['order lifecycle', 'tracking statuses', 'handoff points', 'inventory and fulfillment constraints'],
+      forbiddenSimplifications: ['generic shipment CRUD only', 'no state transitions', 'no exception handling']
+    };
+  }
+  return {
+    domainType: 'Generic business system',
+    requiresDomainReasoning: true,
+    requiresExternalResearch: false,
+    researchTriggers: ['operational gaps remain unresolved after reading requirements and process files'],
+    operationalFocusAreas: ['state transitions', 'blocking rules', 'required visible data', 'daily operator workflows'],
+    forbiddenSimplifications: ['raw CRUD as the only delivery shape', 'ignoring blocking rules or state-dependent behavior']
+  };
+};
+
 const actorsFor = (input: ImplementationSpecExportInput) => {
   const stakeholderActors = input.stakeholders.map((stakeholder) =>
     `${stakeholder.name} (${stakeholder.role || stakeholder.type})`
@@ -193,6 +283,8 @@ const transactionStepsFor = (session: Session) => {
         duration?: string;
         waitTime?: string;
         issue?: string;
+        bottleneck?: string;
+        handoffTo?: string;
         evidenceRef?: string;
         notes?: string;
       }>
@@ -531,6 +623,18 @@ const collectValidationIssues = (input: ImplementationSpecExportInput, entities 
     if (!contract.expectedErrors.length) {
       warnings.push({ code: 'CONTRACT_WITHOUT_EXPECTED_ERRORS', message: `${requirement.code}: contract without expected errors.` });
     }
+    if (!(contract.blockingRules ?? []).length) {
+      warnings.push({ code: 'CONTRACT_WITHOUT_BLOCKING_RULES', message: `${requirement.code}: contract without blocking rules — document preconditions that prevent the operation.` });
+    }
+    if (!(contract.stateRules ?? []).length) {
+      warnings.push({ code: 'CONTRACT_WITHOUT_STATE_RULES', message: `${requirement.code}: contract without state lifecycle rules — document how the resource state changes.` });
+    }
+    if (!(contract.screenFields ?? []).length) {
+      warnings.push({ code: 'CONTRACT_WITHOUT_SCREEN_FIELDS', message: `${requirement.code}: contract without required screen fields — document what the operator must see and interact with.` });
+    }
+  }
+  if (contracts.length > 0 && contracts.every((c) => !(c.visibleColumns ?? []).length)) {
+    warnings.push({ code: 'NO_VISIBLE_COLUMNS', message: 'No contract specifies visible list columns. Define what data must appear in table/list views.' });
   }
   if (!(input.dataEntities ?? []).length) {
     warnings.push({ code: 'NO_MANUAL_DATA_MODEL', message: 'No manual data-model entities were captured; inferred entities will be used.' });
@@ -577,6 +681,7 @@ const collectValidationIssues = (input: ImplementationSpecExportInput, entities 
 
 export const buildAgentInstructionsMarkdown = (input: ImplementationSpecExportInput) => {
   const stack = targetStackFor(input);
+  const policy = domainExecutionPolicyFor(input);
   return [
     '# Instructions for the implementation team',
     '',
@@ -613,6 +718,26 @@ export const buildAgentInstructionsMarkdown = (input: ImplementationSpecExportIn
     '- Any inferred output must stay easy to adjust in code: clear names, small services, and reusable components.',
     '- Keep full CRUD for core entities and guided workflows for primary use cases.',
     '- Every endpoint must validate permissions, payload shape, and business state before persisting.',
+    '',
+    '## Domain execution policy',
+    '',
+    `- Domain type: ${policy.domainType}.`,
+    `- Domain-aware reasoning required: ${policy.requiresDomainReasoning ? 'Yes' : 'No'}.`,
+    `- External research expected when operational gaps remain: ${policy.requiresExternalResearch ? 'Yes' : 'No'}.`,
+    '- Do not reduce operational systems to generic CRUD when the domain implies dashboards, blocking rules, state transitions, financial behavior, or handoff workflows.',
+    '- Any inferred behavior must be traceable to explicit specs, traced findings/evidence, domain-standard behavior, or a clearly labeled assumption.',
+    '',
+    '### Research triggers',
+    '',
+    bulletList(policy.researchTriggers),
+    '',
+    '### Operational focus areas',
+    '',
+    bulletList(policy.operationalFocusAreas),
+    '',
+    '### Forbidden simplifications',
+    '',
+    bulletList(policy.forbiddenSimplifications),
     '',
     '## Final checklist',
     '',
@@ -733,6 +858,15 @@ export const buildRequirementsMarkdown = (input: ImplementationSpecExportInput) 
                 '##### Business rules',
                 bulletList(contract.businessRules, '- Pending'),
                 '',
+                '##### Blocking rules',
+                bulletList((contract.blockingRules ?? []), '- None captured. Document preconditions that prevent the operation from proceeding.'),
+                '',
+                '##### State lifecycle rules',
+                bulletList((contract.stateRules ?? []), '- None captured. Document how the resource state changes through this operation.'),
+                '',
+                '##### Required visible data',
+                bulletList((contract.requiredVisibleData ?? []), '- None captured. Document what the operator must see to act on this screen.'),
+                '',
                 '##### Validations',
                 bulletList(contract.validations, '- Pending'),
                 '',
@@ -746,7 +880,25 @@ export const buildRequirementsMarkdown = (input: ImplementationSpecExportInput) 
                 bulletList(contract.permissions, '- Pending'),
                 '',
                 '##### Test cases',
-                bulletList(contract.testCases, '- Pending')
+                bulletList(contract.testCases, '- Pending'),
+                '',
+                '##### Required screen fields',
+                bulletList((contract.screenFields ?? []), '- None captured. Document the fields the operator must see and interact with on this screen.'),
+                '',
+                '##### Visible list columns',
+                bulletList((contract.visibleColumns ?? []), '- None captured. Document what columns must be visible in the list or table view.'),
+                '',
+                '##### Quick actions',
+                bulletList((contract.quickActions ?? []), '- None captured.'),
+                '',
+                '##### Filters',
+                bulletList((contract.filters ?? []), '- None captured.'),
+                '',
+                '##### Side effects',
+                bulletList((contract.sideEffects ?? []), '- None captured. Document state changes or downstream effects triggered by this operation.'),
+                '',
+                '##### UI behavior on errors',
+                bulletList((contract.uiErrorBehavior ?? []), '- None captured. Document how the interface should react to each expected error.')
               ].join('\n')
             : '_Warning: missing manual technical contract for this requirement._';
         })()
@@ -1015,7 +1167,7 @@ export const buildProcessMarkdown = (input: ImplementationSpecExportInput) => {
             '',
             steps.length
               ? markdownTable(
-                  ['Step', 'Actor', 'System/channel', 'Input', 'Action', 'Output', 'Time', 'Issue'],
+                  ['Step', 'Actor', 'System/channel', 'Input', 'Action', 'Output', 'Time', 'Issue', 'Bottleneck', 'Handoff to'],
                   steps.map((step, index) => [
                     `${step.order ?? index + 1}. ${text(step.name, 'Unnamed step')}`,
                     stakeholderName(input, step.actorStakeholderId, step.actorRole),
@@ -1024,7 +1176,9 @@ export const buildProcessMarkdown = (input: ImplementationSpecExportInput) => {
                     step.action ?? '-',
                     step.output ?? '-',
                     [step.duration, step.waitTime ? `wait ${step.waitTime}` : ''].filter(Boolean).join(', ') || '-',
-                    step.issue ?? '-'
+                    step.issue ?? '-',
+                    step.bottleneck || '-',
+                    step.handoffTo || '-'
                   ])
                 )
               : '_Warning: transaction tracking session without observed steps._'
@@ -1078,6 +1232,7 @@ export const buildProcessMarkdown = (input: ImplementationSpecExportInput) => {
 
 export const buildExecutionMarkdown = (input: ImplementationSpecExportInput) => {
   const stack = targetStackFor(input);
+  const policy = domainExecutionPolicyFor(input);
   return [
     '# Execution plan',
     '',
@@ -1086,6 +1241,10 @@ export const buildExecutionMarkdown = (input: ImplementationSpecExportInput) => 
     '- Read files 01 to 08 in order.',
     '- Identify blocking issues from the validation report.',
     '- Confirm final entities before migrations when `LOW_CONFIDENCE` markers exist.',
+    `- Apply domain-aware reasoning for ${policy.domainType}.`,
+    ...(policy.requiresExternalResearch
+      ? ['- If operational gaps remain after reading the package, perform targeted external research before finalizing workflows, state transitions, or required visible fields.']
+      : []),
     '',
     '## Phase 2: Backend setup',
     '',
@@ -1111,6 +1270,7 @@ export const buildExecutionMarkdown = (input: ImplementationSpecExportInput) => 
     '- Implement the operational dashboard.',
     '- Implement entity CRUD.',
     '- Implement the primary flows described in `05_PROCESS.md`.',
+    '- Respect domain-specific blocking rules, visibility rules, and state transitions before calling the implementation complete.',
     '',
     '## Phase 6: UX/UI',
     '',
@@ -1123,12 +1283,22 @@ export const buildExecutionMarkdown = (input: ImplementationSpecExportInput) => 
     `- Run backend tests: ${stack.backendTesting || 'according to the selected stack'}.`,
     `- Run frontend tests/build: ${stack.frontendTesting || 'according to the selected stack'}.`,
     '- Verify login, navigation, and CRUD flows.',
+    '- Verify that the result behaves like the target domain operation, not only like a technically correct entity manager.',
     '- Review any remaining warnings.',
     '',
     '## Phase 8: CRUD integration',
     '',
     '- Validate create, list, edit, and delete/logical-delete behavior per entity.',
-    '- Validate that every use case has a visible action and real persistence.'
+    '- Validate that every use case has a visible action and real persistence.',
+    '',
+    '## Domain verification gates',
+    '',
+    bulletList([
+      `Confirm visible operational data for ${policy.domainType} is not hidden behind secondary screens.`,
+      'Confirm blocking rules and override rules are enforced where the process requires them.',
+      'Confirm state transitions match the real operational lifecycle, not only enum storage.',
+      ...(policy.requiresExternalResearch ? ['Document any external domain assumptions used to close operational gaps.'] : [])
+    ])
   ].join('\n');
 };
 
@@ -1201,6 +1371,7 @@ export const buildValidationReportMarkdown = (input: ImplementationSpecExportInp
   const entities = inferEntities(input);
   const issues = collectValidationIssues(input, entities);
   const readiness = readinessFor(input);
+  const policy = domainExecutionPolicyFor(input);
   return [
     '# Validation report',
     '',
@@ -1280,8 +1451,27 @@ export const buildValidationReportMarkdown = (input: ImplementationSpecExportInp
       'Business validations are implemented in the backend.',
       'HTTP 400/401/403/404/409/422 errors are documented where applicable.',
       'README includes installation, seed, and usage examples.',
-      'Baseline API and primary flow tests exist.'
-    ])
+      'Baseline API and primary flow tests exist.',
+      `Implementation was reviewed against the operational expectations of ${policy.domainType}.`
+    ]),
+    '',
+    '## Domain execution policy',
+    '',
+    `- Domain type: ${policy.domainType}`,
+    `- Domain-aware reasoning required: ${policy.requiresDomainReasoning ? 'Yes' : 'No'}`,
+    `- External research expected on gaps: ${policy.requiresExternalResearch ? 'Yes' : 'No'}`,
+    '',
+    '### Research triggers',
+    '',
+    bulletList(policy.researchTriggers),
+    '',
+    '### Operational focus areas',
+    '',
+    bulletList(policy.operationalFocusAreas),
+    '',
+    '### Forbidden simplifications',
+    '',
+    bulletList(policy.forbiddenSimplifications)
   ].join('\n');
 };
 

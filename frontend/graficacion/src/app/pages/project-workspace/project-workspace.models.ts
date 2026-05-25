@@ -246,11 +246,20 @@ export type ImplementationContract = {
   requestFields: FieldSpec[];
   responseFields: FieldSpec[];
   businessRules: string[];
+  blockingRules: string[];
+  stateRules: string[];
+  requiredVisibleData: string[];
   validations: string[];
   expectedErrors: ExpectedError[];
   permissions: string[];
   acceptanceChecks: string[];
   testCases: string[];
+  screenFields: string[];
+  visibleColumns: string[];
+  quickActions: string[];
+  filters: string[];
+  sideEffects: string[];
+  uiErrorBehavior: string[];
 };
 
 export type DataFieldSpec = {

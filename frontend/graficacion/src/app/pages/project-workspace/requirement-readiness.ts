@@ -184,6 +184,25 @@ export const buildRequirementReadiness = (input: RequirementReadinessInput): Req
   if (contractsWithoutErrors > 0) {
     warnings.push(issue('warning', 'CONTRACTS_WITHOUT_ERRORS', 'Contratos sin errores esperados', `${contractsWithoutErrors} contrato(s) no documentan errores esperados.`, 'technicalContracts', 'Agregar errores'));
   }
+  const contractsWithoutBlockingRules = contracts.filter((contract) => !(contract.blockingRules ?? []).length).length;
+  if (contracts.length > 0 && contractsWithoutBlockingRules === contracts.length) {
+    warnings.push(issue('warning', 'CONTRACTS_WITHOUT_BLOCKING_RULES', 'Sin reglas de bloqueo', 'Ningún contrato documenta reglas de bloqueo operacional (precondiciones que impiden el avance).', 'technicalContracts', 'Agregar reglas de bloqueo'));
+  }
+  const contractsWithoutStateRules = contracts.filter((contract) => !(contract.stateRules ?? []).length).length;
+  if (contracts.length > 0 && contractsWithoutStateRules === contracts.length) {
+    warnings.push(issue('warning', 'CONTRACTS_WITHOUT_STATE_RULES', 'Sin reglas de estado', 'Ningún contrato documenta el ciclo de vida del estado del recurso afectado.', 'technicalContracts', 'Agregar reglas de estado'));
+  }
+  const contractsWithoutScreenFields = contracts.filter((contract) => !(contract.screenFields ?? []).length).length;
+  if (contracts.length > 0 && contractsWithoutScreenFields === contracts.length) {
+    warnings.push(issue('warning', 'CONTRACTS_WITHOUT_SCREEN_FIELDS', 'Sin campos de pantalla', 'Ningún contrato especifica los campos requeridos en pantalla para operar el flujo.', 'technicalContracts', 'Agregar campos de pantalla'));
+  }
+  for (const transaction of transactionSessions) {
+    const steps = transactionSteps(transaction);
+    const hasBottleneck = steps.some((step) => String(step['bottleneck'] ?? '').trim());
+    if (steps.length >= 3 && !hasBottleneck) {
+      warnings.push(issue('warning', 'TRANSACTION_WITHOUT_BOTTLENECK', 'Seguimiento sin cuello de botella', `${transaction.title} tiene ${steps.length} pasos pero ninguno identifica un cuello de botella.`, 'tracking', 'Identificar cuello de botella'));
+    }
+  }
   if (entities.length === 0) {
     warnings.push(issue('warning', 'NO_DATA_MODEL', 'Sin modelo de datos manual', 'No hay entidades, campos, relaciones e integridad capturadas manualmente.', 'dataModel', 'Crear modelo'));
   }
