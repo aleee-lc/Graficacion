@@ -1451,6 +1451,11 @@
                 <button type="button" title="Importar JSON editable" (click)="diagramFileInput.click()"><span class="material-icons">upload_file</span></button>
                 <button type="button" title="Ver JSON" (click)="exportDiagramJson()"><span class="material-icons">data_object</span></button>
               </div>
+              <div class="toolbar-group">
+                <button type="button" title="Ajustar vista al contenido" (click)="fitDiagramToContent()"><span class="material-icons">fit_screen</span><span>Ajustar</span></button>
+                <button type="button" title="Exportar como SVG" (click)="exportDiagramSVG()"><span class="material-icons">image</span><span>SVG</span></button>
+                <button type="button" title="Exportar como PNG (2x)" (click)="exportDiagramPNG()"><span class="material-icons">photo</span><span>PNG</span></button>
+              </div>
               <input #diagramFileInput type="file" accept="application/json,.json,.drawio-lite" hidden (change)="importDiagramFile($event)" />
             </div>
 
@@ -1494,17 +1499,27 @@
               </aside>
 
               <div class="diagram-canvas">
+                <div class="diagram-zoom-controls">
+                  <button class="diagram-zoom-btn" (click)="diagramZoomIn()" title="Acercar">+</button>
+                  <span class="diagram-zoom-label">{{ (diagramZoom() * 100).toFixed(0) }}%</span>
+                  <button class="diagram-zoom-btn" (click)="diagramZoomOut()" title="Alejar">−</button>
+                  <button class="diagram-zoom-btn diagram-zoom-reset" (click)="resetDiagramZoom()" title="Restablecer zoom">⊡</button>
+                </div>
                 <svg
                   viewBox="0 0 960 560"
                   (pointermove)="onDiagramPointerMove($event)"
                   (pointerup)="stopDiagramDrag()"
                   (pointerleave)="stopDiagramDrag()"
+                  (pointerdown)="onDiagramSvgPointerDown($event)"
+                  (wheel)="onDiagramWheel($event)"
                 >
                   <defs>
                     <marker id="diagram-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
                       <path d="M0,0 L0,6 L9,3 z"></path>
                     </marker>
                   </defs>
+
+                  <g [attr.transform]="diagramContentTransform()">
 
                   <g
                     *ngFor="let edge of model.edges"
@@ -1608,6 +1623,8 @@
                         (pointerdown)="startDiagramNodeResize($event, node.id, item.handle)"
                       ></rect>
                     </g>
+                  </g>
+
                   </g>
                 </svg>
               </div>

@@ -226,6 +226,16 @@ export class ProjectWorkspace {
   readonly implementationContracts = signal<ImplementationContract[]>([]);
   readonly dataEntities = signal<DataEntitySpec[]>([]);
   readonly targetRoles = signal<TargetRoleSpec[]>([]);
+  readonly diagramZoom = signal(1.0);
+  readonly diagramPanX = signal(0);
+  readonly diagramPanY = signal(0);
+  readonly diagramContentTransform = computed(() =>
+    `translate(${this.diagramPanX()},${this.diagramPanY()}) scale(${this.diagramZoom()})`
+  );
+
+  private isPanning = false;
+  private lastPanClient = { x: 0, y: 0 };
+
   readonly draggingNode = signal<{ nodeId: string; offsetX: number; offsetY: number } | null>(null);
   readonly resizingNode = signal<{
     nodeId: string;
@@ -1683,6 +1693,20 @@ export class ProjectWorkspace {
   }
 
   onDiagramPointerMove(event: PointerEvent) {
+    if (this.isPanning) {
+      const svg = (event.currentTarget instanceof SVGSVGElement
+        ? event.currentTarget
+        : (event.currentTarget as Element).closest('svg')) as SVGSVGElement | null;
+      if (svg) {
+        const rect = svg.getBoundingClientRect();
+        const viewBox = svg.viewBox.baseVal;
+        const scaleX = viewBox.width / rect.width;
+        this.diagramPanX.update(v => v + (event.clientX - this.lastPanClient.x) * scaleX);
+        this.diagramPanY.update(v => v + (event.clientY - this.lastPanClient.y) * scaleX);
+      }
+      this.lastPanClient = { x: event.clientX, y: event.clientY };
+      return;
+    }
     const resizing = this.resizingNode();
     const dragging = this.draggingNode();
     const current = this.diagram();
@@ -1711,6 +1735,174 @@ export class ProjectWorkspace {
   stopDiagramDrag() {
     this.draggingNode.set(null);
     this.resizingNode.set(null);
+    this.isPanning = false;
+  }
+
+  onDiagramSvgPointerDown(event: PointerEvent) {
+    if (event.button === 1) {
+      event.preventDefault();
+      this.isPanning = true;
+      this.lastPanClient = { x: event.clientX, y: event.clientY };
+      (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
+    }
+  }
+
+  onDiagramWheel(event: WheelEvent) {
+    event.preventDefault();
+    const svg = event.currentTarget as SVGSVGElement;
+    const rect = svg.getBoundingClientRect();
+    const viewBox = svg.viewBox.baseVal;
+    const scaleX = viewBox.width / rect.width;
+    const mouseVBX = (event.clientX - rect.left) * scaleX + viewBox.x;
+    const mouseVBY = (event.clientY - rect.top) * scaleX + viewBox.y;
+    const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const zoom = this.diagramZoom();
+    const newZoom = Math.min(4, Math.max(0.15, zoom * factor));
+    const ratio = newZoom / zoom;
+    this.diagramZoom.set(newZoom);
+    this.diagramPanX.update(v => mouseVBX + (v - mouseVBX) * ratio);
+    this.diagramPanY.update(v => mouseVBY + (v - mouseVBY) * ratio);
+  }
+
+  diagramZoomIn() {
+    const zoom = this.diagramZoom();
+    const cx = 480, cy = 280;
+    const newZoom = Math.min(4, zoom * 1.25);
+    const ratio = newZoom / zoom;
+    this.diagramZoom.set(newZoom);
+    this.diagramPanX.update(v => cx + (v - cx) * ratio);
+    this.diagramPanY.update(v => cy + (v - cy) * ratio);
+  }
+
+  diagramZoomOut() {
+    const zoom = this.diagramZoom();
+    const cx = 480, cy = 280;
+    const newZoom = Math.max(0.15, zoom / 1.25);
+    const ratio = newZoom / zoom;
+    this.diagramZoom.set(newZoom);
+    this.diagramPanX.update(v => cx + (v - cx) * ratio);
+    this.diagramPanY.update(v => cy + (v - cy) * ratio);
+  }
+
+  resetDiagramZoom() {
+    this.diagramZoom.set(1);
+    this.diagramPanX.set(0);
+    this.diagramPanY.set(0);
+  }
+
+  fitDiagramToContent() {
+    const nodes = this.diagram()?.nodes;
+    if (!nodes?.length) return;
+    const pad = 48;
+    const minX = Math.min(...nodes.map(n => n.x)) - pad;
+    const minY = Math.min(...nodes.map(n => n.y)) - pad;
+    const maxX = Math.max(...nodes.map(n => n.x + n.width)) + pad;
+    const maxY = Math.max(...nodes.map(n => n.y + n.height)) + pad;
+    const contentW = maxX - minX;
+    const contentH = maxY - minY;
+    const vbW = 960, vbH = 560;
+    const newZoom = Math.min(vbW / contentW, vbH / contentH, 2);
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    this.diagramZoom.set(newZoom);
+    this.diagramPanX.set(vbW / 2 - cx * newZoom);
+    this.diagramPanY.set(vbH / 2 - cy * newZoom);
+  }
+
+  exportDiagramSVG() {
+    const svgStr = this.buildExportSVGString();
+    if (!svgStr) return;
+    const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    this.triggerDownload(blob, `${this.diagram()?.name ?? 'diagrama'}.svg`);
+  }
+
+  exportDiagramPNG() {
+    const svgStr = this.buildExportSVGString();
+    if (!svgStr) return;
+    const nodes = this.diagram()?.nodes ?? [];
+    const pad = 48;
+    const minX = Math.min(...nodes.map(n => n.x)) - pad;
+    const minY = Math.min(...nodes.map(n => n.y)) - pad;
+    const w = Math.max(...nodes.map(n => n.x + n.width)) + pad - minX;
+    const h = Math.max(...nodes.map(n => n.y + n.height)) + pad - minY;
+    const scale = 2;
+    const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(w * scale);
+      canvas.height = Math.ceil(h * scale);
+      const ctx = canvas.getContext('2d')!;
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(png => {
+        if (png) this.triggerDownload(png, `${this.diagram()?.name ?? 'diagrama'}.png`);
+      }, 'image/png');
+    };
+    img.onerror = () => URL.revokeObjectURL(url);
+    img.src = url;
+  }
+
+  private buildExportSVGString(): string | null {
+    const svgEl = document.querySelector('.diagram-canvas svg') as SVGSVGElement | null;
+    const nodes = this.diagram()?.nodes;
+    if (!svgEl || !nodes?.length) return null;
+
+    const pad = 48;
+    const minX = Math.min(...nodes.map(n => n.x)) - pad;
+    const minY = Math.min(...nodes.map(n => n.y)) - pad;
+    const w = Math.max(...nodes.map(n => n.x + n.width)) + pad - minX;
+    const h = Math.max(...nodes.map(n => n.y + n.height)) + pad - minY;
+
+    const clone = svgEl.cloneNode(true) as SVGSVGElement;
+    clone.querySelectorAll('.diagram-node-controls').forEach(el => el.remove());
+
+    // Remove zoom/pan transform from the content group
+    for (const child of Array.from(clone.children)) {
+      if (child.tagName.toLowerCase() === 'g' && child.hasAttribute('transform')) {
+        child.removeAttribute('transform');
+        break;
+      }
+    }
+
+    clone.setAttribute('viewBox', `${minX} ${minY} ${w} ${h}`);
+    clone.setAttribute('width', String(w));
+    clone.setAttribute('height', String(h));
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+
+    const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+    styleEl.textContent = this.collectDiagramStyles();
+    clone.insertBefore(styleEl, clone.firstChild);
+
+    return new XMLSerializer().serializeToString(clone);
+  }
+
+  private collectDiagramStyles(): string {
+    const keywords = ['diagram-', 'node-type', 'lifeline', 'package-tab', 'hidden-shape', 'edge-', 'connection-port'];
+    const rules: string[] = [];
+    for (const sheet of Array.from(document.styleSheets)) {
+      try {
+        for (const rule of Array.from(sheet.cssRules)) {
+          if (keywords.some(kw => rule.cssText.includes(kw))) {
+            rules.push(rule.cssText);
+          }
+        }
+      } catch { /* cross-origin sheet */ }
+    }
+    return rules.join('\n');
+  }
+
+  private triggerDownload(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   updateSelectedDiagramNodeLabel(value: string) {
@@ -5271,9 +5463,10 @@ export class ProjectWorkspace {
     const viewBox = svg?.viewBox.baseVal;
     const scaleX = rect && viewBox?.width ? viewBox.width / rect.width : 1;
     const scaleY = rect && viewBox?.height ? viewBox.height / rect.height : 1;
+    const zoom = this.diagramZoom();
     return {
-      x: (event.clientX - (rect?.left ?? 0)) * scaleX + (viewBox?.x ?? 0),
-      y: (event.clientY - (rect?.top ?? 0)) * scaleY + (viewBox?.y ?? 0)
+      x: ((event.clientX - (rect?.left ?? 0)) * scaleX + (viewBox?.x ?? 0) - this.diagramPanX()) / zoom,
+      y: ((event.clientY - (rect?.top ?? 0)) * scaleY + (viewBox?.y ?? 0) - this.diagramPanY()) / zoom
     };
   }
 
